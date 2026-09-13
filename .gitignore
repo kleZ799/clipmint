@@ -57,9 +57,7 @@ bin/
 assets/icon.icns
 
 # local tooling — not part of the project
-# (.claude/skills is tracked on purpose, so only the launch config is ignored)
-.claude/launch.json
-.impeccable/hook.cache.json
+.claude/
 
 # The folder guide the app drops beside its output. Lands here when run
 # from source, since the output root defaults to the working directory.
