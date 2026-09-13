@@ -58,6 +58,7 @@ assets/icon.icns
 
 # local tooling — not part of the project
 .claude/
+.impeccable/
 
 # The folder guide the app drops beside its output. Lands here when run
 # from source, since the output root defaults to the working directory.
