@@ -1947,7 +1947,10 @@ body.player-on .player-body { transform: none; }
 }
 .w-box > * { position: relative; z-index: 2; }
 
-.w-x { position: absolute; top: 12px; right: 12px; z-index: 2; }
+/* Above the scrolling body, not level with it: .w-scroll starts at the very
+   top of the card and comes later in the DOM, so at an equal z-index its top
+   padding sat over the X and swallowed every click on it. */
+.w-x { position: absolute; top: 12px; right: 12px; z-index: 3; }
 
 .w-top { text-align: center; margin-bottom: 20px; }
 .w-mark {
