@@ -51,10 +51,13 @@ engineering is.
 
 ## 1. The 60-second answer
 
-> It takes a multi-hour livestream VOD and produces upload-ready vertical
-> Shorts. Three stages: transcribe the audio with Whisper, have an LLM rank the
-> transcript for clippable moments, then cut and re-frame those spans with
-> ffmpeg into 9:16 with the webcam stacked over the gameplay.
+> It takes a long video — a multi-hour stream VOD, a vlog, a podcast, a
+> tutorial — and produces vertical clips packaged for YouTube Shorts, Instagram
+> Reels and TikTok. Three stages: transcribe the audio with Whisper, have an LLM
+> work out what kind of video it is and rank the transcript for clippable
+> moments by that kind's rules, then cut and re-frame those spans with ffmpeg
+> into 9:16: the webcam stacked over the gameplay for a stream, a crop that
+> follows the face for a vlog or podcast.
 >
 > Everything runs locally except one LLM call. It ships as a desktop app for
 > Windows, macOS and Linux — a FastAPI server behind a native webview window,
@@ -212,6 +215,65 @@ The ranking prompt is not "find good clips". It contains:
 - **A ranked rubric** — eight virality signals in priority order.
 - **Output-shape enforcement** — exact JSON schema, no prose.
 
+### Classify, then route to a specialised prompt
+
+One prompt cannot be right for every kind of video. The stream rubric's hard
+rule, that every clip must contain the streamer talking over the game, is
+exactly right for a stream and nonsense for a travel vlog. Rather than one
+compromise prompt, the app runs **a cheap classifier first and routes to a
+specialised prompt** (`CRITERIA_BY_KIND`) — stream, vlog, podcast, tutorial,
+or general. It is the same idea as a router in front of expert models: spend a
+small call deciding which expertise applies, then apply it undiluted.
+
+Three details make it hold up:
+
+- **Coarse classes over fine labels.** The classifier distinguishes interview
+  from podcast and lecture from tutorial, but the router folds them to five
+  kinds. Each extra class is another prompt to keep in step, and classes that
+  are good for the *same reasons* would just be copies drifting apart.
+- **A human label beats the classifier.** The user's pick or words pin the class;
+  the classifier still runs, and a disagreement is logged rather than silently
+  resolved. Labels a person gives are ground truth for that run.
+- **A classification is state, not a function.** A model can classify the same
+  video differently twice. Inside a resumable run that nondeterminism is a bug:
+  a different class invalidates every checkpointed chunk. So the first answer
+  is persisted and reused — **memoising a nondeterministic call** is what makes
+  the pipeline idempotent again.
+
+### Knowledge that goes stale belongs in data, not code
+
+What a model knows about how YouTube or Instagram rank videos is frozen at its
+training cutoff, and the platforms change several times a year. So the app
+hands the packaging writer a **growth playbook** — a dated Markdown file that
+says what each platform measures and how to package for it — instead of baking
+that knowledge into the prompt text. This is **grounding**: supplying current
+facts in context rather than trusting parametric memory. It is retrieval
+without a vector store, because the whole corpus is one short document.
+
+Keeping it in a file turns an algorithm change into **a configuration change,
+not a release**. The app looks for a newer copy in the repository once a day,
+with three rules taken from how remote configuration is done safely:
+
+- **Monotonic versions.** A fetched copy is used only when its review date is
+  newer than the bundled one, so a stale cache can never roll a fresh build
+  backwards.
+- **Local override wins.** A `playbook.md` the user wrote beats both, which is
+  the same precedence as environment variables over config files.
+- **Fail static.** Any fetch error leaves the last good copy in charge, and a
+  run never waits for the network.
+
+### One content, three targets
+
+A clip goes to three apps that reward different things: a searchable title on
+YouTube, the first 125 characters of a caption and shares on Instagram, search
+keywords on TikTok. Writing all three in one call would mean one huge JSON
+reply, and one failure would take out the part the run cannot do without. So
+it is **two passes**. The second is conditioned on the first's decisions (its
+chosen title and search phrase), which keeps the three consistent, and it
+**degrades independently**: if it fails, the YouTube text is transformed into a
+safe fallback (hashtags moved out of the sentence, `#shorts` removed) rather
+than the whole step failing.
+
 ### Score calibration — a real bug worth telling
 
 The prompt asked for a 0–100 score. Across 96 candidates from one real VOD,
@@ -254,6 +316,13 @@ spotting a name that must not be there. The final rank blends them, 70/30, and
 an option the model itself rated as not fully true is dropped rather than
 down-weighted. A rubric turns "which is best" into several smaller judgements,
 each easier to get right and to audit afterwards.
+
+The same pattern ranks descriptions and Instagram captions, each with its own
+rubric and check. Tags are scored differently, because a model's tag list has
+no rubric to lean on: each tag's score is a **weighted blend of a prior and a
+position** — 60% what kind of term it is (the exact subject is worth more than a
+format word) and 40% where the model placed it. The prior encodes domain
+knowledge, and the position keeps the model's own judgement in the rank.
 
 ### Temperature
 
@@ -1168,6 +1237,22 @@ retries itself, and a run that still fails can be sent round again — which
 resumes from its caches, because the stages were built to be idempotent. Then
 tell them what degradation *cost* — the Korean title — because that shows you
 followed it through.
+
+**"How does one app handle a stream, a vlog and a podcast?"**
+It classifies first, then routes: a cheap call reads the start, middle and end
+of the transcript plus the video's listing, and picks one of five specialised
+ranking prompts. Then the parts that make it reliable: the user's pick beats the
+classifier, the classification is saved so a resumed run cannot change its mind,
+and only a *chosen* kind changes the framing — a detected one never does, because
+getting that wrong on a stream would put a face-follow crop on a webcam overlay.
+
+**"How do you keep the SEO advice current when the algorithms keep changing?"**
+It isn't in the prompt. It's a dated playbook file, bundled with every build and
+refreshed from the repository at most once a day. A newer review date wins, a
+user's own copy wins over both, and every failure keeps the last good copy. So an
+algorithm change is an edit and a push, not a release. The honest limit: the
+playbook is what the platforms have said publicly, not something measured
+against this channel's own retention yet.
 
 **"How does it know which game is in a clip?"**
 It looks: four frames per clip go to a vision model. The interesting part is
