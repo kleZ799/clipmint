@@ -1121,11 +1121,14 @@ function drawPreview(spec, summary, notes, warning) {
 
 // "" means the prompt decides, which is how this behaved before the toggle.
 let aspectChoice = "";
+// Same for the kind of video: "" leaves it to the words, then to the ranker.
+let kindChoice = "";
 
 async function refreshPreview() {
   try {
     const d = await api("/api/layout/preview", json("POST", {
       prompt: $("prompt").value, use_llm: true, aspect_ratio: aspectChoice || null,
+      content_kind: kindChoice || null,
     }));
     drawPreview(d.spec, d.summary, d.notes, d.warning);
   } catch (_) { /* the preview is cosmetic — never block on it */ }
@@ -1137,6 +1140,15 @@ $("arBar").onclick = (e) => {
   aspectChoice = btn.dataset.ar;
   for (const b of $("arBar").querySelectorAll(".chip")) b.classList.toggle("on", b === btn);
   refreshPreview();   // the preview is the only proof the pick landed
+};
+
+// A vlog or a podcast moves the preview onto the face, so this redraws too.
+$("kindBar").onclick = (e) => {
+  const btn = e.target.closest("[data-kind]");
+  if (!btn) return;
+  kindChoice = btn.dataset.kind;
+  for (const b of $("kindBar").querySelectorAll(".chip")) b.classList.toggle("on", b === btn);
+  refreshPreview();
 };
 
 $("chips").innerHTML = EXAMPLES.map((e) =>
@@ -1192,6 +1204,7 @@ async function run() {
       download_format: $("format").value,
       language: $("spokenLang").value,
       aspect_ratio: aspectChoice || null,
+      content_kind: kindChoice || null,
       hook_replay: $("hookReplay").checked,
     }));
   } catch (e) {
