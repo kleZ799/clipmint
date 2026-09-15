@@ -314,12 +314,19 @@ def _parse_time_ranges(p: str, spec: LayoutSpec) -> tuple:
     """
     found = []
     for pattern in _RANGE_PATTERNS:
-        for m in list(re.finditer(pattern, p)):
+        spans = []
+        for m in re.finditer(pattern, p):
             a, b = _to_seconds(m.group(1)), _to_seconds(m.group(2))
             if a is None or b is None or b <= a:
                 continue
             found.append([a, b])
-            p = p[:m.start()] + " " + p[m.end():]
+            spans.append((m.start(), m.end()))
+        # Cut from the back. Every match's offsets were measured on the text
+        # before anything was removed, so cutting front-to-back shifted each
+        # later cut onto the wrong characters -- with five spans it ate
+        # "gameplay only" and left digits that read as a 4:5 request.
+        for start, end in reversed(spans):
+            p = p[:start] + " " + p[end:]
         if found:
             break
 
