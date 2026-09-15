@@ -208,6 +208,7 @@ shorts_generator/
 ├── user_config.py          per-user settings.json, output roots
 ├── usage.py                daily API-request ledger + Pacific day boundary
 ├── highlights.py           THE BRAIN — prompts, chunking, scoring, dedupe
+├── content_kinds.py        stream / vlog / podcast / tutorial / other
 ├── signals.py              loudness envelope, trigger phrases, hook score
 ├── boundaries.py           snap spans to sentences; enforce clip length
 ├── hook_open.py            prepend a late payoff to the front of a clip
@@ -216,7 +217,8 @@ shorts_generator/
 ├── vision.py               what each clip shows, from four of its frames
 ├── faces.py                face detection: YuNet, with Haar as the fallback
 ├── accel.py                which processor encodes video and runs Whisper
-├── seo.py                  per-clip subject, ranked titles, tags, hashtags
+├── seo.py                  Shorts, Reels and TikTok packaging, all ranked
+├── playbook.py             the growth playbook: bundled, fetched, overridable
 │
 ├── downloader.py           api mode: MuAPI /youtube-download
 ├── transcriber.py          api mode: MuAPI /openai-whisper
@@ -278,14 +280,15 @@ transcribe_local()                    ← stage: transcribe (bar 0.15 → 0.55)
 analyse_audio()                       ← one loudness envelope for the whole VOD
       │
       ▼
-get_highlights(audio=…, reserve=…)    ← stage: rank       (bar 0.55 → 0.70)
+get_highlights(audio=…, kind=…)       ← stage: rank       (bar 0.55 → 0.70)
+  ├ resolve_content(): what kind of video this is
   └ finalize(): snap boundaries → rescore → dedupe
 sort by score, take top N
       │
       ▼
 detect_subject()                      ← what the video is about, and all it mentions
 _look_at_clips() → describe_clips()   ← what each clip's frames show (vision.py)
-attach_seo()                          ← ranked titles, descriptions, tags
+attach_seo()                          ← Shorts, then Reels + TikTok, from the playbook
       │
       ▼
 render_highlights(spec)               ← stage: render     (bar 0.70 → 1.00)
@@ -356,27 +359,53 @@ for. It's best-effort: a failure costs a little context, never the run.
 `shorts_generator/highlights.py` is the most opinionated file in the repo, and
 the one that decides output quality.
 
-### 6.1 Content-type detection
+### 6.1 What kind of video is this?
 
-One cheap LLM call over the first 25 segments classifies the video (`podcast` /
-`interview` / `commentary` / …) and its density (`low` / `medium` / `high`). On
-*any* failure it returns `{"content_type": "other", "density": "medium"}` — a
-classification is context for the main prompt, never a dependency.
+A stream, a vlog, a podcast and a tutorial are good for different reasons, and a
+ranking prompt written for one reads the others wrong. Told that every video is
+a game stream, the model goes looking for game narration in a travel vlog. So
+before anything is ranked, `resolve_content()` settles which of five kinds the
+video is — `stream`, `vlog`, `podcast`, `tutorial` or `other`
+(`content_kinds.py`).
+
+**Told, or detected.** The *Kind of video* picker, or a word in the prompt
+("my vlog", "podcast"), pins it. Otherwise one cheap call to
+`detect_content_type()` classifies the video from **three samples — start,
+middle and end — plus the video's own listing** (title, channel, category,
+description). The opening alone is the worst place to judge from: a stream opens
+on "starting soon", a podcast on an ad read, a vlog on "hey guys". The detector
+has finer labels than the ranker needs (`gaming_stream`, `just_chatting`,
+`interview`, `lecture`…), and `from_content_type()` folds them onto the five
+kinds, because an interview and a podcast are good for the same reasons and five
+copies of one rule book would drift apart. It also estimates density
+(`low` / `medium` / `high`).
+
+A kind the user chose always wins. Detection still runs then, for the density,
+and the log says when the two disagree: `ranking as stream (chosen) - it looked
+like vlog`. On *any* failure the answer is `other`, which gets the general
+criteria — a classification is context for the main prompt, never a dependency.
+
+**It is saved with the checkpoint.** A detector is a model and can answer
+differently twice. A resumed run that suddenly ranks as a different kind has
+quietly thrown away every chunk it already paid for, so the answer is written
+into `<source>.highlights.json` and reused ([§6.6](#66-resumable-checkpoints)).
 
 ### 6.2 The prompt is assembled from four blocks
 
 ```
 HIGHLIGHT_SYSTEM_PROMPT
-  ├── {virality_criteria}   ← ACTIVE_VIRALITY_CRITERIA
+  ├── {virality_criteria}   ← CRITERIA_BY_KIND[kind]
   ├── {cold_open_rules}     ← COLD_OPEN_RULES
   ├── {user_brief}          ← the user's own words, if any
   └── {duration_rule}       ← house default, or what the user asked for
 ```
 
-**`ACTIVE_VIRALITY_CRITERIA` is the single biggest lever in the codebase.** It
-points at `STREAM_VIRALITY_CRITERIA`, written for the mixed-audio-track problem
-from [§2](#2-the-problem-this-actually-solves). It teaches the model to separate
-the two voices by **register**:
+**`CRITERIA_BY_KIND` is the single biggest lever in the codebase.** It maps each
+kind of video to the block that says what counts as a good moment in it.
+
+**Streams** get `STREAM_VIRALITY_CRITERIA`, written for the mixed-audio-track
+problem from [§2](#2-the-problem-this-actually-solves). It teaches the model to
+separate the two voices by **register**:
 
 > **Game narration** reads like written prose — literary, past tense, polished,
 > no filler words, no self-correction, never addresses anyone.
@@ -393,9 +422,14 @@ fails and disasters → hot takes → chat interaction → personal tangents →
 quotable one-liners → sincerity. Dead air, loading screens and stream
 housekeeping are explicitly skipped.
 
-Swap the constant to `VIRALITY_CRITERIA` for podcast or talking-head footage,
-which ranks on generic signals: hooks, emotional peaks, opinion bombs,
-revelations, conflict, quotables, story peaks, practical value.
+The other kinds each get their own block:
+
+| Kind | Criteria | What it hunts for | What it refuses |
+|---|---|---|---|
+| `vlog` | `VLOG_VIRALITY_CRITERIA` | story payoffs, raw reactions, things going wrong, first times, honest moments to camera | greetings, subscribe asks, travel filler, spans with no creator speech |
+| `podcast` | `PODCAST_VIRALITY_CRITERIA` | opinion bombs, confessions, disagreement while it is heated, banter, quotables | intros, guest bios, ad reads; opens on the answer rather than the question |
+| `tutorial` | `TUTORIAL_VIRALITY_CRITERIA` | the mistake and its fix, one complete tip, a surprising result, the why | setup, installs, "link in the description", steps that need earlier steps |
+| `other` | `VIRALITY_CRITERIA` | hooks, emotional peaks, opinion bombs, revelations, conflict, story peaks, practical value | — |
 
 **`COLD_OPEN_RULES`** encodes the distribution reality the whole app sorts on. A
 Short is judged in its first second; the platform reads early drop-off as a
@@ -490,7 +524,7 @@ that happens on the *next* one.
 Reuse is gated by a fingerprint:
 
 ```
-v{PROMPT_VERSION}|{duration}|{chunk_count}|{num_clips}|{clip_length}
+v{PROMPT_VERSION}|{duration}|{chunk_count}|{num_clips}|{clip_length}|{kind}
 ```
 
 - `PROMPT_VERSION` is in there because chunks ranked by an older prompt are
@@ -499,6 +533,10 @@ v{PROMPT_VERSION}|{duration}|{chunk_count}|{num_clips}|{clip_length}
 - Clip length is in there because asking for 30s clips after a run that found 60s
   ones is a *different question*, and reusing those answers would silently ignore
   what was asked for.
+- The kind of video is in there for the same reason: chunks ranked as a stream
+  are no answer for the same video ranked as a podcast. The detected kind itself
+  is saved in the file too, and read back *whatever the fingerprint says* — the
+  question may have changed while what kind of video it is has not.
 
 ### 6.7 Dedupe
 
@@ -926,6 +964,8 @@ LayoutSpec(
     time_ranges=[],                # [[start, end], …] → skips transcribe + rank
     clip_seconds=None,             # [min, max] → becomes a prompt instruction
     brief="",                      # the whole prompt, handed to the ranker
+    content_kind="auto",           # stream | vlog | podcast | tutorial | other
+    layout_set=False,              # did the words choose a framing?
     notes=[],                      # human-readable "what I understood"
 )
 ```
@@ -940,6 +980,18 @@ the ranker is *asked to find*.
 noise to the ranker, and trying to subtract them would cost exactly the nuance
 (*"only the rage moments"*, *"hooks that ask a question"*) that makes the brief
 worth having.
+
+**The kind of video can move the framing, but only a default one.** "my vlog",
+"podcast", "tutorial", "stream" or "gameplay" in the prompt sets `content_kind` —
+only when exactly one kind is named, since "the interview bit of my stream"
+names two. A vlog or podcast then follows the face (`apply_kind()`), because its
+camera *is* the picture — unless the words already chose a framing, which
+`layout_set` records. Someone who typed "webcam at the top" over a podcast meant
+it. The *Kind of video* picker does the same through `_override_kind()` in the
+server, and beats the words the way the Shape toggle does. A kind the ranker
+*detected* never moves the framing: getting that wrong on a stream would put a
+face-follow crop on a webcam overlay, and the stacked renderer already falls
+back to following a face that fills the frame.
 
 `validate()` clamps every field into a renderable range and **never raises** —
 bad input degrades to a working render rather than an error. `from_dict()`
@@ -960,9 +1012,42 @@ what the clip is about, and tags that file it next to the videos its audience
 already watches.
 
 `seo.py` asks the same model that ranked the highlights to write that packaging —
-in **one call for the whole batch**, not one per clip. Ten separate calls would
-take ten times as long and give the model no way to stop the titles repeating
-each other.
+**one call for the whole batch** per pass, not one per clip. Ten separate calls
+would take ten times as long and give the model no way to stop the titles
+repeating each other.
+
+There are two passes, because one clip is posted to three apps that reward
+different things. The first writes the YouTube Shorts packaging. The second
+(`_write_social()`) takes the chosen title, search phrase and hook and writes the
+**Instagram Reels** and **TikTok** packaging from them. Both prompts cast the
+model as a social media strategist and hand it the growth playbook below.
+
+### The growth playbook — `playbook.py`
+
+How YouTube Shorts, Instagram Reels and TikTok decide who sees a video changes
+several times a year, and what the writer knows about that should not be frozen
+into whichever build someone downloaded. So it lives in a Markdown file,
+`assets/playbook/short-form-algorithms.md`, not in the prompt. It says what each
+platform measures (swipe-away rate and replays on Shorts; watch time, likes per
+reach and sends per reach on Reels; completion and search on TikTok) and what the
+packaging should do about it. Its first line is a review date.
+
+`load()` takes the most specific copy there is:
+
+1. `playbook.md` in the settings folder — your own notes, always;
+2. a copy fetched from the repository's `main` branch and cached as
+   `playbook-cache.md`, taken only when its `reviewed:` date is **newer than the
+   bundled one**, so a stale cache can never roll a fresh build backwards;
+3. the copy bundled into the build (`build_exe.py` adds `assets/playbook`).
+
+`refresh()` runs in the background once at startup and asks GitHub at most once
+a day. It is the updater's trust model at a smaller scale: one fixed URL on
+`raw.githubusercontent.com` in this project's own repo, text only, capped at
+64KB, and any failure leaves the copy on disk in charge. So updating what every
+installed copy knows about the algorithms is an edit to one file and a push — no
+release. `prompt_text()` strips the review date and the maintenance note before
+the model sees it; to a model they are noise, or an instruction to go and edit
+something.
 
 ### Naming the subject once — `detect_subject()`
 
@@ -1054,12 +1139,43 @@ each on an editor's rubric: **hook** 0–40, **clarity** 0–20, **search** 0–
 - orders them `0.7 × rubric + 0.3 × check`.
 
 The best becomes `title`; all of them are kept as `title_options` for the Boost
-panel. `_spread_leads()` then makes sure no two clips in one batch open with the
+panel. **Descriptions are ranked the same way:** `DESCRIPTION_OPTIONS` (2) per
+clip, a *search* angle and a *story* angle, scored on hook 0–40, search 0–30,
+clarity 0–15, truth 0–15, and blended with `score_description()` — which checks
+that the subject or search phrase is in the first line, the length, and that
+there are 3–5 hashtags. `_rank_texts()` does the blending for descriptions and
+captions alike, and drops anything the model scored as overclaiming. `_spread_leads()` then makes sure no two clips in one batch open with the
 same three words, taking a clip's next-best option where they would. Tags come
 back ranked and labelled by kind (subject, variant, query, genre, moment,
-format); the top ones fitting YouTube's budget go in the box and all of them are
-kept as `tag_options`. Each clip also gets a `search_phrase` — the one phrase it
+format), and `_score_tags()` gives each a score: 60% what kind of term it is
+(`TAG_KIND_WEIGHT` — the exact subject is worth most, a format term least) and
+40% where the model placed it, then re-sorts. The top ones fitting YouTube's
+budget go in the box and all of them are kept as `tag_options`. Each clip also gets a `search_phrase` — the one phrase it
 should rank for — and an `about` block saying what it was filed under and why.
+
+### Reels and TikTok — `_write_social()`
+
+The second pass writes, per clip:
+
+- **Reels:** `CAPTION_OPTIONS` (2) captions — a *search* angle for Instagram
+  search, a *send* angle written to be forwarded — with the hook and keyword
+  inside the first 125 characters, where Instagram folds a caption. Scored on
+  hook 0–40, search 0–25, share 0–20, truth 0–15 and blended with
+  `score_caption()`. Plus 3–5 hashtags, **cover text** of 2–5 words for the
+  3:4 profile grid, and **alt text**.
+- **TikTok:** one caption with the search phrase in its first line and a question
+  that invites comments, scored by `score_caption()`, and 3–5 hashtags.
+
+`_social_hashtags()` puts the clip's own controlled terms first and drops
+anything that means nothing on these apps (`OFF_PLATFORM_HASHTAGS`: `#shorts`,
+`#fyp`, `#foryou`, `#reels`, `#viral`…). Hashtags are stripped out of the
+caption sentence itself and kept on their own line.
+
+**If the second pass fails**, the YouTube packaging is not touched, and every
+entry already carries `_social_fallback()`: the YouTube description with its
+hashtags taken out and `#shorts` removed, marked `generated: false` so the panel
+can say so. The second pass is skipped entirely when the first produced nothing
+but fallbacks — it would be writing Instagram copy from a filename.
 
 ### The two rules that outrank everything
 
@@ -1085,10 +1201,12 @@ should rank for — and an `about` block saying what it was filed under and why.
   is invisible to everyone else, because it contains no word anyone would search
   or browse for.
 
-Limits are enforced in code, each set slightly *under* YouTube's real cap so a
-stray character can't get the upload rejected: `TITLE_LIMIT` 100,
+Limits are enforced in code, each set slightly *under* the platform's real cap
+so a stray character can't get the upload rejected: `TITLE_LIMIT` 100,
 `DESCRIPTION_LIMIT` 4800, `MAX_TAGS` 15 in the box (up to `MAX_TAG_OPTIONS` 24
-offered), `MAX_HASHTAGS` 5, `TAGS_TOTAL_LIMIT` 460 (real cap 500).
+offered), `MAX_HASHTAGS` 5, `TAGS_TOTAL_LIMIT` 460 (real cap 500),
+`REELS_CAPTION_LIMIT` 2150 (2200), `TIKTOK_CAPTION_LIMIT` 3900 (4000),
+`COVER_LIMIT` 40, `ALT_TEXT_LIMIT` 100.
 
 ### Best-effort, but honestly reported
 
@@ -1136,6 +1254,10 @@ not the house **style**: the no-hashtags-in-titles rule exists to stop a model
 padding, and someone who types one into their own title meant it. The entry is
 marked `edited`, which is what makes Rewrite ask before replacing hand-written
 words.
+
+It also takes the Reels and TikTok fields — `reels_caption`, `reels_hashtags`,
+`reels_cover_text`, `reels_alt_text`, `tiktok_caption`, `tiktok_hashtags` —
+with hashtags accepted as the one line the box shows or as a list.
 
 The same route takes a `subject`: what the clip is actually about, when the app
 got it wrong or could only guess. It is saved on the clip as `subject_override`
@@ -1644,6 +1766,21 @@ rewrite does not file the clip under the very guess it was meant to correct.
 Copy buttons and copy-everything as before. The clip cards in the grid show
 what each clip is filed under, so a wrong label is visible before upload.
 
+Under **What's in this clip** sit three tabs — **YouTube Shorts**, **Instagram
+Reels**, **TikTok**. Every tab's boxes stay in the page and only the open one is
+shown, so one Save keeps all three apps' wording. The YouTube tab adds
+`description_options` as a ranked list and a score on each tag chip. The Reels
+tab shows the caption with its 2200 count and the 125-character fold called out,
+ranked `caption_options`, hashtags, cover text and alt text; the TikTok tab its
+caption and hashtags. **Copy everything** copies for whichever app's tab is
+open, since that is the one being posted to. The chosen tab is remembered across
+clips — someone posting a batch to Instagram posts all of it there.
+
+On the Create page, a **Kind of video** row sits under Shape and behaves like it:
+*Work it out* leaves it to the words and then to the ranker; any other pick is
+sent as `content_kind` and redraws the preview, so choosing Vlog shows the
+face-following crop before anything renders.
+
 ### 12.8 Settings drawer
 
 Reads `/api/settings` and `/api/usage` to render:
@@ -1734,6 +1871,7 @@ clip — even partway through a paused run — without a restart.
 | | Path |
 |---|---|
 | Settings + usage ledger | `%APPDATA%\StreamToShorts\` (`~/.config` Linux, `~/Library/Application Support` macOS) |
+| Growth playbook: your own / fetched | `playbook.md` / `playbook-cache.md`, in that same folder |
 | Source videos, `.srt`, `.highlights.json` | `<OUTPUT_ROOT>/output/` |
 | Rendered clips + `job.json` | `<OUTPUT_ROOT>/shorts/<job-id>/` |
 | `OUTPUT_ROOT` default | cwd — which is `~/Videos/StreamToShorts` in the packaged build, `~/Movies/StreamToShorts` on a Mac |
@@ -2473,6 +2611,22 @@ guess in the Boost panel for a person to confirm. That is a deliberate
 trade — an unnamed clip is findable by its genre; a misnamed one is called out
 in its own comments.
 
+### The playbook is advice, dated
+
+What `short-form-algorithms.md` says about each platform is only as current as
+its `reviewed:` line, and the platforms do not announce every change. It is
+written from what the platforms have said publicly, not from measured results on
+this channel. Nothing in the app checks it against real retention yet. The
+scores that come back also sit high — a real run on two podcast clips put every
+title option between 90 and 97 — so the order they give is more useful than the
+numbers themselves.
+
+### The kind of video is only as good as its samples
+
+Detection reads three stretches of transcript and the listing. A stream that is
+mostly "just chatting", or a vlog filmed while gaming, can land on the other
+kind. The log says what it ranked as, and the picker fixes it for the next run.
+
 ### Clip filenames are titles, so they change
 
 Naming a clip after its title ([§9](#9-seo-the-packaging-step)) means the file on
@@ -2623,8 +2777,8 @@ rather than guessing from what the button last did.
 |---|---|
 | `POST /api/resolve` | Classify a pasted link: single video, or a channel to pick from |
 | `POST /api/upload` | Accept a dropped video file, return a path to run from |
-| `POST /api/layout/preview` | Parse a layout prompt without running anything — powers the live preview |
-| `POST /api/jobs` | Enqueue a job. Returns immediately with an id |
+| `POST /api/layout/preview` | Parse a layout prompt without running anything — powers the live preview. Takes `aspect_ratio` and `content_kind` picks |
+| `POST /api/jobs` | Enqueue a job. Returns immediately with an id. `content_kind` (`stream`, `vlog`, `podcast`, `tutorial`, `other`) beats the prompt's words; omit it or send `auto` to leave it to them |
 
 ### Following work
 
@@ -2649,7 +2803,7 @@ rather than guessing from what the button last did.
 | `POST /api/processor` | Set `auto`, `gpu` or `cpu`; applies from the next clip, even on a paused run |
 | `POST /api/jobs/{id}/retry` | Run a failed job again from where its caches stop it; `?clips_only=true` re-renders only a finished run's failed clips |
 | `POST /api/jobs/{id}/seo` | Write or rewrite upload metadata (`?force=true` to overwrite, `?only={file}` for one clip) |
-| `PUT …/clips/{file}/seo` | Save metadata the user typed, or a corrected `subject`; renames the mp4 to a new title |
+| `PUT …/clips/{file}/seo` | Save metadata the user typed — YouTube, Reels and TikTok fields — or a corrected `subject`; renames the mp4 to a new title |
 | `POST /api/jobs/{id}/reveal` | Show a clip in the file manager |
 
 ---
@@ -2763,9 +2917,10 @@ Reading in this order gets you productive fastest:
 4. **`shorts_generator/layout_spec.py`** — how plain English becomes a render
    spec, and the ordering constraints that keep it honest.
 
-The most valuable knob to turn first is `ACTIVE_VIRALITY_CRITERIA` in
-`highlights.py`. Everything else is tuning; that one changes what the app
-considers worth clipping at all.
+The most valuable knob to turn first is `CRITERIA_BY_KIND` in `highlights.py`.
+Everything else is tuning; that one changes what the app considers worth clipping
+at all. The second is `assets/playbook/short-form-algorithms.md`, which changes
+how every clip is packaged — and needs no release to reach people.
 
 ---
 
