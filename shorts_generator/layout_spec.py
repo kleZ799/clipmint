@@ -18,6 +18,8 @@ from typing import Dict, List, Optional
 import json
 import re
 
+from . import content_kinds
+
 # aspect ratio -> (width, height). Values are the platform-native upload sizes,
 # used as the floor. When the source can support more, pick_output_size() moves
 # up the ladder for that ratio instead.
@@ -109,6 +111,14 @@ class LayoutSpec:
     # it. Kept whole rather than parsed, because the value is in the nuance a
     # keyword pass would throw away.
     brief: str = ""
+    # What kind of video this is -- stream, vlog, podcast, tutorial or other,
+    # see content_kinds. "auto" leaves it to the ranker to work out; anything
+    # else is the user saying so, and decides what counts as a good moment.
+    content_kind: str = content_kinds.AUTO
+    # Whether the framing came from the user's words, rather than the default.
+    # Only a default framing is the kind of video's to change: someone who
+    # typed "webcam at the top" over a vlog meant it.
+    layout_set: bool = False
     # Human-readable notes about what the parser understood, shown in the UI
     # so the user can see their prompt was actually applied.
     notes: List[str] = field(default_factory=list)
@@ -134,6 +144,8 @@ class LayoutSpec:
         # Below 2x the crop is inside the face; above 12x the webcam is a speck.
         self.face_zoom = max(2.0, min(12.0, float(self.face_zoom)))
         self.num_clips = max(1, min(10, int(self.num_clips)))
+        self.content_kind = content_kinds.normalise(self.content_kind)
+        self.layout_set = bool(self.layout_set)
 
         # Keep only sane, ordered, non-duplicate spans.
         clean: List[List[float]] = []
@@ -183,6 +195,20 @@ class LayoutSpec:
         # would only put people off the right layout for a face cam.
         return None
 
+    def apply_kind(self, kind: Optional[str] = None) -> Optional[str]:
+        """Frame the clips for a kind of video, unless the user chose a framing.
+
+        `kind` defaults to the spec's own. Returns the layout it switched to,
+        or None when nothing changed. See content_kinds.default_layout for
+        which kinds move and why.
+        """
+        kind = content_kinds.normalise(kind if kind is not None else self.content_kind)
+        wanted = content_kinds.default_layout(kind)
+        if not wanted or self.layout_set or self.layout == wanted:
+            return None
+        self.layout = wanted
+        return wanted
+
     def describe(self) -> str:
         """One-line human summary, for the UI and the logs."""
         if self.time_ranges:
@@ -197,6 +223,8 @@ class LayoutSpec:
             prefix += f"{lo}-{hi}s each · "
         if self.hook_replay:
             prefix += "hook up front · "
+        if self.content_kind != content_kinds.AUTO:
+            prefix = f"{content_kinds.LABELS[self.content_kind]} · " + prefix
         return prefix + self._describe_layout()
 
     def _describe_layout(self) -> str:
@@ -222,6 +250,15 @@ _ASPECT_WORDS = [
     (r"\b4[:\s/]?5\b|\binstagram feed\b|\bfeed post\b", "4:5"),
     (r"\b1[:\s/]?1\b|\bsquare\b", "1:1"),
     (r"\b9[:\s/]?16\b|\bvertical\b|\bportrait\b|\breels?\b|\btiktok\b|\bshorts?\b", "9:16"),
+]
+
+# Words that say what kind of video the source is.
+_KIND_WORDS = [
+    (r"\b(?:live ?)?streams?\b|\bvods?\b|\bgameplay\b|\blet'?s ?plays?\b"
+     r"|\bplaythrough\b|\bgaming\b|\btwitch\b", content_kinds.STREAM),
+    (r"\bvlogs?\b|\birl\b|\bday in (?:the|my) life\b|\btravel video\b", content_kinds.VLOG),
+    (r"\bpodcasts?\b|\binterviews?\b|\bdebate\b", content_kinds.PODCAST),
+    (r"\btutorials?\b|\bhow[\s-]?to\b|\bexplainer\b|\blecture\b", content_kinds.TUTORIAL),
 ]
 
 _CORNER_WORDS = [
@@ -421,6 +458,18 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
         spec.notes.append("layout → webcam on top, gameplay below")
         resolved.add("layout")
 
+    if "layout" in resolved:
+        spec.layout_set = True
+
+    # What kind of video it is, when the words say so. Only an unambiguous
+    # mention counts: "the interview bit of my stream" names two kinds, and
+    # guessing between them would be worse than leaving it to the detector.
+    kinds = {kind for pattern, kind in _KIND_WORDS if re.search(pattern, p)}
+    if len(kinds) == 1:
+        spec.content_kind = kinds.pop()
+        spec.notes.append(f"kind of video → {content_kinds.LABELS[spec.content_kind]}")
+        resolved.add("content_kind")
+
     # Where the webcam overlay physically sits in the SOURCE footage.
     for pattern, value in _CORNER_WORDS:
         if re.search(pattern, p):
@@ -497,6 +546,8 @@ def _parse_with_llm(prompt: str, spec: LayoutSpec, already: set) -> None:
             continue
         setattr(spec, key, data[key])
         spec.notes.append(f"{key.replace('_', ' ')} → {data[key]} (interpreted)")
+        if key == "layout":
+            spec.layout_set = True
 
 
 def parse_layout_prompt(
@@ -537,6 +588,9 @@ def parse_layout_prompt(
             # A layout prompt is a convenience, never a hard dependency —
             # falling back to defaults beats failing the whole render.
             spec.notes.append(f"could not interpret the rest of the prompt ({e}); kept defaults")
+
+    if spec.apply_kind():
+        spec.notes.append(f"framing → follows the face, for a {content_kinds.LABELS[spec.content_kind]}")
 
     if not spec.notes:
         spec.notes.append("nothing recognised in the prompt — using defaults")

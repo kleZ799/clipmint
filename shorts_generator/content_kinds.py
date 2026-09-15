@@ -27,6 +27,15 @@ OTHER = "other"
 
 KINDS = (STREAM, VLOG, PODCAST, TUTORIAL, OTHER)
 
+# How each kind is named to a person: in the layout summary, and in the log.
+LABELS = {
+    STREAM: "stream or gameplay",
+    VLOG: "vlog",
+    PODCAST: "podcast or interview",
+    TUTORIAL: "tutorial",
+    OTHER: "other video",
+}
+
 # The detector's labels, folded onto the kinds above.
 _FROM_CONTENT_TYPE = {
     "gaming_stream": STREAM,
