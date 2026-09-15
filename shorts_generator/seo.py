@@ -35,10 +35,25 @@ It is deliberately best-effort: SEO text sits on top of a clip that already
 exists, so every failure path here falls back to something usable rather than
 sinking a run that has already paid for a download, a transcription and a
 render.
+
+One clip is posted to three places, and they do not reward the same packaging.
+YouTube Shorts has a title, a description and a tag box; an Instagram Reel is
+found by its caption's first 125 characters and grows on sends; TikTok is
+searched like a search engine and ignores #fyp. So after the YouTube metadata
+is written, a second pass writes a Reels caption, cover text and alt text, and
+a TikTok caption, each with its own hashtags. Both passes work from the growth
+playbook in playbook.py -- how each platform distributes short video right now
+-- which is kept in a file so it can change when the platforms do.
+
+Everything the writer offers more than one of is ranked: titles, descriptions,
+Reels captions and tags each carry a score, blended from the model's editorial
+rubric and a check of the app's own that can count.
 """
 import json
 import re
 from typing import Callable, Dict, List, Optional
+
+from . import content_kinds, playbook
 
 LLMFn = Callable[[str], str]
 
@@ -60,6 +75,28 @@ MAX_HASHTAGS = 5
 # Titles written per clip. Enough to cover the distinct angles; more just
 # produces near-duplicates of the good ones.
 TITLE_OPTIONS = 5
+# Descriptions and Reels captions per clip: one built for search, one for the
+# feed. Two is enough to choose between without doubling what a run costs.
+DESCRIPTION_OPTIONS = 2
+CAPTION_OPTIONS = 2
+
+# Instagram and TikTok limits, with the same headroom as YouTube's.
+REELS_CAPTION_LIMIT = 2150
+TIKTOK_CAPTION_LIMIT = 3900
+# What shows of a Reels caption before "more".
+CAPTION_FOLD = 125
+COVER_LIMIT = 40
+ALT_TEXT_LIMIT = 100
+# Hashtags that mean nothing on the platform they would be posted to, or
+# nothing anywhere. "#shorts" on a Reel files it with YouTube.
+OFF_PLATFORM_HASHTAGS = {"#shorts", "#ytshorts", "#youtubeshorts", "#fyp", "#foryou",
+                         "#foryoupage", "#fypシ", "#reels", "#reelsinstagram", "#viral"}
+
+# How much each kind of tag is worth, before its position in the model's own
+# ranking. The exact subject is what someone searches; a format term only
+# says what shelf the clip sits on.
+TAG_KIND_WEIGHT = {"subject": 100, "query": 90, "variant": 80, "moment": 72,
+                   "genre": 68, "format": 55}
 
 # Format terms by kind of video. Only the clip's own kind goes into its tags:
 # "gaming clips" on a podcast clip files it with an audience that will not
@@ -89,7 +126,12 @@ FILLER = ("you won't believe", "you wont believe", "wait for it", "watch till th
 
 # Ask for the whole batch at once. Ten separate calls would take ten times as
 # long and give the model no way to keep the titles from repeating each other.
-SEO_PROMPT = """You are the packaging strategist for a YouTube Shorts channel that consistently breaks 1M views. You write the titles, description and tags that decide whether a Short gets watched or scrolled past.
+SEO_PROMPT = """You are an expert social media strategist and growth hacker. You package short-form video for channels that consistently break 1M views, and you write the titles, description and tags that decide whether a Short gets watched or scrolled past. This pass is for YOUTUBE SHORTS.
+
+Everything you write follows the growth playbook below: how YouTube Shorts, Instagram Reels and TikTok distribute short video right now. Use it to grow every clip.
+
+GROWTH PLAYBOOK
+{playbook}
 
 SOURCE VIDEO
 {video_context}
@@ -113,7 +155,7 @@ HOW SHORTS ARE ACTUALLY DISTRIBUTED - write for this, not for a search engine:
 - Titles and descriptions outrank tags as ranking signals. The words that name the subject must appear in the title and in the first line of the description, not only in the tag box.
 - The FIRST THREE hashtags in the description are shown as clickable links above the title. They must be the terms this clip should be filed under.
 - A hashtag in the TITLE buys nothing and spends characters you need for keywords. No hashtags in titles.
-- 3-5 hashtags total. Past 15 every hashtag on the video is ignored outright.
+- 3-5 hashtags total. More than that dilutes them, and past 60 YouTube ignores every hashtag on the video.
 
 REACHING PAST THE AUDIENCE THE CHANNEL ALREADY HAS:
 - WRITE FOR A STRANGER. Assume the viewer has never heard of this creator and has never played the game or seen the show. Insider framing - a nickname, a running joke, "he did it again" - caps the clip at the audience it started with.
@@ -135,12 +177,21 @@ Score each option honestly, as an editor would before posting:
 - "truth" 0-20: does the clip fully deliver it? Anything under 20 overclaims.
 Then list the options best first.
 
-DESCRIPTION rules:
+DESCRIPTION_OPTIONS - write exactly {description_options} descriptions per clip, each on a different angle:
+- "search": built around the phrase a person would type to find this moment
+- "story": built around what actually happens, for the viewer who is already watching
+Every description:
 - Line 1: the hook as a full sentence, containing the main search phrase - it is the only line most viewers ever see
 - Lines 2-3: what actually happens, in plain words, naming the subject (only if confirmed) and the kind of moment it is. This is the text the ranker reads to decide who to show the clip to, so spend it on real nouns, not adjectives
 - Then one short call to action: a specific question about THIS clip beats "comment below"
 - Then one line of 3-5 hashtags, #shorts first, then the most specific ones for this clip. Lowercase, no spaces inside a hashtag
 - Under 500 characters. Plain text, no markdown
+Score each description honestly:
+- "hook" 0-40: does line 1 alone make a stranger want to watch?
+- "search" 0-30: are the search phrase and the confirmed subject in line 1?
+- "clarity" 0-15: would the ranker know exactly who to show this to?
+- "truth" 0-15: does the clip fully deliver it?
+Then list the descriptions best first.
 
 TAGS - 14-20 lowercase tags per clip, ranked most valuable first, each labelled with its kind:
 - "subject": the exact name of what the clip is about (only if confirmed) - always first
@@ -165,7 +216,48 @@ CLIPS
 {clips_block}
 
 Respond with ONLY valid JSON, no markdown fences:
-{{"clips":[{{"index":int,"title_options":[{{"title":"string","angle":"string","hook":int,"clarity":int,"search":int,"truth":int}}],"description":"string","tags":[{{"tag":"string","kind":"string"}}],"hashtags":["string"],"hook_text":"string","search_phrase":"string","why_it_works":"string"}}]}}"""
+{{"clips":[{{"index":int,"title_options":[{{"title":"string","angle":"string","hook":int,"clarity":int,"search":int,"truth":int}}],"description_options":[{{"description":"string","angle":"string","hook":int,"search":int,"clarity":int,"truth":int}}],"tags":[{{"tag":"string","kind":"string"}}],"hashtags":["string"],"hook_text":"string","search_phrase":"string","why_it_works":"string"}}]}}"""
+
+
+# The second pass: the same clips, packaged for the two feeds that do not have
+# a title box. Asked after YouTube's so it can build on the search phrase and
+# hook already chosen instead of inventing a second, competing angle.
+SOCIAL_PROMPT = """You are an expert social media strategist and growth hacker. The clips below are already packaged for YouTube Shorts. Now package each one for INSTAGRAM REELS and TIKTOK.
+
+Follow the growth playbook for each platform. They reward different things - Reels grow on sends and a caption's first 125 characters, TikTok is searched like a search engine - so write natively for each. Never paste the YouTube text.
+
+GROWTH PLAYBOOK
+{playbook}
+
+{subject_block}
+
+THE RULES THAT OUTRANK EVERYTHING BELOW:
+1. ACCURATE. Nothing the clip does not deliver. Name a person, game or show only when that clip's block says the subject is CONFIRMED; otherwise use the genre.
+2. NATIVE. Write the way the platform's best creators write: a person talking, not a press release. Specific and true beats sensational and empty.
+3. FOR A STRANGER. Assume the viewer has never heard of this creator.
+4. NO TWO CLIPS MAY OPEN THE SAME WAY. They are posted to one account.
+
+For EACH clip write:
+
+REELS
+- "caption_options": exactly {caption_options} captions, each on a different angle:
+    "search": leads with the phrase a person would type into Instagram search
+    "send": written so a viewer forwards it to a friend
+  Every caption: the hook and main keyword inside the first 125 characters; then one or two short lines of context; then a call to action that fits this clip (ask for a send, a save, or one specific comment). 150-400 characters. No hashtags inside the caption. At most two emoji.
+  Score each honestly: "hook" 0-40 (does the first 125 characters stop a stranger?), "search" 0-25 (is a phrase people really search in the first line?), "share" 0-20 (would someone send or save it?), "truth" 0-15 (does the clip fully deliver it?). List them best first.
+- "hashtags": 3-5, the most specific first, lowercase, no spaces. Never #shorts, #ytshorts, #fyp, #reels or #viral.
+- "cover_text": 2-5 words for the cover image, readable in the centre of a 3:4 crop. No emoji, no hashtags, not the caption's opening words.
+- "alt_text": one plain sentence under 100 characters saying what happens in the clip.
+
+TIKTOK
+- "caption": the search phrase in natural words in the first line, one line of context, then a question that invites comments. 100-300 characters. No hashtags inside the caption.
+- "hashtags": 3-5: one broad community tag, then specific ones about the subject and the moment. Lowercase. Never #fyp, #foryou or #shorts.
+
+CLIPS
+{clips_block}
+
+Respond with ONLY valid JSON, no markdown fences:
+{{"clips":[{{"index":int,"reels":{{"caption_options":[{{"caption":"string","angle":"string","hook":int,"search":int,"share":int,"truth":int}}],"hashtags":["string"],"cover_text":"string","alt_text":"string"}},"tiktok":{{"caption":"string","hashtags":["string"]}}}}]}}"""
 
 
 # Asked once per run, before any title is written. It names what the video is
@@ -315,6 +407,10 @@ def subject_block(subject: Dict) -> str:
         lines.append("SUBJECT OF THE VIDEO AS A WHOLE: (none identified)")
     if subject.get("format"):
         lines.append(f"Format: {subject['format']}")
+    kind = content_kinds.normalise(subject.get("content_kind"))
+    if kind != content_kinds.AUTO:
+        lines.append(f"Kind of video, as the moments were chosen: {content_kinds.LABELS[kind]}. "
+                     "Package it the way the best accounts in that format package theirs.")
     if mentioned:
         lines.append("It also covers: " + ", ".join(mentioned))
     lines.append(
@@ -613,6 +709,148 @@ def score_title(title: str, who: Dict) -> int:
     return max(0, min(100, score))
 
 
+def _mentions(text: str, who: Dict, search_phrase: str = "") -> Optional[bool]:
+    """Does `text` carry the clip's subject or search phrase? None if it has neither."""
+    low = (text or "").lower()
+    terms = []
+    if who.get("confirmed") and who.get("subject"):
+        terms.append(who["subject"].lower())
+    if search_phrase:
+        terms.append(search_phrase.lower())
+    if not terms:
+        return None
+    squashed = re.sub(r"[^a-z0-9]", "", low)
+    for term in terms:
+        if term in low or re.sub(r"[^a-z0-9]", "", term) in squashed:
+            return True
+        # A phrase counts when most of its words are there, in any order.
+        words = [w for w in re.findall(r"[a-z0-9']+", term) if len(w) > 2]
+        if words and sum(w in low for w in words) >= max(1, round(len(words) * 0.66)):
+            return True
+    return False
+
+
+def _shared_checks(text: str, who: Dict) -> int:
+    """Penalties every piece of packaging shares: filler, shouting, a wrong name."""
+    low = text.lower()
+    penalty = 0
+    if any(f in low for f in FILLER):
+        penalty += 15
+    shouty = [w for w in re.findall(r"[A-Za-z]{4,}", text) if w.isupper()]
+    penalty += 10 * min(3, len(shouty))
+    if not who.get("confirmed") and who.get("guess") and who["guess"].lower() in low:
+        penalty += 60
+    return penalty
+
+
+def score_description(text: str, who: Dict, search_phrase: str = "") -> int:
+    """The app's own check on a YouTube description, 0-100.
+
+    The first line is the one most viewers see and the one YouTube leans on to
+    place the clip, so that is where the subject and search phrase have to be.
+    """
+    t = (text or "").strip()
+    body = re.sub(r"#\w+", "", t).strip()
+    first = body.splitlines()[0] if body else ""
+    score = 100
+    n = len(body)
+    if n < 80:
+        score -= 25
+    elif n > 600:
+        score -= 15
+    if _mentions(first, who, search_phrase) is False:
+        score -= 25
+    tags = re.findall(r"#\w+", t)
+    if not tags:
+        score -= 10
+    elif len(tags) > MAX_HASHTAGS:
+        score -= 10
+    if "?" in body:
+        score += 4
+    score -= _shared_checks(t, who)
+    return max(0, min(100, score))
+
+
+def score_caption(text: str, who: Dict, search_phrase: str = "",
+                  platform: str = "reels") -> int:
+    """The app's own check on a Reels or TikTok caption, 0-100.
+
+    Both platforms search captions, and Instagram folds a caption after about
+    125 characters, so the keyword has to land before the fold. Hashtags belong
+    in their own line, not in the sentence.
+    """
+    t = (text or "").strip()
+    score = 100
+    n = len(t)
+    if n < 60:
+        score -= 25
+    elif n > (600 if platform == "reels" else 450):
+        score -= 15
+    if _mentions(t[:CAPTION_FOLD], who, search_phrase) is False:
+        score -= 20
+    if "#" in t:
+        score -= 15
+    emoji = sum(1 for ch in t if ord(ch) > 0x2600)
+    if emoji > 2:
+        score -= 10
+    low = t.lower()
+    if t.rstrip().endswith("?") or re.search(r"\b(send|save|tag|share)\b", low):
+        score += 5
+    score -= _shared_checks(t, who)
+    return max(0, min(100, score))
+
+
+def _rubric(item: Dict, caps: Dict[str, int]) -> Optional[int]:
+    """The model's own scores for an option, summed, or None if any is missing."""
+    total = 0
+    for key, cap in caps.items():
+        try:
+            total += max(0, min(cap, int(item.get(key))))
+        except (TypeError, ValueError):
+            return None
+    return total
+
+
+def _truth_ok(item: Dict, key: str = "truth", floor: int = 11) -> bool:
+    """False only when the model itself scored an option as overclaiming."""
+    try:
+        return int(item.get(key)) >= floor
+    except (TypeError, ValueError):
+        return True
+
+
+def _rank_texts(raw: object, field: str, caps: Dict[str, int], check, limit: int,
+                keep: int) -> List[Dict]:
+    """Rank model-written text options -- descriptions, captions -- best first.
+
+    The same blend as titles: mostly the model's rubric, partly the app's check.
+    """
+    options, seen = [], set()
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, str):
+            item = {field: item}
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get(field) or "").strip()[:limit]
+        key = re.sub(r"\s+", " ", text.lower())
+        if not text or key in seen or not _truth_ok(item):
+            continue
+        seen.add(key)
+        rubric = _rubric(item, caps)
+        own = check(text)
+        options.append({
+            field: text,
+            "angle": str(item.get("angle") or "").strip().lower()[:20],
+            "score": round(0.7 * rubric + 0.3 * own) if rubric is not None else own,
+            "model_score": rubric,
+            "check_score": own,
+        })
+    options.sort(key=lambda o: o["score"], reverse=True)
+    for rank, o in enumerate(options, 1):
+        o["rank"] = rank
+    return options[:keep]
+
+
 def _rank_options(raw: object, who: Dict) -> List[Dict]:
     """Model-written title options, scored and ordered best first.
 
@@ -676,7 +914,7 @@ def _tag_options(raw: object, who: Dict, run: Optional[Dict],
 
     subject_kind = "subject" if who.get("confirmed") else "genre"
     for t in _subject_terms(who, run):
-        add(t, subject_kind)
+        add(t, "genre" if _same(t, who.get("genre") or "") else subject_kind)
     for item in raw if isinstance(raw, list) else []:
         if isinstance(item, dict):
             add(item.get("tag"), str(item.get("kind") or "query").strip().lower()[:12])
@@ -689,7 +927,23 @@ def _tag_options(raw: object, who: Dict, run: Optional[Dict],
     guess = (who.get("guess") or "").lower()
     if guess:
         out = [o for o in out if guess not in o["tag"]]
-    return out
+    return _score_tags(out)
+
+
+def _score_tags(options: List[Dict]) -> List[Dict]:
+    """Give every tag a score and put them in that order.
+
+    What kind of term a tag is counts for most of it, and where the model put
+    it for the rest -- so a real search query the model ranked high beats a
+    format term it added to fill the list, and the subject stays on top.
+    """
+    for pos, o in enumerate(options):
+        weight = TAG_KIND_WEIGHT.get(o.get("kind") or "", 70)
+        o["score"] = round(0.6 * weight + 0.4 * max(0, 100 - 5 * pos))
+    options.sort(key=lambda o: o["score"], reverse=True)
+    for rank, o in enumerate(options, 1):
+        o["rank"] = rank
+    return options
 
 
 def _pick_tags(options: List[Dict]) -> List[str]:
@@ -718,19 +972,25 @@ def _fallback_for(h: Dict, video_meta: Optional[Dict],
     source_title = (video_meta or {}).get("title", "")
     options = _tag_options([], who, subject, topic + _format_terms(who))
 
-    return {
+    description = "\n".join([
+        title,
+        "",
+        f"Clipped from: {source_title}" if source_title else "Full video on the channel.",
+        "Follow for more clips like this.",
+        "",
+        " ".join(hashtags),
+    ])
+    entry = {
         "title": title[:TITLE_LIMIT],
         "title_options": [{"title": title[:TITLE_LIMIT], "angle": "hook line",
                            "score": score_title(title, who), "model_score": None,
                            "check_score": score_title(title, who), "rank": 1}],
-        "description": "\n".join([
-            title,
-            "",
-            f"Clipped from: {source_title}" if source_title else "Full video on the channel.",
-            "Follow for more clips like this.",
-            "",
-            " ".join(hashtags),
-        ]),
+        "description": description,
+        "description_options": [{"description": description, "angle": "hook line",
+                                 "score": score_description(description, who),
+                                 "model_score": None,
+                                 "check_score": score_description(description, who),
+                                 "rank": 1}],
         "tags": _pick_tags(options),
         "tag_options": options,
         "hashtags": hashtags,
@@ -739,6 +999,65 @@ def _fallback_for(h: Dict, video_meta: Optional[Dict],
         "why_it_works": h.get("virality_reason", ""),
         "about": _about(who),
         "generated": False,
+    }
+    entry.update(_social_fallback(entry, h, who, subject))
+    return entry
+
+
+def _social_hashtags(raw: object, controlled: List[str]) -> List[str]:
+    """3-5 hashtags for Reels or TikTok: the clip's own terms first, nothing off-platform."""
+    out, seen = [], set()
+    items = list(controlled) + (list(raw) if isinstance(raw, list) else [])
+    for tag in items:
+        tag = "#" + re.sub(r"[^A-Za-z0-9_]", "", str(tag)).lower()
+        if len(tag) < 3 or tag in seen or tag in OFF_PLATFORM_HASHTAGS:
+            continue
+        seen.add(tag)
+        out.append(tag)
+        if len(out) >= MAX_HASHTAGS:
+            break
+    return out
+
+
+def _plain(text: str) -> str:
+    """Packaging text with its hashtags taken out and its spacing tidied."""
+    text = re.sub(r"#\w+", "", text or "")
+    lines = [re.sub(r"[ \t]+", " ", ln).strip() for ln in text.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def _social_fallback(entry: Dict, h: Dict, who: Dict, run: Optional[Dict]) -> Dict:
+    """Reels and TikTok packaging built from the YouTube packaging.
+
+    Used when the second pass could not run. Not native to either platform,
+    but accurate -- every word already passed the YouTube checks -- and
+    stripped of the parts that would be wrong there: #shorts, and hashtags
+    inside the sentence.
+    """
+    caption = _plain(entry.get("description") or entry.get("title") or "")[:600]
+    tags = _social_hashtags(entry.get("hashtags"), _controlled_hashtags(who, run))
+    phrase = entry.get("search_phrase") or ""
+    scene = (h.get("scene") or {}).get("scene") or ""
+    cover = " ".join(re.findall(r"\S+", entry.get("hook_text") or entry.get("title") or "")[:5])
+    return {
+        "reels": {
+            "caption": caption,
+            "caption_options": [{"caption": caption, "angle": "from youtube",
+                                 "score": score_caption(caption, who, phrase, "reels"),
+                                 "model_score": None,
+                                 "check_score": score_caption(caption, who, phrase, "reels"),
+                                 "rank": 1}],
+            "hashtags": tags,
+            "cover_text": cover[:COVER_LIMIT],
+            "alt_text": (scene or entry.get("title") or "")[:ALT_TEXT_LIMIT],
+            "generated": False,
+        },
+        "tiktok": {
+            "caption": caption[:TIKTOK_CAPTION_LIMIT],
+            "score": score_caption(caption, who, phrase, "tiktok"),
+            "hashtags": tags,
+            "generated": False,
+        },
     }
 
 
@@ -760,13 +1079,26 @@ def _coerce_entry(item: Dict, h: Dict, video_meta: Optional[Dict],
     options = options or base["title_options"]
     title = options[0]["title"]
 
-    description = str(item.get("description") or "").strip()[:DESCRIPTION_LIMIT]
+    phrase = re.sub(r"\s+", " ", str(item.get("search_phrase") or "")).strip().lower()[:60]
     hashtags = (_merge_hashtags(_clean_hashtags(item.get("hashtags")),
                                 _controlled_hashtags(who, subject)) or base["hashtags"])
-    if not description:
-        description = base["description"]
-    elif not any(t.lower() in description.lower() for t in hashtags):
-        description = f"{description}\n\n{' '.join(hashtags)}"[:DESCRIPTION_LIMIT]
+
+    def with_hashtags(text: str) -> str:
+        if any(t.lower() in text.lower() for t in hashtags):
+            return text
+        return f"{text}\n\n{' '.join(hashtags)}"[:DESCRIPTION_LIMIT]
+
+    raw_descriptions = item.get("description_options")
+    if not raw_descriptions and item.get("description"):
+        raw_descriptions = [{"description": item.get("description")}]
+    descriptions = _rank_texts(
+        [{**d, "description": with_hashtags(str(d.get("description") or "").strip())}
+         if isinstance(d, dict) else {"description": with_hashtags(str(d))}
+         for d in (raw_descriptions or []) if d],
+        "description", {"hook": 40, "search": 30, "clarity": 15, "truth": 15},
+        lambda t: score_description(t, who, phrase), DESCRIPTION_LIMIT, DESCRIPTION_OPTIONS + 1,
+    ) or base["description_options"]
+    description = descriptions[0]["description"]
 
     model_tags = item.get("tags")
     if isinstance(model_tags, str):
@@ -774,20 +1106,67 @@ def _coerce_entry(item: Dict, h: Dict, video_meta: Optional[Dict],
     tag_opts = _tag_options(model_tags, who, subject, _format_terms(who))
     hook = re.sub(r"\s+", " ", str(item.get("hook_text") or "")).strip()[:HOOK_LIMIT]
 
-    return {
+    entry = {
         "title": title,
         "title_options": options,
         "description": description,
+        "description_options": descriptions,
         "tags": _pick_tags(tag_opts) or base["tags"],
         "tag_options": tag_opts or base["tag_options"],
         "hashtags": hashtags,
         "hook_text": hook or base["hook_text"],
-        "search_phrase": re.sub(r"\s+", " ", str(item.get("search_phrase") or ""))
-                         .strip().lower()[:60],
+        "search_phrase": phrase,
         "why_it_works": str(item.get("why_it_works") or h.get("virality_reason") or "").strip(),
         "about": _about(who),
         "generated": True,
     }
+    # Until the second pass writes them, Reels and TikTok get the YouTube
+    # packaging made safe for them -- never the other video's leftovers.
+    entry.update(_social_fallback(entry, h, who, subject))
+    return entry
+
+
+def _coerce_social(item: Dict, entry: Dict, h: Dict, who: Dict,
+                   run: Optional[Dict]) -> Dict:
+    """Force one clip's Reels and TikTok packaging into shape."""
+    base = _social_fallback(entry, h, who, run)
+    phrase = entry.get("search_phrase") or ""
+    controlled = _controlled_hashtags(who, run)
+    out = {}
+
+    reels = item.get("reels") if isinstance(item.get("reels"), dict) else None
+    if reels:
+        captions = _rank_texts(
+            [{**c, "caption": _plain(str(c.get("caption") or ""))} if isinstance(c, dict)
+             else {"caption": _plain(str(c))} for c in (reels.get("caption_options") or [])],
+            "caption", {"hook": 40, "search": 25, "share": 20, "truth": 15},
+            lambda t: score_caption(t, who, phrase, "reels"), REELS_CAPTION_LIMIT,
+            CAPTION_OPTIONS + 1,
+        )
+        cover = _strip_title_hashtags(re.sub(r"\s+", " ", str(reels.get("cover_text") or "")))
+        alt = re.sub(r"\s+", " ", str(reels.get("alt_text") or "")).strip()
+        if captions:
+            out["reels"] = {
+                "caption": captions[0]["caption"],
+                "caption_options": captions,
+                "hashtags": _social_hashtags(reels.get("hashtags"), controlled)
+                            or base["reels"]["hashtags"],
+                "cover_text": cover[:COVER_LIMIT] or base["reels"]["cover_text"],
+                "alt_text": alt[:ALT_TEXT_LIMIT] or base["reels"]["alt_text"],
+                "generated": True,
+            }
+
+    tiktok = item.get("tiktok") if isinstance(item.get("tiktok"), dict) else None
+    if tiktok and str(tiktok.get("caption") or "").strip():
+        caption = _plain(str(tiktok["caption"]))[:TIKTOK_CAPTION_LIMIT]
+        out["tiktok"] = {
+            "caption": caption,
+            "score": score_caption(caption, who, phrase, "tiktok"),
+            "hashtags": _social_hashtags(tiktok.get("hashtags"), controlled)
+                        or base["tiktok"]["hashtags"],
+            "generated": True,
+        }
+    return {**base, **out}
 
 
 def _spread_leads(entries: List[Dict]) -> None:
@@ -849,6 +1228,39 @@ def apply_edit(existing: Optional[Dict], edit: Dict) -> Dict:
         out["hook_text"] = re.sub(r"\s+", " ",
                                   str(edit["hook_text"] or "")).strip()[:HOOK_LIMIT]
 
+    # Reels and TikTok, as typed. Hashtags come in as the one line the box
+    # shows ("#a #b") or as a list; either way they are kept as the person
+    # wrote them, only shaped.
+    def hashtag_list(raw: object) -> List[str]:
+        items = raw if isinstance(raw, list) else re.split(r"[\s,]+", str(raw or ""))
+        out_tags, seen = [], set()
+        for tag in items:
+            tag = "#" + re.sub(r"[^\w]", "", str(tag).lstrip("#"))
+            if len(tag) >= 2 and tag.lower() not in seen:
+                seen.add(tag.lower())
+                out_tags.append(tag)
+        return out_tags[:30]
+
+    reels = dict(out.get("reels") or {})
+    if "reels_caption" in edit:
+        reels["caption"] = str(edit["reels_caption"] or "").strip()[:REELS_CAPTION_LIMIT]
+    if "reels_hashtags" in edit:
+        reels["hashtags"] = hashtag_list(edit["reels_hashtags"])
+    if "reels_cover_text" in edit:
+        reels["cover_text"] = re.sub(r"\s+", " ", str(edit["reels_cover_text"] or "")).strip()[:COVER_LIMIT]
+    if "reels_alt_text" in edit:
+        reels["alt_text"] = re.sub(r"\s+", " ", str(edit["reels_alt_text"] or "")).strip()[:ALT_TEXT_LIMIT]
+    if reels != (out.get("reels") or {}):
+        out["reels"] = reels
+
+    tiktok = dict(out.get("tiktok") or {})
+    if "tiktok_caption" in edit:
+        tiktok["caption"] = str(edit["tiktok_caption"] or "").strip()[:TIKTOK_CAPTION_LIMIT]
+    if "tiktok_hashtags" in edit:
+        tiktok["hashtags"] = hashtag_list(edit["tiktok_hashtags"])
+    if tiktok != (out.get("tiktok") or {}):
+        out["tiktok"] = tiktok
+
     # So a later "Rewrite" is a deliberate choice rather than a surprise: the
     # UI can warn that it is about to throw away words a person wrote.
     out["edited"] = True
@@ -893,9 +1305,15 @@ def generate_seo(
     avoid = [t for t in (avoid_titles or []) if t]
     avoid_block = ("\nALREADY POSTED FROM THIS VIDEO - do not open any title the way these open:\n"
                    + "\n".join(f"- {t}" for t in avoid[:12]) + "\n") if avoid else ""
+    guide = playbook.prompt_text()
+    _, where = playbook.load()
+    print(f"[seo] writing for YouTube Shorts, Instagram Reels and TikTok from the {where}",
+          flush=True)
     prompt = SEO_PROMPT.format(
+        playbook=guide or "(no playbook available - rely on what you know)",
         n=len(highlights),
         options=TITLE_OPTIONS,
+        description_options=DESCRIPTION_OPTIONS,
         title_limit=TITLE_LIMIT,
         video_context=describe_video(video_meta, source),
         subject_block=subject_block(subject),
@@ -928,11 +1346,66 @@ def generate_seo(
         out.append(_coerce_entry(item, h, video_meta, subject) if isinstance(item, dict)
                    else _fallback_for(h, video_meta, subject))
     _spread_leads(out)
+
+    # The second pass only builds on metadata a model actually wrote. Over a
+    # fallback it would be writing Instagram copy from a filename.
+    if by_index:
+        _write_social(out, highlights, transcript, subject, guide, llm_fn, errors)
     for i, e in enumerate(out, 1):
         about = e.get("about") or {}
         named = about.get("subject") or (f"unnamed {about.get('genre') or ''}".strip())
         print(f"[seo] clip {i}: \"{e['title']}\" - filed under {named}", flush=True)
     return out
+
+
+def _write_social(entries: List[Dict], highlights: List[Dict], transcript: Optional[Dict],
+                  subject: Optional[Dict], guide: str, llm_fn: LLMFn,
+                  errors: Optional[List[str]] = None) -> None:
+    """Write each clip's Reels and TikTok packaging into its entry, in place.
+
+    A failure keeps the fallback every entry already carries, and is reported
+    the way a failed YouTube pass is -- but it never touches the YouTube
+    metadata, which is the part a run cannot do without.
+    """
+    blocks = []
+    for i, (h, e) in enumerate(zip(highlights, entries), 1):
+        blocks.append(
+            _build_clips_block([h], transcript, subject).replace("--- CLIP 1 (rank 1 of 1",
+                                                                  f"--- CLIP {i} (rank {i} of {len(entries)}", 1)
+            + f"\nYouTube title chosen: {e.get('title', '')}"
+            + f"\nSearch phrase: {e.get('search_phrase') or '(none)'}"
+            + f"\nOn-screen hook: {e.get('hook_text', '')}"
+        )
+    prompt = SOCIAL_PROMPT.format(
+        playbook=guide or "(no playbook available - rely on what you know)",
+        subject_block=subject_block(subject),
+        caption_options=CAPTION_OPTIONS,
+        clips_block="\n\n".join(blocks),
+    )
+    try:
+        parsed = _parse_json_loose(llm_fn(prompt))
+    except Exception as e:
+        print(f"[seo] could not write the Reels and TikTok captions ({e}); "
+              f"using the YouTube text made safe for them", flush=True)
+        if errors is not None:
+            errors.append(f"reels/tiktok: {e}")
+        return
+
+    written = 0
+    for n, item in enumerate(parsed.get("clips") or [], 1):
+        if not isinstance(item, dict):
+            continue
+        try:
+            idx = int(item.get("index"))
+        except (TypeError, ValueError):
+            idx = n
+        if not 1 <= idx <= len(entries):
+            continue
+        h, e = highlights[idx - 1], entries[idx - 1]
+        social = _coerce_social(item, e, h, clip_subject(h, subject), subject)
+        e.update(social)
+        written += social["reels"].get("generated", False) or social["tiktok"].get("generated", False)
+    print(f"[seo] wrote Reels and TikTok captions for {written}/{len(entries)} clip(s)", flush=True)
 
 
 def attach_seo(highlights: List[Dict], **kwargs) -> List[Dict]:
