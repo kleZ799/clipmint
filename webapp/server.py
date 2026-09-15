@@ -966,6 +966,14 @@ class SeoEditRequest(BaseModel):
     # or as a list, so both the UI and a script can post here.
     tags: Optional[object] = None
     hook_text: Optional[str] = None
+    # Instagram Reels and TikTok, as typed. Hashtags arrive as the one line
+    # the box shows ("#a #b") or as a list.
+    reels_caption: Optional[str] = None
+    reels_hashtags: Optional[object] = None
+    reels_cover_text: Optional[str] = None
+    reels_alt_text: Optional[str] = None
+    tiktok_caption: Optional[str] = None
+    tiktok_hashtags: Optional[object] = None
     # What the clip is actually about, when the app got it wrong -- "Fear to
     # Fathom", not the game it guessed. Saved on the clip, not in the text,
     # and every rewrite after this files the clip under it. Empty clears it.

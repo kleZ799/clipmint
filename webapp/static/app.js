@@ -1804,6 +1804,26 @@ function seoField(label, id, value, opts = {}) {
     </div>`;
 }
 
+// Which app the Boost panel is packaging for. Remembered across clips, since
+// someone posting a batch to Instagram posts all of it to Instagram.
+let seoPlatform = "yt";
+const SEO_PLATFORMS = [["yt", "YouTube Shorts"], ["ig", "Instagram Reels"], ["tt", "TikTok"]];
+
+// A ranked list of options -- titles, descriptions, captions -- that fill a
+// box when tapped. The score leads, so the order reads at a glance.
+function optionList(label, key, options, current, field) {
+  if (options.length < 2) return "";
+  return `
+    <div class="sf">
+      <div class="sf-top"><span>${esc(label)}</span></div>
+      <div class="topts">${options.map((o, k) => `
+        <button class="topt${o[field] === current ? " on" : ""}" data-${key}="${k}"
+          title="${esc(scoreNote(o))}">
+          <b>${esc(o.score)}</b><span class="topt-text">${esc(o[field])}</span><i>${esc(o.angle || "")}</i>
+        </button>`).join("")}</div>
+    </div>`;
+}
+
 function renderSeo() {
   const c = clips[cur];
   const box = $("seoBody");
@@ -1819,25 +1839,39 @@ function renderSeo() {
       <p class="seo-empty">This clip has no upload metadata yet — it was made before
         the app started writing it, or the write failed.<br><br>
         <b>Write it now</b> listens to this clip and writes a title, a description,
-        tags and an on-screen hook from what is actually said in it.</p>`;
+        tags, an on-screen hook, and captions for Instagram Reels and TikTok, from
+        what is actually said in it.</p>`;
     return;
   }
 
   const options = seo.title_options || [];
+  const descOptions = seo.description_options || [];
   const tagOptions = seo.tag_options || [];
+  const reels = seo.reels || null;
+  const tiktok = seo.tiktok || null;
+  const capOptions = (reels && reels.caption_options) || [];
+  const madeFromYoutube = (reels && reels.generated === false) || (tiktok && tiktok.generated === false);
+  const socialNote = !reels && !tiktok
+    ? `<p class="seo-why warnish">This clip was packaged before the app wrote Instagram and TikTok
+         captions. Hit Rewrite to have them written for each app.</p>`
+    : madeFromYoutube && seo.generated !== false
+      ? `<p class="seo-why warnish">Made from the YouTube text, because writing these
+           didn't work this time. Hit Rewrite to have them written for this app.</p>`
+      : "";
+
   box.innerHTML =
     aboutField(c, seo)
+    + `<div class="ptabs" role="tablist">${SEO_PLATFORMS.map(([k, name]) => `
+        <button class="ptab${k === seoPlatform ? " on" : ""}" role="tab" data-plat="${k}"
+          aria-selected="${k === seoPlatform}">${esc(name)}</button>`).join("")}</div>`
+
+    // ---- YouTube Shorts
+    + `<div class="pbody" data-pbody="yt"${seoPlatform === "yt" ? "" : " hidden"}>`
     + seoField("Title — paste into YouTube's title box", "sfTitle", seo.title, { count: 100 })
-    + (options.length > 1 ? `
-      <div class="sf">
-        <div class="sf-top"><span>Title options, best first — tap one to use it</span></div>
-        <div class="topts">${options.map((o, k) => `
-          <button class="topt${o.title === seo.title ? " on" : ""}" data-topt="${k}"
-            title="${esc(scoreNote(o))}">
-            <b>${esc(o.score)}</b><span>${esc(o.title)}</span><i>${esc(o.angle || "")}</i>
-          </button>`).join("")}</div>
-      </div>` : "")
+    + optionList("Title options, best first — tap one to use it", "topt", options, seo.title, "title")
     + seoField("Description", "sfDesc", seo.description, { multiline: true, rows: 8 })
+    + optionList("Description options, best first — tap one to use it", "dopt", descOptions,
+                 seo.description, "description")
     + seoField("Tags — paste into the tags box", "sfTags", (seo.tags || []).join(", "),
                { multiline: true, rows: 3 })
     + (tagOptions.length ? `
@@ -1845,7 +1879,9 @@ function renderSeo() {
         <div class="sf-top"><span>More tags, best first — tap to add or remove</span>
           <i class="sf-count" id="sfTagCount"></i></div>
         <div class="tchips">${tagOptions.map((o, k) => `
-          <button class="tchip" data-tchip="${k}" title="${esc(o.kind || "")}">${esc(o.tag)}</button>`
+          <button class="tchip" data-tchip="${k}"
+            title="${esc([o.kind, o.score != null ? `score ${o.score}` : ""].filter(Boolean).join(" · "))}">${
+            esc(o.tag)}${o.score != null ? `<small>${esc(o.score)}</small>` : ""}</button>`
         ).join("")}</div>
       </div>` : "")
     + seoField("On-screen hook for the first 2 seconds", "sfHook", seo.hook_text)
@@ -1853,12 +1889,53 @@ function renderSeo() {
         ? `<p class="seo-why"><b>Ranks for:</b> ${esc(seo.search_phrase)}</p>` : "")
     + (seo.why_it_works
         ? `<p class="seo-why"><b>Why this one travels:</b> ${esc(seo.why_it_works)}</p>` : "")
+    + `</div>`
+
+    // ---- Instagram Reels
+    + `<div class="pbody" data-pbody="ig"${seoPlatform === "ig" ? "" : " hidden"}>`
+    + seoField("Caption — paste into Instagram", "sfIgCaption", reels ? reels.caption : "",
+               { multiline: true, rows: 6, count: 2200 })
+    + `<p class="sf-hint">The first 125 characters show before “more”, so the hook and the search words go there.</p>`
+    + optionList("Caption options, best first — tap one to use it", "copt", capOptions,
+                 reels ? reels.caption : "", "caption")
+    + seoField("Hashtags", "sfIgTags", reels ? (reels.hashtags || []).join(" ") : "")
+    + seoField("Cover text — 2 to 5 words, kept in the middle for the 3:4 grid", "sfIgCover",
+               reels ? reels.cover_text : "", { count: 40 })
+    + seoField("Alt text — Advanced settings, Accessibility", "sfIgAlt",
+               reels ? reels.alt_text : "", { count: 100 })
+    + `</div>`
+
+    // ---- TikTok
+    + `<div class="pbody" data-pbody="tt"${seoPlatform === "tt" ? "" : " hidden"}>`
+    + seoField("Caption — paste into TikTok", "sfTtCaption", tiktok ? tiktok.caption : "",
+               { multiline: true, rows: 6, count: 4000 })
+    + seoField("Hashtags", "sfTtTags", tiktok ? (tiktok.hashtags || []).join(" ") : "")
+    + `</div>`
+
+    + socialNote
     + (seo.generated === false
         ? `<p class="seo-why warnish">Written from the clip's own hook line — the model
              wasn't reachable. Hit Rewrite to have it written properly.</p>` : "");
 
+  // Single-line boxes are filled here rather than in the markup, so a quote
+  // or an angle bracket in a title can never break out of an attribute.
   $("sfTitle").value = seo.title || "";
   $("sfHook").value = seo.hook_text || "";
+  $("sfIgTags").value = reels ? (reels.hashtags || []).join(" ") : "";
+  $("sfIgCover").value = reels ? reels.cover_text || "" : "";
+  $("sfIgAlt").value = reels ? reels.alt_text || "" : "";
+  $("sfTtTags").value = tiktok ? (tiktok.hashtags || []).join(" ") : "";
+
+  box.querySelectorAll("[data-plat]").forEach((b) => {
+    b.onclick = () => {
+      seoPlatform = b.dataset.plat;
+      box.querySelectorAll("[data-plat]").forEach((x) => {
+        x.classList.toggle("on", x === b);
+        x.setAttribute("aria-selected", String(x === b));
+      });
+      box.querySelectorAll("[data-pbody]").forEach((p) => { p.hidden = p.dataset.pbody !== seoPlatform; });
+    };
+  });
 
   box.querySelectorAll("[data-seocopy]").forEach((b) => {
     b.onclick = () => {
@@ -1867,17 +1944,20 @@ function renderSeo() {
     };
   });
 
-  // The fields are editable — tweak a title before copying it — so the count
-  // has to follow along, since 100 characters is a hard YouTube limit.
-  // The title's own counter, looked up from the title box: the panel has
-  // other badges now, and the first one in it is not this one.
-  const count = $("sfTitle").closest(".sf").querySelector(".sf-count");
-  if (count) {
-    $("sfTitle").addEventListener("input", () => {
-      count.textContent = `${$("sfTitle").value.length}/100`;
-      count.classList.toggle("over", $("sfTitle").value.length > 100);
-    });
-  }
+  // Every box with a limit keeps its count live: each app rejects or cuts
+  // text past its own limit, whoever typed it.
+  box.querySelectorAll(".sf").forEach((sf) => {
+    const count = sf.querySelector(".sf-count");
+    const input = sf.querySelector("input, textarea");
+    const limit = count && Number((count.textContent.split("/")[1] || "").trim());
+    if (!count || !input || !limit) return;
+    const paint = () => {
+      count.textContent = `${input.value.length}/${limit}`;
+      count.classList.toggle("over", input.value.length > limit);
+    };
+    input.addEventListener("input", paint);
+    paint();
+  });
 
   // Editing was already possible; keeping the edit was not. Every box now
   // arms the Save button, so a title you rewrote survives closing the panel
@@ -1885,22 +1965,28 @@ function renderSeo() {
   seoDirty = false;
   $("seoSave").disabled = true;
   $("seoSave").textContent = "Save changes";
-  ["sfSubject", "sfTitle", "sfDesc", "sfTags", "sfHook"].forEach((id) => {
+  ["sfSubject", "sfTitle", "sfDesc", "sfTags", "sfHook", "sfIgCaption", "sfIgTags",
+   "sfIgCover", "sfIgAlt", "sfTtCaption", "sfTtTags"].forEach((id) => {
     const el = $(id);
     if (el) el.addEventListener("input", markSeoDirty);
   });
 
-  // A ranked option goes into the title box rather than straight to disk, so
-  // it can be tweaked first and is kept by the same Save as a typed title.
-  box.querySelectorAll("[data-topt]").forEach((b) => {
-    b.onclick = () => {
-      const o = options[+b.dataset.topt];
-      if (!o) return;
-      $("sfTitle").value = o.title;
-      $("sfTitle").dispatchEvent(new Event("input"));
-      box.querySelectorAll("[data-topt]").forEach((x) => x.classList.toggle("on", x === b));
-    };
-  });
+  // A ranked option goes into its box rather than straight to disk, so it can
+  // be tweaked first and is kept by the same Save as typed text.
+  const wireOptions = (key, list, field, target) => {
+    box.querySelectorAll(`[data-${key}]`).forEach((b) => {
+      b.onclick = () => {
+        const o = list[+b.dataset[key]];
+        if (!o) return;
+        $(target).value = o[field];
+        $(target).dispatchEvent(new Event("input"));
+        box.querySelectorAll(`[data-${key}]`).forEach((x) => x.classList.toggle("on", x === b));
+      };
+    });
+  };
+  wireOptions("topt", options, "title", "sfTitle");
+  wireOptions("dopt", descOptions, "description", "sfDesc");
+  wireOptions("copt", capOptions, "caption", "sfIgCaption");
 
   // The chips and the tag box are one list seen two ways: toggling a chip
   // edits the box, and typing in the box relights the chips.
@@ -1973,7 +2059,7 @@ function aboutField(c, seo) {
 function scoreNote(o) {
   const parts = [`Score ${o.score}/100`];
   if (o.model_score != null) parts.push(`editor rubric ${o.model_score}`);
-  if (o.check_score != null) parts.push(`length, subject and filler check ${o.check_score}`);
+  if (o.check_score != null) parts.push(`the app's own check ${o.check_score}`);
   return parts.join(" · ");
 }
 
@@ -2000,6 +2086,12 @@ async function saveSeo() {
       tags: $("sfTags").value,
       hook_text: $("sfHook").value,
       subject: $("sfSubject") ? $("sfSubject").value : undefined,
+      reels_caption: $("sfIgCaption").value,
+      reels_hashtags: $("sfIgTags").value,
+      reels_cover_text: $("sfIgCover").value,
+      reels_alt_text: $("sfIgAlt").value,
+      tiktok_caption: $("sfTtCaption").value,
+      tiktok_hashtags: $("sfTtTags").value,
     };
     const d = await api(
       `/api/jobs/${encodeURIComponent(jobOf(c))}/clips/${encodeURIComponent(c.file)}/seo`,
@@ -2040,6 +2132,20 @@ $("seoClose").onclick = () => $("player").classList.remove("seo-on");
 $("seoCopyAll").onclick = () => {
   const c = clips[cur];
   if (!c || !c.seo) return;
+  // Everything for the app whose tab is open: that is the one being posted to.
+  if (seoPlatform === "ig") {
+    copy([
+      `${$("sfIgCaption").value}\n\n${$("sfIgTags").value}`.trim(),
+      `COVER TEXT\n${$("sfIgCover").value}`,
+      `ALT TEXT\n${$("sfIgAlt").value}`,
+    ].join("\n\n"), "Caption, hashtags, cover and alt text copied.");
+    return;
+  }
+  if (seoPlatform === "tt") {
+    copy(`${$("sfTtCaption").value}\n\n${$("sfTtTags").value}`.trim(),
+         "Caption and hashtags copied.");
+    return;
+  }
   copy([
     `TITLE\n${$("sfTitle").value}`,
     `DESCRIPTION\n${$("sfDesc").value}`,
@@ -2057,7 +2163,7 @@ $("seoRedo").onclick = () => {
   if (seoDirty || (c.seo && c.seo.edited)) {
     ask("Rewrite over your own words?",
         "This clip has a title you edited. Rewriting replaces it, along with the "
-        + "description, tags and hook.", rewriteSeo);
+        + "description, tags, hook and the Instagram and TikTok captions.", rewriteSeo);
     return;
   }
   rewriteSeo();

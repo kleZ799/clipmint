@@ -1277,6 +1277,45 @@ label.fld > span a:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .tchip:hover { color: var(--text); border-color: var(--edge); }
+.tchip small { margin-left: 5px; font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* One clip, three apps. The tabs switch which app's packaging is showing;
+   every tab's boxes stay in the page so one Save keeps all of them. */
+.ptabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin: 2px 0 16px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+}
+.ptab {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--pill);
+  background: transparent;
+  color: var(--text-2);
+  padding: 7px 6px;
+  font: 500 12px/1.2 inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.ptab:hover { color: var(--text); }
+.ptab.on { background: var(--raised-2); color: var(--text); }
+.ptab:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+/* A description or caption is long; show enough of it to choose by. */
+.topt-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
 .tchip.on { border-style: solid; border-color: var(--blue); color: var(--text); background: var(--raised-2); }
 
 .seo-empty { color: var(--text-2); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
