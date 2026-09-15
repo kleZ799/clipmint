@@ -1,14 +1,29 @@
 -r requirements.txt
 
-# Optional dependencies for --mode local.
+# Everything --mode local runs on your own machine: download, transcription,
+# ranking, vision and rendering. ffmpeg and ffprobe are not Python packages --
+# put them on your PATH, or in ./bin before building the app.
+
+# Downloads. YouTube changes often and an old yt-dlp is the usual reason a
+# download fails, so keep this one current: pip install -U yt-dlp
 yt-dlp>=2024.1.1
+
+# Transcription. faster-whisper runs on CTranslate2, which is also imported
+# directly to ask whether a CUDA GPU is usable -- so it is named here too.
+# torch is NOT needed, not even for the GPU: see requirements-nvidia.txt.
 faster-whisper>=1.0.0
-openai>=1.0.0
+ctranslate2>=4.0
+
+# Ranking, vision and packaging: Gemini first, then Groq and OpenAI. Groq is
+# reached through the OpenAI client, so there is no separate package for it.
 google-genai>=1.0.0
-# opencv 5.x removed cv2.CascadeClassifier, which local/clipper.py needs for face tracking.
+openai>=1.0.0
+
+# Face detection and the webcam overlay. opencv 5.x removed
+# cv2.CascadeClassifier, the fallback detector, so stay below it. 4.8 or newer
+# also carries FaceDetectorYN, the YuNet detector the app prefers.
 opencv-python>=4.8.0,<5
+
 # Reads the source's loudness envelope for hook detection. opencv already
 # pulls it in, but signals.py imports it directly, so it is named directly.
 numpy>=1.24
-# torch is only needed if you want CUDA Whisper. CPU works without it.
-# torch>=2.0

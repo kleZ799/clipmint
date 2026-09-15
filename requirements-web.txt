@@ -1,7 +1,14 @@
 -r requirements-local.txt
 
+# The interface, on every platform. The release workflow installs this file on
+# Windows, macOS and Linux alike, so anything platform-specific here carries a
+# marker rather than living only in a per-platform file.
+
 # Web UI (python -m webapp)
 fastapi>=0.110
+# Imported directly for the request models. fastapi brings it, but naming it
+# keeps a fastapi release that loosens its pin from surprising anyone.
+pydantic>=2.0
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
 

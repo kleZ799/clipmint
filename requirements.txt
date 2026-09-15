@@ -1,2 +1,16 @@
+# The smallest install: what every mode needs, including --mode api, which
+# hands the heavy work to MuAPI and runs nothing locally.
+#
+# Which file to install:
+#   requirements-windows.txt   the desktop app from source, on Windows
+#   requirements-mac.txt       the desktop app from source, on macOS
+#   requirements-linux.txt     the desktop app from source, on Linux
+#   requirements-nvidia.txt    add-on: transcription on an NVIDIA GPU
+#   requirements-build.txt     add-on: package the app with PyInstaller
+#   requirements-local.txt     the CLI in --mode local, no interface
+#   requirements.txt           the CLI in --mode api only
+#
+# Python 3.10 or newer. The published builds are made with 3.13.
+
 requests>=2.31
 python-dotenv>=1.0
