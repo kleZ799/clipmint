@@ -2,10 +2,12 @@
 
 # 🎮 Stream → Shorts
 
-### Turn long videos into vertical Shorts — on your own PC
+### Turn any long video into Shorts, Reels and TikToks — on your own PC
 
-An AI clip generator for stream VODs, podcasts, and any long video: it finds the
-moments worth posting and cuts them to 9:16 for **Shorts, Reels and TikTok**.
+An all-in-one short-form clip generator for stream VODs, gaming videos, vlogs,
+podcasts and tutorials. It works out what kind of video it is, finds the moments
+worth posting, cuts them to 9:16, and writes the title, captions and hashtags
+for **YouTube Shorts, Instagram Reels and TikTok**.
 
 No subscription, no per-clip credits, no watermark, and nothing is uploaded —
 transcription and ranking both run locally.
@@ -59,6 +61,23 @@ browser rather than in a window of its own.
 Type *"webcam at the top, vertical for Shorts, 5 clips"* and the frame updates as
 you type. Want one exact moment instead? Say *"cut 14:45 to 15:30"* and it skips
 the ranking entirely. The chips are shortcuts for phrases it already understands.
+
+### Streams, vlogs, podcasts, tutorials — it knows which
+
+A stream, a vlog, a podcast and a tutorial are good for different reasons, so
+they are not ranked by the same rules. The app works out which one it is looking
+at, from the start, middle and end of what is said plus the video's own title
+and description, and picks the moments that kind of video is known for:
+
+- **Stream or gaming:** your reaction to the game, never a stretch of game
+  narration with you nowhere in it.
+- **Vlog:** the payoff of what happened, a plan falling apart, a first time.
+- **Podcast or interview:** the hot take, the confession, the argument while
+  it is still heated, opened on the answer rather than the question.
+- **Tutorial:** one complete tip, or a common mistake and its fix.
+
+Or tell it: **Kind of video** under the prompt, or just *"my vlog"* in it. A
+vlog or podcast is framed on the face from the start.
 
 ### It keeps going when the AI provider does not
 
@@ -211,14 +230,39 @@ or in the clip confirms it. When the app can only guess, the title says "this
 horror game" rather than a name that might be wrong, and **What's in this
 clip** lets you type the real one.
 
-### Pick the title, don't settle for one
+### Packaged for YouTube Shorts, Instagram Reels and TikTok
 
-Each clip gets five titles on different angles — the search phrase, the
-curiosity gap, the reaction, the exact detail, the stakes — ranked by score,
-plus a ranked list of tags to tap in and out. All of it is editable, and
-**Save changes** keeps your wording — the mp4 on your PC is renamed to match
-the new title, so what is in the folder is always what goes into YouTube's
-title box.
+One clip gets posted to three apps, and they don't reward the same packaging, so
+**Boost** has a tab for each:
+
+- **YouTube Shorts:** five titles on different angles — the search phrase, the
+  curiosity gap, the reaction, the exact detail, the stakes — plus two
+  descriptions, all ranked by score, and scored tags to tap in and out.
+- **Instagram Reels:** two captions with the hook and keywords inside the first
+  125 characters, where Instagram cuts to "more", one written for search and one
+  written to be sent to a friend. Plus hashtags, cover text for the 3:4 grid, and
+  alt text.
+- **TikTok:** a caption built around what people search, and hashtags without
+  the `#fyp` filler.
+
+Every option is scored by the AI and checked again by the app, which counts
+things a model gets wrong: length, whether the subject is named where people will
+see it, and hashtags that don't belong on that app. All of it is editable.
+**Save changes** keeps your wording, and the mp4 on your PC is renamed to match
+the new title, so what is in the folder is always what goes into YouTube's title
+box.
+
+### Written from a playbook that keeps up with the algorithms
+
+The packaging is written by an AI working as a social media strategist, from a
+**growth playbook**: what YouTube Shorts, Instagram Reels and TikTok measure
+right now (swipe-aways and replays, sends and saves, search) and what to do
+about it. The playbook is a plain Markdown file,
+[`assets/playbook/short-form-algorithms.md`](assets/playbook/short-form-algorithms.md).
+When a platform changes how it ranks videos, that file is updated here, and
+every copy of the app picks up the new version within a day, without a new
+download. Keep your own notes instead by putting a `playbook.md` in the app's
+settings folder.
 
 <img src="assets/screenshots/05-boost.png" alt="The Boost panel on a Firewatch clip: what the clip is filed under, the chosen title, and five ranked title options with their scores and angles" width="880">
 
@@ -587,7 +631,8 @@ an application, is mine:**
 **The stream intelligence** — upstream ranks any talking-head video; this one understands streams
 - **`local/gaming_layout.py`** — the entire webcam-over-gameplay renderer: the overlay located from twenty frames across eight minutes (the face the samples agree on, the border that persists), a crop fitted inside it, single-pass ffmpeg `vstack`.
 - **`vision.py`** — frames from every clip shown to a vision model, so a variety stream's clips are filed under the game actually on screen, and a game is named only when something confirms it.
-- **Ranked packaging** — five titles per clip on different angles, scored on an editor's rubric and checked in code, with ranked tags to pick from.
+- **Ranked packaging for three apps** — five titles and two descriptions per clip for YouTube Shorts, two captions with cover and alt text for Instagram Reels, and a TikTok caption, each scored on a rubric and checked in code, written from a growth playbook that updates without a release.
+- **Kinds of video** — a stream, a vlog, a podcast and a tutorial each ranked by their own rules, detected from the video or chosen by the user.
 - **A planned camera path** for full-frame face cams — dead zone, zero-lag easing, cuts kept as cuts — instead of a crop chasing a jittery detector.
 - **`faces.py` and `accel.py`** — YuNet face detection with Haar underneath, and a Processor setting that test-encodes each GPU encoder before trusting it and checks for CUDA's libraries before starting on the GPU.
 - **`STREAM_VIRALITY_CRITERIA`** — a ranking prompt that separates streamer speech from game narration on one mixed track, and refuses any clip without the streamer in it.
@@ -688,7 +733,13 @@ faster-whisper, on your CPU (`int8`) or GPU (`float16`) — auto-detected. The t
 
 ### 3. Rank the highlights
 
-This is the part that's actually tuned for streams. The model is told, explicitly, that it's reading a single mixed audio track with no speaker labels, and taught to separate the two voices by register:
+First it settles what kind of video this is — **stream, vlog, podcast, tutorial
+or other** — from the Kind of video picker, the prompt's own words, or a quick
+read of the start, middle and end of the transcript plus the listing. Each kind
+has its own rules for what counts as a good moment. The rest of this section is
+the stream rules, which are the most specialised.
+
+The model is told, explicitly, that it's reading a single mixed audio track with no speaker labels, and taught to separate the two voices by register:
 
 > **Game narration** reads like written prose — literary, past tense, polished, no filler words, never addresses anyone.
 >
@@ -735,7 +786,7 @@ Every clip comes back with a score, a title, and a one-line reason it should wor
 
 ### 4. Render
 
-Before anything renders, four frames from each chosen clip are shown to a vision model, which says what the clip actually is — which game, or whether it is a podcast or a story told to camera — and the titles, tags and hashtags are written for that, five titles ranked per clip.
+Before anything renders, four frames from each chosen clip are shown to a vision model, which says what the clip actually is — which game, or whether it is a podcast or a story told to camera. The packaging is written for that: five ranked titles, two ranked descriptions and scored tags for YouTube Shorts, then Reels captions, cover and alt text and a TikTok caption, all from the growth playbook.
 
 Cut and stack in one ffmpeg pass, straight to 1080×1920 h264 with `+faststart`. Upload-ready for Shorts, Reels, and TikTok with no server-side re-encode. The webcam panel is cropped inside your overlay's own border, found from the minutes around each clip; a clip whose camera fills the whole frame gets the face-following crop instead.
 
@@ -860,8 +911,11 @@ being the only moment the payload exists.
 | `follow my face` | face-tracking crop |
 | `3 clips` | how many to make |
 | `cut 14:45 to 15:30` | **exact span, no AI ranking** |
+| `my vlog` / `podcast` / `tutorial` | what kind of video it is: decides what counts as a good moment, and frames a vlog or podcast on the face |
 
 Combine them freely — `cut 14:45 to 15:30, gameplay only, square` does all three.
+
+Under the prompt, **Shape** and **Kind of video** do the same jobs with a click, and a click beats the words.
 
 Parsing is keyword-first and runs in about 70ms, so the preview keeps up with typing and costs no quota. Only genuinely novel phrasing falls through to the LLM.
 
@@ -899,7 +953,10 @@ The knobs that change output quality most, in order:
 
 | Knob | Where | What it does |
 |---|---|---|
-| `ACTIVE_VIRALITY_CRITERIA` | `shorts_generator/highlights.py` | Stream-aware vs generic ranking. **The single biggest lever.** Set it to `VIRALITY_CRITERIA` for podcast or talking-head footage |
+| Kind of video | The picker under the prompt, or `--kind` on the CLI | Stream, vlog, podcast, tutorial or other. **The single biggest lever** — each kind is ranked by its own rules. Leave it on *Work it out* and the app decides |
+| `CRITERIA_BY_KIND` | `shorts_generator/highlights.py` | The rules each kind of video is ranked by. Edit one to change what the app thinks is worth clipping in that kind of video |
+| Growth playbook | `assets/playbook/short-form-algorithms.md`, or your own `playbook.md` in the settings folder | What the packaging writer knows about how Shorts, Reels and TikTok rank videos. Raise the `reviewed:` date when you change it |
+| `DESCRIPTION_OPTIONS` / `CAPTION_OPTIONS` | `shorts_generator/seo.py` | Descriptions and Reels captions written per clip to choose from, `2` each |
 | `corner` | `local/gaming_layout.py` | Which corner your webcam overlay sits in. `bottom-left` by default |
 | `CAM_PANEL_FRACTION` | `local/gaming_layout.py` | Webcam panel height, `0.42` by default |
 | `FACE_CONTEXT_MULTIPLE` | `local/gaming_layout.py` | Webcam zoom. Lower is tighter on your face |
@@ -1001,8 +1058,10 @@ shorts_generator/
 ├── signals.py             # loudness envelope + trigger phrases → measured hook score
 ├── boundaries.py          # snap spans to sentences; enforce the length asked for
 ├── hook_open.py           # the cold open that puts a late payoff first
+├── content_kinds.py       # stream / vlog / podcast / tutorial / other
 ├── vision.py              # what each clip shows, from its frames
-├── seo.py                 # per-clip subject, ranked titles, tags, hashtags
+├── seo.py                 # Shorts, Reels and TikTok packaging, all ranked
+├── playbook.py            # the growth playbook: bundled, fetched daily, overridable
 └── local/
     ├── downloader.py      # yt-dlp + download cache
     ├── transcriber.py     # faster-whisper + .srt cache
@@ -1034,7 +1093,7 @@ git fetch upstream
 git merge upstream/main
 ```
 
-Conflicts, when they happen, land almost entirely in `highlights.py` — upstream edits the generic virality prompt while this repo runs the stream-aware one. **Keep `ACTIVE_VIRALITY_CRITERIA` pointed at `STREAM_VIRALITY_CRITERIA`** and take upstream's changes everywhere else. `local/gaming_layout.py` doesn't exist upstream, so it never conflicts.
+Conflicts, when they happen, land almost entirely in `highlights.py` — upstream edits the generic virality prompt while this repo runs the stream-aware one. **Keep `CRITERIA_BY_KIND` routing each kind to its own criteria** and take upstream's changes everywhere else. `local/gaming_layout.py` doesn't exist upstream, so it never conflicts.
 
 ---
 
