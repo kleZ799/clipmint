@@ -573,7 +573,7 @@ To run it: **More info → Run anyway**.
 - **First launch is slow.** It's a single file that unpacks itself each time. The mac app is a normal bundle and starts faster.
 - **Where things go.** The key lives at `%APPDATA%\StreamToShorts\settings.json`; clips go to `%USERPROFILE%\Videos\StreamToShorts`, changeable in Settings. On a Mac: `~/Library/Application Support/StreamToShorts/settings.json` and `~/Movies/StreamToShorts`.
 - **ffmpeg is bundled**, so there is nothing else to install — on both platforms.
-- **The downloadable .exe transcribes on the CPU.** The CUDA runtime is 2GB, and a single-file exe re-unpacks its whole payload on every launch — so bundling it would cost every user a slow start for something only NVIDIA owners can use. If you have an NVIDIA card and want the ~5x faster transcription, build the one-folder version from source: `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` then `python build_exe.py` (CUDA is the default there; `--no-cuda` opts out).
+- **The downloadable .exe transcribes on the CPU.** The CUDA runtime is 2GB, and a single-file exe re-unpacks its whole payload on every launch — so bundling it would cost every user a slow start for something only NVIDIA owners can use. If you have an NVIDIA card and want the ~5x faster transcription, build the one-folder version from source: `pip install -r requirements-nvidia.txt` then `python build_exe.py` (CUDA is the default there; `--no-cuda` opts out).
 
 </details>
 
@@ -727,7 +727,7 @@ faster-whisper, on your CPU (`int8`) or GPU (`float16`) — auto-detected. The t
 
 **The spoken language is pinned to English by default**, changeable per run in the Render panel, with an explicit `auto` for genuinely mixed sources. This matters more than it sounds: left on auto-detect, whisper drifts on game audio and music beds and starts emitting fluent nonsense in a language nobody spoke. One 3h47m English stream came back with 703 of its 1097 cues in hallucinated Korean — and one of those cues became a clip title.
 
-**GPU detection asks CTranslate2, not torch.** faster-whisper runs on CTranslate2; torch is not installed and is explicitly excluded from the build, so probing `torch.cuda.is_available()` silently sent every machine down the CPU path. If you have an NVIDIA card, `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` — the packaged one-folder build already ships them. Measured on an RTX 5060 (8GB): 900s of audio with the `small` model, **104.2s on CPU → 20.8s on CUDA**.
+**GPU detection asks CTranslate2, not torch.** faster-whisper runs on CTranslate2; torch is not installed and is explicitly excluded from the build, so probing `torch.cuda.is_available()` silently sent every machine down the CPU path. If you have an NVIDIA card, `pip install -r requirements-nvidia.txt` — the packaged one-folder build already ships them. On Linux the libraries also have to be on `LD_LIBRARY_PATH` before Python starts; that file shows how. Measured on an RTX 5060 (8GB): 900s of audio with the `small` model, **104.2s on CPU → 20.8s on CUDA**.
 
 **This is the slowest step in the pipeline and you pay it exactly once per VOD.** Every re-rank and re-render after that is free.
 
@@ -815,7 +815,25 @@ venv\Scripts\activate
 pip install -r requirements-local.txt
 ```
 
-On macOS or Linux, activate with `source venv/bin/activate` instead.
+On macOS or Linux, activate with `source venv/bin/activate` instead. That is the
+command-line tool; for the app itself, use your platform's file below.
+
+### Which requirements file
+
+| You want | Install |
+|---|---|
+| The app from source, on **Windows** | `requirements-windows.txt` |
+| The app from source, on **macOS** | `requirements-mac.txt` |
+| The app from source, on **Linux** | `requirements-linux.txt` |
+| Transcription on an **NVIDIA GPU** (Windows, Linux) | add `requirements-nvidia.txt` |
+| To **build** the app with PyInstaller | add `requirements-build.txt` |
+| The command-line tool only, `--mode local` | `requirements-local.txt` |
+| The command-line tool only, `--mode api` | `requirements.txt` |
+
+Add-ons go on the same line: `pip install -r requirements-windows.txt -r requirements-nvidia.txt`.
+Each platform file also lists, at the top, what pip cannot install for you:
+ffmpeg everywhere, the WebView2 runtime on older Windows 10, GTK and WebKit for a
+native window on Linux, and `libGL` on a Linux server with no desktop.
 
 Copy `.env.example` to `.env` and fill it in:
 
@@ -850,7 +868,7 @@ Clips land in `output/` as `short_01.mp4` … `short_05.mp4`, alongside a `resul
 **Running from source:**
 
 ```bash
-pip install -r requirements-web.txt
+pip install -r requirements-windows.txt     # or requirements-mac.txt / requirements-linux.txt
 python desktop.py
 ```
 
@@ -859,14 +877,14 @@ Prefer it in a browser instead? `python -m webapp` serves it at http://127.0.0.1
 **Building the executable yourself:**
 
 ```bash
-pip install -r requirements-web.txt pyinstaller
+pip install -r requirements-windows.txt -r requirements-build.txt
 python build_exe.py --onefile --clean
 ```
 
 Put `ffmpeg.exe` and `ffprobe.exe` in a `./bin` folder first and they get bundled,
 which is how the published build needs nothing installed. That's what makes it
 220 MB; without them it's 153 MB and ffmpeg has to be on the user's PATH. The
-YuNet face model in `assets/models` is bundled either way. Drop
+YuNet face model in `assets/models` and the growth playbook in `assets/playbook` are bundled either way. Drop
 `--onefile` for a folder build that starts faster but has to be zipped to share.
 
 On a Mac the same command without `--onefile` produces `dist/StreamToShorts.app`:
