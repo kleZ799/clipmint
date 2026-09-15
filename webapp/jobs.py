@@ -941,6 +941,8 @@ class JobStore:
                 ]
                 all_highlights = list(top)
                 subject = detect_subject(job.video_meta, None, job.source, call_local_llm)
+                if job.spec.content_kind != "auto":
+                    subject["content_kind"] = job.spec.content_kind
                 with self._lock:
                     job.subject = subject
                     job._version += 1
@@ -989,8 +991,11 @@ class JobStore:
                                     clip_seconds=job.spec.clip_seconds,
                                     brief=job.spec.brief,
                                     audio=audio,
-                                    reserve_seconds=reserve)
+                                    reserve_seconds=reserve,
+                                    kind=job.spec.content_kind,
+                                    video_meta=job.video_meta)
             all_highlights = result.get("highlights", [])
+            content = result.get("content") or {}
             if not all_highlights:
                 raise RuntimeError("The ranker found no usable moments in this video.")
 
@@ -1010,6 +1015,9 @@ class JobStore:
             # of ten clips inventing ten ways to say it.
             subject = detect_subject(job.video_meta, transcript, job.source,
                                      call_local_llm)
+            # Kept with the subject, so the packaging is written for the kind
+            # of video this is -- now, and on every rewrite after.
+            subject["content_kind"] = content.get("kind") or ""
             with self._lock:
                 job.subject = subject
                 job._version += 1

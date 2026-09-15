@@ -21,6 +21,7 @@ def _run_local(
     aspect_ratio: str,
     download_format: str,
     language: Optional[str],
+    kind: str = "auto",
 ) -> Dict:
     from .local.clipper import crop_highlights_local
     from .local.downloader import download_youtube_local
@@ -39,7 +40,7 @@ def _run_local(
     # has on disk -- the API mode works from a hosted URL it never downloads.
     audio = analyse_audio(source_path, transcript.get("duration", 0))
     highlights_result = get_highlights(transcript, num_clips=num_clips,
-                                       llm_fn=call_local_llm, audio=audio)
+                                       llm_fn=call_local_llm, audio=audio, kind=kind)
     all_highlights: List[Dict] = highlights_result.get("highlights", [])
     if not all_highlights:
         raise RuntimeError("Highlight generator returned zero clips.")
@@ -64,6 +65,7 @@ def _run_api(
     aspect_ratio: str,
     download_format: str,
     language: Optional[str],
+    kind: str = "auto",
 ) -> Dict:
     source_url = download_youtube(youtube_url, fmt=download_format)
 
@@ -73,7 +75,8 @@ def _run_api(
             "Whisper produced no segments. The video may have no detectable speech."
         )
 
-    highlights_result = get_highlights(transcript, num_clips=num_clips, llm_fn=call_muapi_llm)
+    highlights_result = get_highlights(transcript, num_clips=num_clips, llm_fn=call_muapi_llm,
+                                       kind=kind)
     all_highlights: List[Dict] = highlights_result.get("highlights", [])
     if not all_highlights:
         raise RuntimeError("Highlight generator returned zero clips.")
@@ -99,6 +102,7 @@ def generate_shorts(
     download_format: str = "720",
     language: Optional[str] = None,
     mode: str = "api",
+    kind: str = "auto",
 ) -> Dict:
     """Run the full pipeline and return a structured result.
 
@@ -110,6 +114,9 @@ def generate_shorts(
         language: ISO-639-1 to force Whisper language detection.
         mode: "api" (default, MuAPI) or "local" (yt-dlp + faster-whisper +
             OpenAI or Gemini + ffmpeg).
+        kind: what sort of video it is - "stream", "vlog", "podcast",
+            "tutorial" or "other" - which decides what counts as a good
+            moment. "auto" (default) works it out.
 
     Returns:
         {
@@ -122,7 +129,7 @@ def generate_shorts(
     """
     mode = (mode or "api").lower()
     if mode == "local":
-        return _run_local(youtube_url, num_clips, aspect_ratio, download_format, language)
+        return _run_local(youtube_url, num_clips, aspect_ratio, download_format, language, kind)
     if mode == "api":
-        return _run_api(youtube_url, num_clips, aspect_ratio, download_format, language)
+        return _run_api(youtube_url, num_clips, aspect_ratio, download_format, language, kind)
     raise ValueError(f"Unknown mode: {mode!r}. Use 'api' or 'local'.")

@@ -46,6 +46,7 @@ class LayoutPreviewRequest(BaseModel):
     # An explicit pick from the UI toggle. None means "whatever the words say",
     # which is how this worked before the toggle existed.
     aspect_ratio: Optional[str] = None
+    content_kind: Optional[str] = None
 
 
 class JobRequest(BaseModel):
@@ -63,6 +64,9 @@ class JobRequest(BaseModel):
     # The checkbox in the render panel. None means "whatever the prompt said",
     # which is how a client that predates the toggle still behaves.
     hook_replay: Optional[bool] = None
+    # The "Kind of video" picker. None or "auto" leaves it to the prompt's own
+    # words, and then to the ranker.
+    content_kind: Optional[str] = None
 
 
 # --- routes ---------------------------------------------------------------
@@ -605,12 +609,30 @@ def _override_aspect(spec: LayoutSpec, aspect_ratio: Optional[str]) -> None:
         spec.validate()
 
 
+def _override_kind(spec: LayoutSpec, kind: Optional[str]) -> None:
+    """Let the picker say what kind of video this is, over the prompt's words.
+
+    "Automatic" is not an override: it leaves whatever the words said, the
+    same way "From my words" does for the shape.
+    """
+    from shorts_generator import content_kinds
+
+    kind = content_kinds.normalise(kind)
+    if kind == content_kinds.AUTO:
+        return
+    spec.content_kind = kind
+    if spec.apply_kind():
+        spec.notes.append(f"framing → follows the face, for a {content_kinds.LABELS[kind]}")
+    spec.validate()
+
+
 @app.post("/api/layout/preview")
 async def layout_preview(req: LayoutPreviewRequest) -> dict:
     """Parse a layout prompt without running anything, so the UI can show
     the user what their words actually did before they commit to a render."""
     spec = await asyncio.to_thread(parse_layout_prompt, req.prompt, None, req.use_llm)
     _override_aspect(spec, req.aspect_ratio)
+    _override_kind(spec, req.content_kind)
     return {"spec": spec.to_dict(), "summary": spec.describe(),
             "notes": spec.notes, "warning": spec.warning()}
 
@@ -665,6 +687,7 @@ async def create_job(req: JobRequest) -> dict:
 
     spec = await asyncio.to_thread(parse_layout_prompt, req.prompt, None, req.use_llm)
     _override_aspect(spec, req.aspect_ratio)
+    _override_kind(spec, req.content_kind)
     if req.hook_replay is not None:
         spec.hook_replay = bool(req.hook_replay)
     if req.num_clips:
