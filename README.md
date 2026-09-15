@@ -46,7 +46,7 @@ browser rather than in a window of its own.
 
 **No Python. No ffmpeg. Nothing to install.** Double-click and go.
 
-<img src="assets/screenshots/01-create.png" alt="The create screen: a layout prompt on the left, a live 9:16 preview on the right" width="880">
+<img src="assets/screenshots/01-create.png" alt="The create screen: a layout prompt, the Shape and Kind of video pickers with Stream or gaming chosen, and a live 9:16 preview on the right" width="880">
 
 <img src="assets/screenshots/00-welcome.png" alt="The launch card: what the app is, who made it, links to the channel, repo, Discord and email, and a donate button" width="640">
 
@@ -217,7 +217,7 @@ Failed runs say so too, and name what went wrong.
 
 Each card carries its score and the exact span it was cut from.
 
-<img src="assets/screenshots/03-clips.png" alt="Finished clips in a grid, each with its rank, score, length, the game it is filed under, and its title" width="880">
+<img src="assets/screenshots/03-clips.png" alt="Finished clips from a Deadpool stream in a grid, each with its rank, score, length, the game it is filed under, and its title" width="880">
 
 ### The title knows what is on screen
 
@@ -252,6 +252,10 @@ see it, and hashtags that don't belong on that app. All of it is editable.
 the new title, so what is in the folder is always what goes into YouTube's title
 box.
 
+<img src="assets/screenshots/05-boost.png" alt="Boost on a Firewatch clip, on the YouTube Shorts tab: what the clip is filed under, the title, and five ranked title options with their scores and angles" width="880">
+
+<img src="assets/screenshots/07-reels.png" alt="Boost on the same clip, on the Instagram Reels tab: the caption with its character count, the note about the 125-character fold, two ranked caption options, and hashtags" width="880">
+
 ### Written from a playbook that keeps up with the algorithms
 
 The packaging is written by an AI working as a social media strategist, from a
@@ -263,8 +267,6 @@ When a platform changes how it ranks videos, that file is updated here, and
 every copy of the app picks up the new version within a day, without a new
 download. Keep your own notes instead by putting a `playbook.md` in the app's
 settings folder.
-
-<img src="assets/screenshots/05-boost.png" alt="The Boost panel on a Firewatch clip: what the clip is filed under, the chosen title, and five ranked title options with their scores and angles" width="880">
 
 ### You can see it working
 
