@@ -941,6 +941,7 @@ leftovers:
 | 3 | **Clip count** (`"5 clips"`) | Stripped so `5 shorts` can't *also* be read as a request for 9:16 |
 | 4 | **Aspect ratio** | Explicit ratios and unambiguous words before loose platform names |
 | 5 | **Layout** | Most specific first: "no webcam"→`center`, "follow my face"→`facetrack`, "webcam on top"/"pip"→`stacked` |
+| 5b | **Kind of video** | "my vlog", "podcast", "tutorial", "stream" — only when exactly one kind is named ([§8.3](#83-what-comes-out)) |
 | 6 | **Webcam corner** | Only read when the phrasing is about *locating an overlay* — "webcam on top" is a layout instruction, not a corner |
 | 7 | **Panel size** | bigger→0.55, smaller→0.30, or explicit `"60%"` |
 | 8 | **Face zoom** | "closer"→3.0, "wider"→7.5 |
@@ -949,6 +950,11 @@ Timestamp parsing accepts `1:30`, `00:01:30`, `90s`, and bare numbers *only*
 inside `from X to Y` (bare numbers collide with percentages and resolutions
 otherwise). The regex's trailing `\b` matters: without it, `"928 square"` parses
 as `"928 s"` and eats the leading letter of the next word.
+
+Stripping several matches has an order of its own: **from the back**. Every
+match's offsets are measured on the text before anything is removed, so cutting
+front-to-back shifts each later cut onto the wrong characters — see
+[§17.1](#171-fixed-since-this-document-was-written).
 
 ### 8.3 What comes out
 
@@ -2640,6 +2646,16 @@ same step, so the app itself never loses track.
 ### 17.1 Fixed since this document was written
 
 Kept because the failure modes are instructive.
+
+**Several exact cuts garbled the rest of the prompt.** `cut 47:02 to 47:34,
+1:31:16 to 1:31:46, … , gameplay only` with five spans rendered webcam-on-top at
+4:5. Each span was removed from the prompt as it was found, using offsets
+`re.finditer` had measured on the *original* string — so after the first
+removal every later slice landed a few characters off, chewing through
+"gameplay only" and leaving digits that the aspect-ratio pass read as `4:5`.
+One span was always fine, which is why it hid. The fix is to collect the matches
+and cut from the last to the first, so no removal moves an offset still to be
+used. It was found by taking the README's progress screenshot, not by a test.
 
 **Face-follow decoded the whole stream up to every clip.** `-ss` after `-i` is an
 output seek, so each clip's cut decoded the source from its first frame. It
