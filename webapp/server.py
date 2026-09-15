@@ -34,6 +34,17 @@ VIDEO_SUFFIXES = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts", ".flv"
 app = FastAPI(title="Stream to Shorts")
 
 
+@app.on_event("startup")
+async def _check_playbook() -> None:
+    """Look for a newer growth playbook, once a day, without holding anything up.
+
+    See shorts_generator/playbook.py. The titles written in the meantime use the
+    copy already on disk.
+    """
+    from shorts_generator import playbook
+    playbook.refresh_in_background()
+
+
 # --- request models -------------------------------------------------------
 
 class ResolveRequest(BaseModel):

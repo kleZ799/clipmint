@@ -273,6 +273,10 @@ def main() -> int:
         # without it still works -- it just finds faces worse.
         "--add-data", f"{ROOT / 'assets' / 'models'}{sep}assets/models",
 
+        # The growth playbook the packaging writer works from. playbook.py
+        # can fetch a newer one, but a build must work offline from day one.
+        "--add-data", f"{ROOT / 'assets' / 'playbook'}{sep}assets/playbook",
+
         # The native window. pywebview picks its backend at runtime, so
         # PyInstaller sees none of it without being told.
         "--hidden-import", "webview",
