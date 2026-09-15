@@ -1,0 +1,12 @@
+# Add-on: package the app with PyInstaller, on the platform you are building
+# for -- PyInstaller cannot cross-compile.
+#
+#   pip install -r requirements-windows.txt -r requirements-build.txt
+#   python build_exe.py --onefile --clean
+#
+# Put static ffmpeg and ffprobe in ./bin first and they are bundled, which is
+# what lets the published build run with nothing installed. The YuNet model in
+# assets/models and the growth playbook in assets/playbook are bundled either
+# way. The release workflow builds all three platforms with the same tools.
+
+pyinstaller>=6.0

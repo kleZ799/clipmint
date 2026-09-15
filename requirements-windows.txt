@@ -1,0 +1,24 @@
+# Stream to Shorts from source, on Windows 10 or 11.
+#
+#   python -m venv venv
+#   venv\Scripts\activate
+#   pip install -r requirements-windows.txt
+#   python desktop.py
+#
+# Not installed by pip, needed anyway:
+#   - Python 3.10 or newer, 64-bit. Install it from python.org rather than the
+#     Microsoft Store: the Store build redirects %APPDATA% into a sandbox, so
+#     settings saved from a venv land somewhere the packaged app never looks.
+#   - ffmpeg and ffprobe on your PATH (https://www.gyan.dev/ffmpeg/builds/).
+#   - Microsoft Edge WebView2 Runtime, for the app window. Windows 11 has it;
+#     on Windows 10 install it from Microsoft if the app opens a browser tab
+#     instead of a window.
+#
+# An NVIDIA card? Add requirements-nvidia.txt for about 5x faster transcription.
+
+-r requirements-web.txt
+
+# pywebview's Windows backend talks to WebView2 through .NET. pywebview
+# declares this itself, but a missing one fails silently into the browser
+# fallback, so it is named here.
+pythonnet>=3.0

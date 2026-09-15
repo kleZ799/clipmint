@@ -1,0 +1,29 @@
+# Stream to Shorts from source, on Linux (x86-64, glibc 2.35 or newer:
+# Ubuntu 22.04, Debian 12, Fedora 36 and later).
+#
+#   python3 -m venv venv
+#   source venv/bin/activate
+#   pip install -r requirements-linux.txt
+#   python desktop.py
+#
+# Not installed by pip, needed anyway:
+#   - Python 3.10 or newer, with venv:   sudo apt install python3-venv
+#   - ffmpeg and ffprobe on your PATH:    sudo apt install ffmpeg
+#   - libGL, which OpenCV loads for face detection. Every desktop has it; on a
+#     headless server:                    sudo apt install libgl1
+#                                         (Fedora: sudo dnf install mesa-libGL)
+#   - notify-send, for "run finished" notifications (libnotify-bin). KDE's
+#     kdialog works instead. Without either the app just skips the notification.
+#
+# A native app window, instead of a browser tab, needs GTK and WebKit from your
+# distribution. They cannot come from pip, so install them system-wide and let
+# the venv see them:
+#   sudo apt install python3-gi gir1.2-webkit2-4.1
+#   python3 -m venv --system-site-packages venv
+# Without them desktop.py opens your browser, which works just as well.
+#
+# An NVIDIA card? requirements-nvidia.txt installs the CUDA libraries, but on
+# Linux they have to be on the library path before Python starts -- see that
+# file.
+
+-r requirements-web.txt

@@ -1,0 +1,23 @@
+# Add-on: transcription on an NVIDIA GPU. Install it on top of your platform's
+# file:
+#
+#   pip install -r requirements-windows.txt -r requirements-nvidia.txt
+#
+# Measured on an RTX 5060: 900s of audio in 104s on the CPU, 21s on the GPU.
+# Video encoding on the GPU (NVENC) needs none of this -- it comes from ffmpeg
+# and the graphics driver, and the Processor setting uses it on its own.
+#
+# This is CTranslate2's CUDA 12 runtime, not torch. torch is not used anywhere
+# and is excluded from the build. About 2GB.
+#
+# Windows: nothing else to do. The app registers these DLL folders itself at
+#   startup, which Python does not do on its own.
+# Linux: the loader has to be told before Python starts, so from the venv:
+#   export LD_LIBRARY_PATH=$(python -c "import os, nvidia.cublas.lib, nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ':' + os.path.dirname(nvidia.cudnn.lib.__file__))")
+#   python desktop.py
+# macOS: not applicable. There is no CUDA on a Mac.
+#
+# Needs an NVIDIA driver recent enough for CUDA 12.
+
+nvidia-cublas-cu12>=12.1; sys_platform != "darwin"
+nvidia-cudnn-cu12>=9.0; sys_platform != "darwin"

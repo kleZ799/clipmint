@@ -1,0 +1,25 @@
+# Stream to Shorts from source, on macOS. Apple Silicon (M1 or later) is what
+# the published build targets; Intel Macs are not built for or tested.
+#
+#   python3 -m venv venv
+#   source venv/bin/activate
+#   pip install -r requirements-mac.txt
+#   python desktop.py
+#
+# Not installed by pip, needed anyway:
+#   - Python 3.10 or newer (python.org or Homebrew).
+#   - ffmpeg and ffprobe on your PATH: brew install ffmpeg. To BUILD the app,
+#     put static ffmpeg and ffprobe binaries in ./bin instead -- Homebrew's are
+#     linked against /opt/homebrew and only run on your own machine.
+#
+# Transcription runs on the CPU on a Mac. There is no CUDA, and CTranslate2 has
+# no Metal backend, so requirements-nvidia.txt does not apply here.
+
+-r requirements-web.txt
+
+# The native window. requirements-web.txt already installs these on macOS
+# through its markers; they are repeated here so this file alone says what a
+# Mac needs, and pip treats the duplicates as one.
+pyobjc-core>=10.0
+pyobjc-framework-Cocoa>=10.0
+pyobjc-framework-WebKit>=10.0
