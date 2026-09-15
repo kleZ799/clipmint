@@ -43,6 +43,21 @@ interface out of it, and measures what glibc the unpacked payload actually
 needs — but a container is not a desktop, and nobody has yet made clips with
 it on one.
 
+## Updating the growth playbook — no release needed
+
+What the packaging writer knows about how YouTube Shorts, Instagram Reels and
+TikTok rank videos lives in `assets/playbook/short-form-algorithms.md`. Every
+copy of the app from v1.14.0 on checks `main` for a newer one once a day, so
+when a platform changes its algorithm:
+
+1. edit the file, and raise the `reviewed: YYYY-MM-DD` date on its first line —
+   a copy is only taken when its date is newer than the one the app already has;
+2. commit and push to `main`.
+
+That is the whole release. Leave the date alone and nobody gets the change
+until the next build bundles it. The next tag bundles whatever is on `main`, so
+a fresh download starts current too.
+
 ## Trying a build without releasing it
 
 Run the **Release** workflow by hand from the Actions tab, tick **dry run**,
