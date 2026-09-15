@@ -7,7 +7,7 @@ build that ships as 1.4.0 while telling the updater it is 1.3.2 would offer
 every user an update to the version they are already running.
 """
 
-APP_VERSION = "1.14.0"
+APP_VERSION = "1.14.1"
 
 # Where updates come from. Hardcoded on purpose: the page must never be able
 # to point the updater at a different repository.
