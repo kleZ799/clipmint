@@ -1290,14 +1290,16 @@ label.fld > span a:hover { text-decoration: underline; }
   border: 1px solid var(--line);
   border-radius: var(--pill);
 }
+/* Sized to their names, not split into equal thirds: "TikTok" is a third the
+   length of "Instagram Reels", and equal widths cut the long one off. */
 .ptab {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-width: 0;
   border: 0;
   border-radius: var(--pill);
   background: transparent;
   color: var(--text-2);
-  padding: 7px 6px;
+  padding: 7px 9px;
   font: 500 12px/1.2 inherit;
   white-space: nowrap;
   overflow: hidden;
@@ -1305,6 +1307,8 @@ label.fld > span a:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .ptab:hover { color: var(--text); }
+/* A hint under a box belongs to that box; keep it off the list below it. */
+.pbody > .sf-hint { margin: -8px 0 14px; }
 .ptab.on { background: var(--raised-2); color: var(--text); }
 .ptab:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
