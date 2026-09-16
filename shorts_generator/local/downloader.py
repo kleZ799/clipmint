@@ -400,15 +400,14 @@ def download_youtube_local(video_url: str, fmt: str = "720", out_dir: Optional[s
     os.makedirs(out_dir, exist_ok=True)
 
     video_id = _extract_youtube_video_id(video_url)
-    if video_id:
-        cached = _existing_download(out_dir, video_id)
-        if cached and _cache_is_good_enough(cached, fmt):
+    cached = _existing_download(out_dir, video_id) if video_id else None
+    if cached:
+        if _cache_is_good_enough(cached, fmt):
             print(f"[download/local] reusing cached download: {cached} "
                   f"({_probe_height(cached)}p)", flush=True)
             return cached
-        if cached:
-            print(f"[download/local] cached copy is only {_probe_height(cached)}p — "
-                  f"fetching a better one for '{fmt}'", flush=True)
+        print(f"[download/local] cached copy is only {_probe_height(cached)}p — "
+              f"fetching a better one for '{fmt}'", flush=True)
 
     # Tag the filename with the requested quality so a higher-quality re-fetch
     # sits alongside the old copy instead of overwriting it (and invalidating
@@ -476,6 +475,28 @@ def download_youtube_local(video_url: str, fmt: str = "720", out_dir: Optional[s
     try:
         path, info = _run(ydl_opts)
     except Exception as first:
+        # Before anything else: is there already a copy on disk we turned down?
+        #
+        # Reaching here with `cached` set means the file was usable and we went
+        # looking for a better one anyway -- a 1080p copy when the run asked for
+        # "best", say. That was an optimisation, and an optimisation that fails
+        # must not take the run with it. Measured on a real run: a finished
+        # 10 GB download, its transcript and its ranked highlights were all
+        # thrown away because YouTube refused to serve a *higher* quality copy
+        # of a video already sitting in the folder.
+        #
+        # So the upgrade is abandoned and the copy we have is used. Anything
+        # that was cached against that exact file -- the transcript especially,
+        # which costs an hour of GPU on a long VOD -- stays valid, because it
+        # is the same file it was always keyed to.
+        if cached:
+            why = (str(first).strip().splitlines() or ["unknown error"])[0]
+            print(f"[download/local] couldn't fetch a better copy ({why})",
+                  flush=True)
+            print(f"[download/local] using the {_probe_height(cached)}p copy "
+                  f"already downloaded: {cached}", flush=True)
+            return cached
+
         # "Postprocessing: Conversion failed!" is yt-dlp reporting that ffmpeg
         # refused to combine the streams it downloaded, and the reason lives in
         # ffmpeg's stderr -- which quiet/no_warnings throws away, leaving a bug
