@@ -94,6 +94,31 @@ USING IT
    you want the disk space back.
 
 
+IF YOUTUBE ASKS IF YOU'RE A BOT
+-------------------------------
+Sometimes a download stops with "Sign in to confirm you're not a bot". It
+isn't a broken link. ClipMint first asks again as YouTube's TV app, a phone
+app and the embedded player, which usually gets through by itself.
+
+If it doesn't, open Settings -> YouTube sign-in. It can use the YouTube
+sign-in from a browser on this Mac:
+
+  - Firefox and Chrome work once you are signed in to YouTube in them.
+
+  - Safari needs permission first. macOS keeps Safari's cookies behind Full
+    Disk Access: System Settings -> Privacy & Security -> Full Disk Access,
+    turn on ClipMint, then quit and reopen the app.
+
+  - Or export a cookies.txt with a browser extension and drop it into
+
+        ~/Library/Application Support/ClipMint/
+
+    It is picked up on its own, and the app only ever uses a copy of it.
+
+Cookies stay on this Mac and go only to YouTube. YouTube does see which
+account the downloads belong to, so use a spare account if that matters.
+
+
 WHAT IS DIFFERENT FROM THE WINDOWS BUILD
 ----------------------------------------
   - Transcribing runs on the CPU, and it is the slow step. There is no CUDA

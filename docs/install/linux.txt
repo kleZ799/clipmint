@@ -124,6 +124,26 @@ USING IT
    you want the disk space back.
 
 
+IF YOUTUBE ASKS IF YOU'RE A BOT
+-------------------------------
+Sometimes a download stops with "Sign in to confirm you're not a bot". It
+isn't a broken link. ClipMint first asks again as YouTube's TV app, a phone
+app and the embedded player, which usually gets through by itself.
+
+If it doesn't, open Settings -> YouTube sign-in. It can use the YouTube
+sign-in from Firefox, Chrome or Chromium on this machine -- sign in to
+YouTube in one of them and press "Check again".
+
+Or export a cookies.txt with a browser extension and drop it into
+
+    ~/.config/ClipMint/
+
+It is picked up on its own, and the app only ever uses a copy of it.
+
+Cookies stay on this machine and go only to YouTube. YouTube does see which
+account the downloads belong to, so use a spare account if that matters.
+
+
 UPDATES
 -------
 It updates itself, the same as the Windows build does. It notices new
