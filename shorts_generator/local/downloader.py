@@ -393,11 +393,24 @@ def download_youtube_local(video_url: str, fmt: str = "720", out_dir: Optional[s
         # bar stays off and the hook below prints a line a second instead.
         "noprogress": True,
         "progress_hooks": [_progress_line],
-        # A multi-gigabyte VOD arrives as thousands of fragments, and fetching
-        # them one at a time leaves most of the connection idle. Four at once
-        # is the usual sweet spot: measurably faster on every connection, and
-        # not so many that YouTube starts throttling.
+        # Only some formats arrive as fragments -- measured against a 4-hour
+        # VOD, YouTube serves the H.264 streams this asks for as one
+        # continuous file, and this setting does nothing for those. It still
+        # earns its place on the fragmented formats (live VODs, and the VP9
+        # and AV1 ladders "best" reaches for above 1080p), where fetching one
+        # fragment at a time leaves most of the connection idle. Four at once
+        # is the usual sweet spot, and not so many that YouTube throttles.
         "concurrent_fragment_downloads": 4,
+        # The continuous formats are the ones that go slowly, and they go
+        # slowly in a specific way: YouTube rate-limits a single long-lived
+        # connection, so a download that starts fast decays to a crawl and
+        # reports hours remaining. Asking for the file in 10 MB ranges makes
+        # each chunk a fresh request and sidesteps that.
+        #
+        # On a healthy connection this measures the same as leaving it off --
+        # it is not a speed-up, it is insurance against the throttled case,
+        # which is the one people actually report.
+        "http_chunk_size": 10 * 1024 * 1024,
     }
 
     def _run(opts):
