@@ -324,6 +324,40 @@ Carrying on skips everything already done — the download, the transcript, and
 the ranking chunk by chunk — so it picks up near where it stopped instead of
 starting the whole thing again.
 
+That now includes the ranking. A resumed run used to ask the AI about every
+part of the video again, because a transcript read back from disk reports its
+length a few seconds differently from a fresh one. Chunks already ranked are
+kept now, so carrying on a long VOD doesn't spend your API allowance twice.
+
+### When YouTube asks if you're a bot
+
+Sometimes YouTube stops a download and says *"Sign in to confirm you're not a
+bot"* — more often on a VPN, a shared connection, or after a lot of downloads.
+It isn't a broken link, and it no longer ends the run.
+
+ClipMint first asks again as YouTube's TV app, a phone app and the embedded
+player, which YouTube refuses separately — that alone usually gets through, with
+nothing for you to set up. Only if none of those work does it use the YouTube
+sign-in from a browser on your computer, which is exactly what YouTube is asking
+for. Once something works, the rest of that run uses it straight away.
+
+If it still stops, open **Settings → YouTube sign-in**:
+
+- **Work it out** (the default) uses any browser that's signed in to YouTube.
+  It lists what it found, and says plainly why a browser can't be used.
+- **Cookies from a browser** — pick one. On Windows, **Firefox** is the one that
+  works: Chrome and Edge lock their cookies so no other program can read them.
+  On a Mac, Safari needs ClipMint allowed under *Full Disk Access*.
+- **A cookies.txt file** — export one with a browser extension and point at it,
+  or skip the settings entirely: **drop the file into
+  `%APPDATA%\ClipMint\`** (or your clips folder) and it's picked up on its own.
+  The app works from its own copy, so your export is never changed.
+- **Never use cookies** — if you'd rather it didn't.
+
+Cookies never leave your computer; they go to YouTube, where they came from.
+YouTube does see which account the downloads belong to, so if that matters,
+sign a spare account in to one browser and use that.
+
 ### When something fails, it tries again
 
 A download that times out, a transcription that runs out of memory once, a
@@ -333,6 +367,11 @@ picks up where it stopped — nothing already downloaded, transcribed or ranked
 is done twice — and a run that finished with a clip missing offers **Retry
 failed clips**, which renders just those. Errors that trying again cannot fix,
 like a wrong API key, fail straight away so you are not kept waiting for them.
+
+Asking for **best** quality when a lower-quality copy is already downloaded
+makes the app try for a better one. If YouTube won't serve it, the run now
+carries on with the copy you have — along with its transcript — instead of
+failing and throwing all of it away.
 
 ### When a render fails, it says what failed
 
