@@ -343,6 +343,8 @@ for. Once something works, the rest of that run uses it straight away.
 
 If it still stops, open **Settings → YouTube sign-in**:
 
+<img src="assets/screenshots/08-youtube-signin.png" alt="Settings, YouTube sign-in section: the fallback set to Work it out, no browser on this PC able to sign in yet, and the note that cookies stay on the computer" width="880">
+
 - **Work it out** (the default) uses any browser that's signed in to YouTube.
   It lists what it found, and says plainly why a browser can't be used.
 - **Cookies from a browser** — pick one. On Windows, **Firefox** is the one that
