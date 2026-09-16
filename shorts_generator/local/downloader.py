@@ -53,6 +53,50 @@ def _clock(seconds: Optional[float]) -> str:
 _PROGRESS_EVERY = 1.0
 _last_progress = [0.0]
 
+# How far back the rate is measured over. yt-dlp's own d["speed"] is an
+# instantaneous reading, and the first one it hands out is computed over a
+# few milliseconds of a connection that has not opened its window yet -- so
+# it lands somewhere around a hundred KB/s no matter how fast the line is.
+# On a 25 MB file that produced "0.0% at 361KB/s - 1m11s left" for a download
+# that finished in three seconds; on a 7 GB stream VOD the same first sample
+# reads "at 126KB/s - 21h46m left", which is what gets screenshotted and
+# reported as the app being slow.
+#
+# So the rate here is measured over a trailing window instead. Long enough to
+# be stable, short enough to still show a real slowdown when YouTube starts
+# throttling -- which does happen, and is worth seeing.
+_RATE_WINDOW = 20.0
+_MIN_SAMPLE_SECONDS = 2.0
+_MIN_SAMPLE_BYTES = 1 << 20
+
+# (when, bytes-so-far) for the file currently in flight.
+_samples: list = []
+
+
+def _note_sample(done: float) -> None:
+    """Record where the download had got to, and forget what fell out of the window."""
+    now = time.time()
+    # downloaded_bytes going backwards means yt-dlp moved on to the next file
+    # of the pair (video, then audio). That is a new transfer, not a stall.
+    if _samples and done < _samples[-1][1]:
+        _samples.clear()
+    _samples.append((now, done))
+    cutoff = now - _RATE_WINDOW
+    while len(_samples) > 2 and _samples[0][0] < cutoff:
+        _samples.pop(0)
+
+
+def _rate() -> Optional[float]:
+    """Bytes per second across the window, or None while it is too early to say."""
+    if len(_samples) < 2:
+        return None
+    span = _samples[-1][0] - _samples[0][0]
+    moved = _samples[-1][1] - _samples[0][1]
+    if span < _MIN_SAMPLE_SECONDS or moved < _MIN_SAMPLE_BYTES:
+        return None
+    rate = moved / span
+    return rate if rate > 0 else None
+
 
 def _progress_line(d: Dict) -> None:
     """One readable line about a download in flight: how far, how fast, how long left.
@@ -63,27 +107,34 @@ def _progress_line(d: Dict) -> None:
         status = d.get("status")
         if status == "finished":
             _last_progress[0] = 0.0
+            _samples.clear()
             print(f"[download] got {_size(d.get('total_bytes') or d.get('downloaded_bytes'))}"
                   f" in {_clock(d.get('elapsed'))}", flush=True)
             return
         if status != "downloading":
             return
+
+        done = float(d.get("downloaded_bytes") or 0)
+        _note_sample(done)                      # every callback, not every line
+
         now = time.time()
         if now - _last_progress[0] < _PROGRESS_EVERY:
             return
         _last_progress[0] = now
 
-        done = float(d.get("downloaded_bytes") or 0)
         total = float(d.get("total_bytes") or d.get("total_bytes_estimate") or 0)
-        speed = d.get("speed")
         pct = f"{100 * done / total:.1f}%" if total else _size(done)
         parts = [f"[download] {pct}"]
         if total:
             parts.append(f"of {_size(total)}")
-        if speed:
-            parts.append(f"at {_size(speed)}/s")
-        if d.get("eta"):
-            parts.append(f"- {_clock(d['eta'])} left")
+        # No rate and no estimate until the window has enough in it to mean
+        # something. A line that says only how far along it is tells the truth;
+        # a number made up from the first few milliseconds does not.
+        rate = _rate()
+        if rate:
+            parts.append(f"at {_size(rate)}/s")
+            if total > done:
+                parts.append(f"- {_clock((total - done) / rate)} left")
         print(" ".join(parts), flush=True)
     except Exception:
         pass
