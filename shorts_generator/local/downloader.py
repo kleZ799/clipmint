@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 from typing import Dict, List, Optional
 
+from . import yt_access
 from .. import proc
 from ..config import LOCAL_OUTPUT_DIR
 
@@ -328,8 +329,9 @@ def list_channel_videos(url: str, limit: int = 12) -> List[Dict]:
         "playlistend": limit,
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(probe_url, download=False)
+    info = yt_access.run(yt_dlp, ydl_opts,
+                         lambda ydl: ydl.extract_info(probe_url, download=False),
+                         what="this channel")
 
     entries = info.get("entries") or []
     videos: List[Dict] = []
@@ -364,8 +366,9 @@ def fetch_video_meta(video_url: str) -> Dict:
     try:
         yt_dlp = _import_ytdlp()
         opts = {"quiet": True, "no_warnings": True, "skip_download": True}
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(video_url, download=False) or {}
+        info = yt_access.run(
+            yt_dlp, opts,
+            lambda ydl: ydl.extract_info(video_url, download=False) or {}) or {}
     except Exception as e:
         print(f"[download/local] could not read video details ({e})", flush=True)
         return {}
@@ -465,9 +468,10 @@ def download_youtube_local(video_url: str, fmt: str = "720", out_dir: Optional[s
     }
 
     def _run(opts):
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        def once(ydl):
             info = ydl.extract_info(video_url, download=True)
             return ydl.prepare_filename(info), info
+        return yt_access.run(yt_dlp, opts, once)
 
     try:
         path, info = _run(ydl_opts)

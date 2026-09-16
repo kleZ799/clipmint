@@ -214,6 +214,14 @@ _PERMANENT = (
     "private video", "video unavailable", "unsupported url", "is not a valid url",
     "sign in to confirm", "members-only", "join this channel",
     "local file path does not exist",
+    # YouTube's bot gate, after yt_access has already tried every way round it
+    # -- as the TV app, as a phone, and with whatever cookies this PC could
+    # offer. Three more goes at the same ladder is three more minutes of the
+    # same answer. The two phrases below are the opening line of the messages
+    # yt_access.explain() builds, so they are deliberate, not incidental.
+    "prove it isn't a bot",
+    "only serve this video to a signed-in account",
+    "only serve this channel to a signed-in account",
 )
 
 
@@ -896,6 +904,11 @@ class JobStore:
         # up last run: a driver hiccup is worth one more chance per run.
         from shorts_generator import accel
         accel.reset_run()
+        # And likewise however the last run ended up talking to YouTube. What
+        # got through an hour ago may be gated now, and a browser the user has
+        # signed in to since is worth looking at again.
+        from shorts_generator.local import yt_access
+        yt_access.reset()
 
         with self._lock:
             job.status = "running"
