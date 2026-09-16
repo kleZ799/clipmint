@@ -253,6 +253,7 @@ shorts_generator/
 │
 └── local/
     ├── downloader.py       yt-dlp, download cache, channel listing, metadata
+    ├── yt_access.py        YouTube's bot gate: client ladder, browser cookies, cookies.txt
     ├── transcriber.py      faster-whisper + .srt cache
     ├── llm.py              Gemini / Groq / OpenAI, text + vision, retries, fallback
     ├── clipper.py          renderer: face-following crop on a planned camera path
@@ -370,6 +371,107 @@ A better re-fetch is written with a **quality tag in the filename**
 (`source_abc_1080.mp4`) rather than overwriting the old file. That is not
 tidiness: **the transcript cache is keyed to the video's filename**, so
 overwriting would silently invalidate a transcription that took twenty minutes.
+
+**A failed upgrade falls back to the copy on disk.** Asking for `best` with a
+1080p copy cached is a request to *improve* on something usable — and that
+optimisation used to be allowed to sink the run. If YouTube refused the better
+copy, the download stage failed, and with it a finished 10 GB download, its
+transcript and its ranked highlights, over three-quarters of a megapixel. Now
+the refusal is logged and the cached file is returned. Everything keyed to it
+stays valid, because it is the same file it always was.
+
+### YouTube's bot gate — `local/yt_access.py`
+
+Sometimes YouTube answers yt-dlp with a consent wall instead of a video:
+
+```
+Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies
+```
+
+It is not a broken URL and not a bug here. It is YouTube deciding, for that
+request from that IP, that it wants a signed-in human — common on VPNs, shared
+connections, after a run of downloads, and on anything age- or region-gated.
+Left alone it kills the run at 0% in about a second, which reads as the app
+being broken. Every yt-dlp call that touches YouTube goes through
+`yt_access.run()`, which climbs a ladder until a rung gets through:
+
+| Rung | What it sends | Costs |
+|---|---|---|
+| as normal | yt-dlp's default clients | nothing |
+| as the TV app | `player_client=tv_simply` | nothing |
+| as a phone app | `android_vr,ios` | nothing |
+| as an embedded player | `web_embedded,tv` | nothing |
+| with cookies | `web,tv,mweb` plus a browser's or a file's cookies | identifies an account |
+
+**Ask differently before asking as somebody.** The clients are gated separately
+and inconsistently, so a request the web client is refused often goes straight
+through as the TV app — free, with no setup. Cookies come last because they are
+the one rung that tells YouTube who is asking. The app clients cannot carry
+cookies, so the cookie rungs switch to clients that can.
+
+**Only the gate climbs the ladder.** `is_gate()` matches the refusal's many
+phrasings, including yt-dlp's "requested format is not available", which is how
+an empty player response surfaces. A real failure — ffmpeg refusing a merge, a
+full disk — is raised on the spot; trying it four more ways would only make the
+person wait longer to read the same error. `needs_an_account()` separates age-
+and members-only refusals, which no client juggling fixes, so the final message
+names the real problem.
+
+**The winner is remembered for the run.** A channel job asks YouTube a dozen
+times; once a rung works it goes first for the rest of that run, so the ladder is
+climbed once rather than per request. `reset()` forgets it when the next run
+starts, and whenever the setting changes.
+
+**Where cookies come from** is the Settings → *YouTube sign-in* choice, stored as
+`YOUTUBE_COOKIES_MODE`:
+
+- `auto` (default) — no cookies until YouTube asks, then any browser that can
+  hand some over. `probe()` reads each installed browser once — cached, since it
+  reads the whole cookie database — and ranks browsers holding the signed-in
+  cookies (`SID`, `__Secure-1PSID`, `LOGIN_INFO`) above ones that have merely
+  visited YouTube.
+- `browser` — one named browser, `firefox` or `firefox:Profile`. A deliberate
+  choice **leads the ladder**: someone who went into settings did it because the
+  gate keeps appearing, and four anonymous rungs first would waste the setting.
+- `file` — a Netscape-format `cookies.txt`, also led with.
+- `off` — never, even when YouTube asks; the final message says so rather than
+  quietly overriding the choice.
+
+A `cookies.txt` **dropped into the settings folder or the clips folder** is picked
+up with no configuration, under any of the names the popular export extensions
+save as (`cookies.txt`, `www.youtube.com_cookies.txt`, …). Finding a settings
+panel and pasting a path is where most people give up; dragging a file into a
+folder the app already talks about is not. `YTDLP_COOKIES` in the environment
+outranks both, as env vars do for every setting here, and the panel shows when
+it is doing so.
+
+`POST /api/youtube-access` proves a choice before storing it: a browser is
+probed, and a file goes through `check_file()` — no file, not a cookie jar, no
+YouTube cookies, all expired, not signed in. A bad choice fails in the settings
+panel instead of twenty minutes into the next run.
+
+**yt-dlp never gets the user's own file.** It writes the jar back to whatever
+path it was handed, and measured here, a run YouTube refused came back with the
+login cookies *stripped out* of the export. So `working_copy_of()` hands it a
+private copy — `youtube-cookies-in-use.txt` in the settings folder, mode `0600`
+because it is a session token — refreshed whenever the original is newer, so a
+re-export still takes effect.
+
+**Browsers that can't be read, and why.** On Windows, Chrome 127+ and the other
+Chromium browsers use App-Bound Encryption: the cookie store is encrypted with a
+key only that browser's own process can unwrap, so nothing outside it can read
+it, this app included — the advice is Firefox or a `cookies.txt`. On a Mac,
+Chrome is readable but Safari sits behind Full Disk Access, and the message says
+where that setting lives. Linux has neither lock, so an empty result almost
+always means nobody is signed in. `_explain_probe_failure()` and
+`_why_browsers_refuse()` branch on the platform, so nobody is told about another
+operating system's lock.
+
+**What cookies mean for the account.** They are the signed-in session of that
+browser profile. Nothing leaves the PC — yt-dlp sends them to YouTube, where they
+came from — but YouTube does see which account the downloads belong to, and
+accounts have been restricted for automated access. The settings panel says so,
+and suggests a spare account.
 
 ### How fast the download says it is going
 
@@ -589,8 +691,18 @@ that happens on the *next* one.
 Reuse is gated by a fingerprint:
 
 ```
-v{PROMPT_VERSION}|{duration}|{chunk_count}|{num_clips}|{clip_length}|{kind}
+v{PROMPT_VERSION}|{duration, to the minute}|{chunk_count}|{num_clips}|{clip_length}|{kind}
 ```
+
+- Duration is compared **to the minute**, and that is load-bearing. A transcript
+  reports the media's own length when it has just been made, and its last cue's
+  end when read back from the cached `.srt` — seconds apart, by however much
+  silence trails the last word. Compared to the second, every run after the first
+  computed a different fingerprint and re-asked the LLM for all fifteen chunks of
+  a 4h27m stream: the exact case the checkpoint exists for had never worked. A
+  minute absorbs the trailing silence and is still far finer than a real change
+  of file — and duration was never the only guard, since the checkpoint sits
+  beside one specific video and `chunk_count` moves with length.
 
 - `PROMPT_VERSION` is in there because chunks ranked by an older prompt are
   answers to a question the app no longer asks. Resuming onto them would hide a
@@ -2848,6 +2960,8 @@ rather than guessing from what the button last did.
 | `POST /api/settings` | Save a key / switch provider / pick a model / set a self-imposed daily cap. Gemini models are probe-tested before storing |
 | `GET /api/usage` | Today's spend per provider per model, seconds until reset, whether an OpenAI fallback is ready |
 | `GET`/`POST /api/locations` | Read or change the save location |
+| `GET /api/youtube-access` | The YouTube sign-in choice, every installed browser probed and ranked with a reason for any that can't be used, a discovered `cookies.txt`, the drop folder, and `pinned` when `YTDLP_COOKIES` overrides the setting (`?recheck=true` reads the browsers again). **Never returns cookie values** |
+| `POST /api/youtube-access` | Set `mode` — `auto` / `browser` / `file` / `off` — with a browser or a path. The browser is probed and the file checked before anything is saved |
 | `GET`/`POST /api/cleanup` | Scan for, then delete, reclaimable source files |
 | `POST /api/reveal` | Show a path in the OS file manager |
 | `POST /api/open-upload` | Open YouTube's upload page (URL hardcoded, not client-steerable) |
