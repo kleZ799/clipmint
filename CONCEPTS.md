@@ -693,6 +693,21 @@ recalibrated, bumping `PROMPT_VERSION` invalidated every cached chunk, because
 results scored under the old scale are not comparable to results under the new
 one.
 
+**The opposite failure is just as real: a key too precise to ever match.**
+Duration went into the fingerprint to the second, and the same video does not
+report the same duration twice. Freshly transcribed, it is the media's length;
+read back from the cached `.srt`, it is the last subtitle's end — a few seconds
+shorter, by the silence after the last word. So every run after the first
+computed a different key, and all fifteen chunks of a four-hour stream were
+thrown away and paid for again. The cache had a 0% hit rate on exactly the case
+it existed for, and nothing ever failed loudly enough to notice.
+
+The fix was to **quantise the input** — compare duration to the minute. The
+general lesson: a cache key should only contain the precision that means
+something changed. Floating-point timestamps, file sizes after re-muxing, and
+anything measured two different ways are all prone to this. A cache that
+silently never hits looks exactly like a cache that works, except slower.
+
 ---
 
 ## 9. CS: caching and idempotency
@@ -821,6 +836,37 @@ spike could still kill a run. **Classifying a failure correctly is what decides
 whether the response to it is right** — the same distinction as transient vs
 permanent in [the taxonomy above](#10-cs-reliability-and-failure-design).
 
+### A ladder, cheapest rung first
+
+YouTube sometimes refuses a download with "confirm you're not a bot". There are
+several ways through, and they are not equal:
+
+| Rung | Cost to the user |
+|---|---|
+| ask as the website, then the TV app, a phone app, an embedded player | nothing |
+| ask with cookies from a signed-in browser | reveals which account is downloading |
+
+So `yt_access.run()` tries them **in order of cost**, and stops at the first that
+works. Asking as a different client is free and fixes most refusals, because
+YouTube gates each client separately. Cookies are last because they are the only
+rung with a price. This is the same shape as a **degradation path** in reverse —
+escalate only as far as the failure forces you to.
+
+Three details make a ladder like this behave:
+
+- **Only climb on the right error.** A full disk is not fixed by pretending to
+  be a TV. Everything that isn't the gate is raised immediately — the same
+  [transient-vs-permanent classification](#classifying-errors) as the retry
+  logic, applied to a different decision.
+- **Remember the winner.** Once a rung works, it goes first for the rest of the
+  run. A channel job asks YouTube a dozen times; re-climbing each time would
+  multiply one refusal into minutes of waiting. This is **memoising the outcome
+  of a search**, scoped to the run so a stale answer doesn't outlive it.
+- **A deliberate choice skips the ladder.** If the user picked a browser in
+  settings, they did it because the refusal keeps coming back — so that rung
+  moves to the front. The default order is for people who haven't told you
+  anything; it should never override people who have.
+
 ### Proving a device works
 
 Restructuring the GPU fallback taught something general. A CUDA device that
@@ -905,6 +951,32 @@ power user can override without editing anything.
 **Known weakness, and say it before they find it:** the file is plaintext.
 Proper handling would be the Windows Credential Manager / DPAPI. The mitigation
 today is filesystem permissions and the fact that it never leaves the machine.
+
+### Never hand a library the user's only copy
+
+A YouTube `cookies.txt` is a session token. yt-dlp, given one, **writes it back**
+as YouTube rotates the session — useful when it works. Measured here, a download
+YouTube refused came back with the login cookies *removed* from the file. A user
+who exported their cookies once and pointed the app at them would find the
+export quietly ruined, with nothing to explain why it stopped working.
+
+The fix is a **defensive copy**: yt-dlp gets `youtube-cookies-in-use.txt` in the
+settings folder, never the original. The copy is re-made whenever the original
+is newer, so re-exporting still works, and it is created owner-read-only
+(`0600`) because it is a credential.
+
+The concept generalises: **a function that may mutate its input should not be
+given anything the caller can't afford to lose.** It is the same reasoning as
+copying before sorting in place, or opening a file read-only when you only mean
+to read it — except here the mutation was a side effect nobody documented.
+
+Browsers themselves defend the same secret. Since Chrome 127, Chromium browsers
+on Windows encrypt cookies with **App-Bound Encryption**: a key only that
+browser's own signed process can unwrap. It exists to stop malware reading
+sessions — and it stops this app just as firmly, which is correct. A Mac guards
+Safari's cookies with **Full Disk Access** instead, a permission the user grants
+per app. The app's job is not to get around either; it is to say which lock it
+hit and what the legitimate way through is.
 
 ### Not trusting the model's output
 
