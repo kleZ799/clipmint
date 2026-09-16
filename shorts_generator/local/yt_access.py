@@ -444,8 +444,22 @@ def _explain_probe_failure(browser: str, err: Exception) -> str:
                 f"{name} is running. Close {name} fully and try again.")
     if "could not find" in low or "not found" in low or isinstance(err, FileNotFoundError):
         return f"{name} doesn't look installed on this PC."
-    if "permission" in low or "denied" in low:
-        return (f"Windows wouldn't let the app read {name}'s cookies. "
+    if "permission" in low or "denied" in low or "operation not permitted" in low:
+        if sys.platform == "darwin":
+            # macOS privacy protection, not file permissions: Safari's cookie
+            # store sits in a container nothing may read without Full Disk
+            # Access, and the other browsers' profiles can be refused the same
+            # way. Closing the browser does nothing for this one.
+            if browser == "safari":
+                return ("macOS keeps Safari's cookies behind Full Disk Access. "
+                        "Allow ClipMint in System Settings → Privacy & Security "
+                        "→ Full Disk Access, then open it again — or sign in "
+                        "to YouTube in Firefox instead.")
+            return (f"macOS wouldn't let the app read {name}'s cookies. Allow "
+                    f"ClipMint under System Settings → Privacy & Security → "
+                    f"Full Disk Access, then open it again.")
+        system = "Windows" if sys.platform in ("win32", "cygwin") else "The system"
+        return (f"{system} wouldn't let the app read {name}'s cookies. "
                 f"Closing {name} sometimes helps.")
     return f"Couldn't read {name}'s cookies ({msg})."
 
@@ -646,6 +660,22 @@ def run(yt_dlp, opts: Dict, call: Callable, what: str = "this video"):
     raise RuntimeError(explain(last, what))
 
 
+def _why_browsers_refuse() -> str:
+    """The usual reason no browser gave anything up, for the platform we are on.
+
+    The reasons really are different. On Windows the Chromium browsers encrypt
+    their cookies so only they can read them. A Mac has no such lock on Chrome,
+    but keeps Safari behind Full Disk Access. Linux has neither, so an empty
+    result there almost always means nobody is signed in.
+    """
+    if sys.platform in ("win32", "cygwin"):
+        return "on Windows, Chrome and Edge lock theirs so only they can read them."
+    if sys.platform == "darwin":
+        return ("on a Mac, Safari's are behind Full Disk Access, which ClipMint "
+                "doesn't have unless you allow it in System Settings.")
+    return "usually because no browser here is signed in to YouTube."
+
+
 def explain(err: Optional[BaseException], what: str = "this video") -> str:
     """The message the user actually reads when every rung failed.
 
@@ -680,10 +710,10 @@ def explain(err: Optional[BaseException], what: str = "this video") -> str:
             # advice yt-dlp already gave them in the message that got them here,
             # and it is not the part they are stuck on -- where to put it is.
             where = (cookie_file_places() or [""])[0]
-            fix = ("No browser on this PC could hand over YouTube cookies — on "
-                   "Windows, Chrome and Edge lock theirs so only they can read "
-                   "them. Two ways round it: sign in to YouTube in Firefox, or "
-                   "export a cookies.txt from any browser"
+            fix = ("No browser on this computer could hand over YouTube "
+                   "cookies — " + _why_browsers_refuse() + " Two ways round "
+                   "it: sign in to YouTube in Firefox, or export a cookies.txt "
+                   "from any browser"
                    + (f" and save it into\n{where}" if where else "")
                    + ". Either one is picked up on its own.")
 
