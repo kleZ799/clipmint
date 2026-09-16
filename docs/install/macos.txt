@@ -1,7 +1,7 @@
-STREAM TO SHORTS - macOS
+CLIPMINT - macOS
 Turn long videos into vertical Shorts, on your own Mac.
 
-github.com/kleZ799/stream-to-shorts
+github.com/kleZ799/clipmint
 
 
 READ THIS FIRST
@@ -21,7 +21,7 @@ instructions at the bottom.
 
 INSTALLING
 ----------
-1. Drag StreamToShorts.app to your Applications folder.
+1. Drag ClipMint.app to your Applications folder.
 
    It runs from anywhere, but Applications is where Spotlight and updates
    expect to find it.
@@ -35,7 +35,7 @@ INSTALLING
 
        System Settings  ->  Privacy & Security
 
-   Scroll down to the line saying StreamToShorts was blocked, click
+   Scroll down to the line saying ClipMint was blocked, click
    "Open Anyway", and confirm. It opens normally every time after this.
 
    (Right-click -> Open, the old shortcut for this, stopped working in
@@ -55,9 +55,9 @@ telling you it found something wrong with the file.
 
 What you can check instead:
 
-  - Every line of it is public: github.com/kleZ799/stream-to-shorts
+  - Every line of it is public: github.com/kleZ799/clipmint
   - It is built from that repository by GitHub's own runners, and the build
-    log is readable by anyone: github.com/kleZ799/stream-to-shorts/actions
+    log is readable by anyone: github.com/kleZ799/clipmint/actions
   - Each release publishes a SHA-256 for the file.
 
 
@@ -67,7 +67,7 @@ USING IT
    minute to get: aistudio.google.com/apikey
 
    It is stored only on this Mac, at
-   ~/Library/Application Support/StreamToShorts/settings.json
+   ~/Library/Application Support/ClipMint/settings.json
    and it is never sent anywhere except to Google, by you.
 
 2. Give it a video. Paste a YouTube URL or drag a file straight into the
@@ -86,11 +86,11 @@ USING IT
 
 5. Find the clips in:
 
-       ~/Movies/StreamToShorts/shorts/
+       ~/Movies/ClipMint/shorts/
 
    in a folder named after the video. The Reveal button in the app opens
    Finder right on them. Sources and transcripts go to
-   ~/Movies/StreamToShorts/output/, and that folder is safe to delete when
+   ~/Movies/ClipMint/output/, and that folder is safe to delete when
    you want the disk space back.
 
 
@@ -122,17 +122,17 @@ IF IT DOES NOT OPEN, OR OPENS AND DOES NOTHING
 ----------------------------------------------
 That part is the beta, and it is worth reporting. Two things help:
 
-  1. ~/Movies/StreamToShorts/app.log
+  1. ~/Movies/ClipMint/app.log
      The app writes startup errors here, including ones it has no window to
      show you in.
 
   2. Running it from Terminal, so errors print where you can see them:
 
-         /Applications/StreamToShorts.app/Contents/MacOS/StreamToShorts
+         /Applications/ClipMint.app/Contents/MacOS/ClipMint
 
 Open an issue with either of those and your macOS version:
 
-    github.com/kleZ799/stream-to-shorts/issues/new
+    github.com/kleZ799/clipmint/issues/new
 
 I have no Mac to reproduce it on, so a paste of the actual error is the whole
 difference between fixed and not fixed.
@@ -140,10 +140,10 @@ difference between fixed and not fixed.
 
 UNINSTALLING
 ------------
-Drag StreamToShorts.app to the Trash. Then, if you want it gone completely:
+Drag ClipMint.app to the Trash. Then, if you want it gone completely:
 
-    ~/Library/Application Support/StreamToShorts    settings and your key
-    ~/Movies/StreamToShorts                         clips, sources, logs
+    ~/Library/Application Support/ClipMint    settings and your key
+    ~/Movies/ClipMint                         clips, sources, logs
 
 Nothing is installed anywhere else, and nothing was added to your login
 items or your system.

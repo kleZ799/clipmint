@@ -1,4 +1,4 @@
-# Stream to Shorts from source, on macOS. Apple Silicon (M1 or later) is what
+# ClipMint from source, on macOS. Apple Silicon (M1 or later) is what
 # the published build targets; Intel Macs are not built for or tested.
 #
 #   python3 -m venv venv

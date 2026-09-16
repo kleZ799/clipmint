@@ -22,14 +22,14 @@ VSVersionInfo(
         '040904b0',
         [
           StringStruct('CompanyName', 'Parth Bhadana'),
-          StringStruct('FileDescription', 'Stream to Shorts — turn long videos into Shorts, Reels and TikToks'),
+          StringStruct('FileDescription', 'ClipMint — turn long videos into Shorts, Reels and TikToks'),
           StringStruct('FileVersion', '1.14.1'),
-          StringStruct('InternalName', 'StreamToShorts'),
+          StringStruct('InternalName', 'ClipMint'),
           StringStruct('LegalCopyright',
                        'Copyright (c) 2026 Parth Bhadana. MIT licensed. '
-                       'github.com/kleZ799/stream-to-shorts'),
-          StringStruct('OriginalFilename', 'StreamToShorts.exe'),
-          StringStruct('ProductName', 'Stream to Shorts'),
+                       'github.com/kleZ799/clipmint'),
+          StringStruct('OriginalFilename', 'ClipMint.exe'),
+          StringStruct('ProductName', 'ClipMint'),
           StringStruct('ProductVersion', '1.14.1'),
           StringStruct('Comments',
                        'Built by Parth Bhadana. '

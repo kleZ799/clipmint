@@ -1,13 +1,13 @@
-"""Build the Stream to Shorts app with PyInstaller.
+"""Build the ClipMint app with PyInstaller.
 
     pip install -r requirements-web.txt pyinstaller
     python build_exe.py
 
-Output lands in dist/. On Windows that is a StreamToShorts folder, or a single
-StreamToShorts.exe with --onefile (slower to start, since it unpacks to a temp
+Output lands in dist/. On Windows that is a ClipMint folder, or a single
+ClipMint.exe with --onefile (slower to start, since it unpacks to a temp
 dir each launch, but the only build that can replace itself when an update
 arrives). On Linux it is those same two shapes without the extension. On macOS
-it is StreamToShorts.app, a bundle you drag to Applications.
+it is ClipMint.app, a bundle you drag to Applications.
 
 PyInstaller cannot cross-compile: a Windows build has to be made on Windows, a
 mac build on a Mac, and a Linux build on Linux. The release workflow runs one
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).parent.resolve()
-NAME = "StreamToShorts"
+NAME = "ClipMint"
 
 MAC = sys.platform == "darwin"
 LINUX = sys.platform.startswith("linux")
@@ -35,7 +35,7 @@ LINUX = sys.platform.startswith("linux")
 # Reverse-DNS, because macOS identifies an app by this rather than by its name.
 # Two apps sharing one identifier confuse everything from window restoration to
 # the keychain, so it is spelled out rather than left to PyInstaller's default.
-BUNDLE_ID = "com.github.klez799.streamtoshorts"
+BUNDLE_ID = "com.github.klez799.clipmint"
 
 
 def _mb(size: int) -> str:
@@ -134,9 +134,9 @@ def _stamp_bundle(app: Path) -> None:
     data = plistlib.loads(plist.read_bytes())
     data["CFBundleShortVersionString"] = APP_VERSION
     data["CFBundleVersion"] = APP_VERSION
-    data["CFBundleDisplayName"] = "Stream to Shorts"
+    data["CFBundleDisplayName"] = "ClipMint"
     data["NSHumanReadableCopyright"] = (
-        "MIT licence. Source: github.com/klez799/stream-to-shorts")
+        "MIT licence. Source: github.com/klez799/clipmint")
 
     # The window is a view onto a server this app runs itself, on 127.0.0.1
     # over plain http, and App Transport Security blocks that by default --
@@ -191,7 +191,7 @@ def _finish_bundle(app: Path) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Build the Stream to Shorts executable")
+    ap = argparse.ArgumentParser(description="Build the ClipMint executable")
     ap.add_argument("--onefile", action="store_true",
                     help="Single .exe instead of a folder (slower first launch)")
     ap.add_argument("--clean", action="store_true", help="Wipe build/ and dist/ first")
@@ -203,7 +203,7 @@ def main() -> int:
 
     if MAC and args.onefile:
         raise SystemExit(
-            "--onefile is a Windows shape. A mac release ships StreamToShorts.app, "
+            "--onefile is a Windows shape. A mac release ships ClipMint.app, "
             "a bundle, and one file buys nothing here: the mac build does not "
             "replace itself, so the only thing it would add is unpacking 200 MB "
             "on every launch. Build without --onefile."

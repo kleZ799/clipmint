@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎮 Stream → Shorts
+# ✂️ ClipMint
 
 ### Turn any long video into Shorts, Reels and TikToks — on your own PC
 
@@ -12,31 +12,31 @@ for **YouTube Shorts, Instagram Reels and TikTok**.
 No subscription, no per-clip credits, no watermark, and nothing is uploaded —
 transcription and ranking both run locally.
 
-[![Download](https://img.shields.io/badge/⬇_Download_for_Windows-219_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/stream-to-shorts/releases/latest/download/StreamToShorts.exe)
+[![Download](https://img.shields.io/badge/⬇_Download_for_Windows-219_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
-[![Download for Mac](https://img.shields.io/badge/⬇_Download_for_Mac-BETA_·_Apple_Silicon-f59e0b?style=for-the-badge)](https://github.com/kleZ799/stream-to-shorts/releases/latest/download/StreamToShorts-macOS-arm64.zip)
+[![Download for Mac](https://img.shields.io/badge/⬇_Download_for_Mac-BETA_·_Apple_Silicon-f59e0b?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip)
 
 **The Mac build is a beta and has never been run on a Mac** — I don't own one.
 It is built and checked by GitHub's macOS runners, not by me. It may not start
-at all. [Tell me what happens](https://github.com/kleZ799/stream-to-shorts/issues/new)
+at all. [Tell me what happens](https://github.com/kleZ799/clipmint/issues/new)
 and I'll fix it. Windows is the tested build.
 
-[![Download for Linux](https://img.shields.io/badge/⬇_Download_for_Linux-x86--64-3b82f6?style=for-the-badge)](https://github.com/kleZ799/stream-to-shorts/releases/latest/download/StreamToShorts-linux-x86_64)
+[![Download for Linux](https://img.shields.io/badge/⬇_Download_for_Linux-x86--64-3b82f6?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64)
 
 **The Linux build has not been tested on a real Linux desktop.** It is built
 and run under WSL here, and every published build is started by the release
 workflow and asked for its interface before the release exists — so it does
 start, it does serve, and its ffmpeg does work. Nobody has yet sat at a
 desktop distribution and made clips with it.
-[Tell me what happens](https://github.com/kleZ799/stream-to-shorts/issues/new) and I'll fix it. It opens in your
+[Tell me what happens](https://github.com/kleZ799/clipmint/issues/new) and I'll fix it. It opens in your
 browser rather than in a window of its own.
 
 <!-- These read GitHub live, so a new release renames them on its own and
      there is no version number in this file to go stale. -->
-[![Latest version](https://img.shields.io/github/v/release/kleZ799/stream-to-shorts?style=flat-square&label=latest%20build&color=ff0033)](https://github.com/kleZ799/stream-to-shorts/releases/latest)
-[![Released](https://img.shields.io/github/release-date/kleZ799/stream-to-shorts?style=flat-square&label=released&color=555)](https://github.com/kleZ799/stream-to-shorts/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/kleZ799/stream-to-shorts/total?style=flat-square&label=downloads&color=555)](https://github.com/kleZ799/stream-to-shorts/releases)
+[![Latest version](https://img.shields.io/github/v/release/kleZ799/clipmint?style=flat-square&label=latest%20build&color=ff0033)](https://github.com/kleZ799/clipmint/releases/latest)
+[![Released](https://img.shields.io/github/release-date/kleZ799/clipmint?style=flat-square&label=released&color=555)](https://github.com/kleZ799/clipmint/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/kleZ799/clipmint/total?style=flat-square&label=downloads&color=555)](https://github.com/kleZ799/clipmint/releases)
 
 **Built by [Parth Bhadana](https://github.com/kleZ799)**
 &nbsp;·&nbsp; [YouTube](https://www.youtube.com/@ParthBhadana799)
@@ -307,7 +307,7 @@ of the tool that failed — the video encoder's own complaint about your file,
 not a number. Errors like a full disk are spelled out in English.
 
 It cannot rescue a clip that will not render. It can hand you something worth
-pasting into an [issue](https://github.com/kleZ799/stream-to-shorts/issues/new),
+pasting into an [issue](https://github.com/kleZ799/clipmint/issues/new),
 which is the difference between a bug that gets fixed and one that does not.
 
 ### Fix any cut without re-running anything
@@ -323,11 +323,11 @@ rendered file.
 
 ## Get it
 
-[**⬇ Download StreamToShorts.exe**](https://github.com/kleZ799/stream-to-shorts/releases/latest/download/StreamToShorts.exe) — 220 MB, Windows, self-contained.
+[**⬇ Download ClipMint.exe**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe) — 220 MB, Windows, self-contained.
 
-[**⬇ Download StreamToShorts-macOS-arm64.zip**](https://github.com/kleZ799/stream-to-shorts/releases/latest/download/StreamToShorts-macOS-arm64.zip) — 165 MB, Apple Silicon. **Beta.**
+[**⬇ Download ClipMint-macOS-arm64.zip**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip) — 165 MB, Apple Silicon. **Beta.**
 
-[**⬇ Download StreamToShorts-linux-x86_64**](https://github.com/kleZ799/stream-to-shorts/releases/latest/download/StreamToShorts-linux-x86_64) — 278 MB, x86-64, self-contained. **Untested on a desktop.**
+[**⬇ Download ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) — 278 MB, x86-64, self-contained. **Untested on a desktop.**
 
 > ### ⚠️ Read this before you download the Mac build
 >
@@ -338,8 +338,8 @@ rendered file.
 >
 > So: it might not start. If it doesn't, that is a bug in this project, not
 > something you did wrong, and I want to hear about it —
-> [open an issue](https://github.com/kleZ799/stream-to-shorts/issues/new) with
-> what you saw and the contents of `~/Movies/StreamToShorts/app.log` if that
+> [open an issue](https://github.com/kleZ799/clipmint/issues/new) with
+> what you saw and the contents of `~/Movies/ClipMint/app.log` if that
 > file exists. That is how this stops being a beta.
 >
 > **Windows is the tested build.** If you have both machines, use that one.
@@ -362,11 +362,11 @@ versions rather than installing them, so an update means downloading it again.
 **Expect step 4 to fail.** That is normal, it happens to every unsigned app,
 and it is not the beta part.
 
-**1. Download.** Take `StreamToShorts-macOS-arm64.zip` from the
-[latest release](https://github.com/kleZ799/stream-to-shorts/releases/latest).
+**1. Download.** Take `ClipMint-macOS-arm64.zip` from the
+[latest release](https://github.com/kleZ799/clipmint/releases/latest).
 Apple Silicon only — an M1 or later. There is no Intel build.
 
-**2. Unzip.** Double-click the zip. You get a `StreamToShorts` folder with
+**2. Unzip.** Double-click the zip. You get a `ClipMint` folder with
 the app in it and `READ ME FIRST.txt` beside it — the same steps as these,
 for when you come back to this in six months and the tab is long closed.
 
@@ -377,7 +377,7 @@ where updates and Spotlight expect it.
 that Apple cannot check it for malware. Nothing is damaged.
 
 **5. Allow it, once.** **System Settings → Privacy & Security**, scroll down
-to the line about StreamToShorts being blocked, click **Open Anyway**, confirm.
+to the line about ClipMint being blocked, click **Open Anyway**, confirm.
 It opens normally every time after this. (Right-click → Open, the old shortcut
 for this, stopped working in macOS 15.)
 
@@ -387,7 +387,7 @@ There is no browser and no address bar; it is its own window.
 
 **7. Paste a Gemini key.** It asks on first run.
 [Get a free one](https://aistudio.google.com/apikey). It is stored only on your
-machine, at `~/Library/Application Support/StreamToShorts/settings.json`.
+machine, at `~/Library/Application Support/ClipMint/settings.json`.
 
 **8. Give it a video.** Paste a YouTube URL, or drag a file straight into the
 window. Paste a *channel* URL and it lists recent videos to pick from.
@@ -397,9 +397,9 @@ window. Paste a *channel* URL and it lists recent videos to pick from.
 long, and start it. Everything from here runs on your Mac: it downloads,
 transcribes, ranks the moments, and cuts them to 9:16.
 
-**10. Find the clips.** They land in `~/Movies/StreamToShorts/shorts/`, in a
+**10. Find the clips.** They land in `~/Movies/ClipMint/shorts/`, in a
 folder named after the video, and the app's **Reveal** button opens Finder
-right on them. Sources and transcripts go to `~/Movies/StreamToShorts/output/`.
+right on them. Sources and transcripts go to `~/Movies/ClipMint/output/`.
 
 **11. Updating.** The app tells you when a new version is out but cannot
 install it — download the new zip and replace the app in Applications.
@@ -409,8 +409,8 @@ install it — download the new zip and replace the app in Applications.
 - **Transcribing runs on the CPU**, and it is the slow step. There is no CUDA
   on a Mac, and the transcription engine has no Metal backend, so an M-series
   CPU is doing all of it. It works; a long VOD takes a while.
-- **Files live in mac places** — `~/Movies/StreamToShorts` for output,
-  `~/Library/Application Support/StreamToShorts` for settings — instead of
+- **Files live in mac places** — `~/Movies/ClipMint` for output,
+  `~/Library/Application Support/ClipMint` for settings — instead of
   `Videos` and `%APPDATA%`.
 - **No self-update**, as above.
 - Everything else is the same app: same ranking, same layouts, same editing,
@@ -420,15 +420,15 @@ install it — download the new zip and replace the app in Applications.
 
 That part *is* the beta, and it is worth reporting. Two things help:
 
-- `~/Movies/StreamToShorts/app.log` — the app writes startup errors here,
+- `~/Movies/ClipMint/app.log` — the app writes startup errors here,
   including ones it has no window to show you in.
 - Running it from Terminal, so errors print where you can see them:
 
   ```bash
-  /Applications/StreamToShorts.app/Contents/MacOS/StreamToShorts
+  /Applications/ClipMint.app/Contents/MacOS/ClipMint
   ```
 
-[Open an issue](https://github.com/kleZ799/stream-to-shorts/issues/new) with
+[Open an issue](https://github.com/kleZ799/clipmint/issues/new) with
 either of those and your macOS version. I have no Mac to reproduce it on, so a
 paste of the actual error is the whole difference between fixed and not.
 
@@ -437,7 +437,7 @@ notarising costs $99 a year and this is free software. Gatekeeper is reporting
 a missing Apple signature, not a finding about the file. What you can check
 instead: every line here is public, the app is built from this repository by
 GitHub's own runners with a
-[readable build log](https://github.com/kleZ799/stream-to-shorts/actions), and
+[readable build log](https://github.com/kleZ799/clipmint/actions), and
 each release publishes a SHA-256 for the file.
 
 </details>
@@ -454,12 +454,12 @@ exercised under WSL, and the release workflow starts every published build
 and fetches the interface out of it — which proves it unpacks, imports,
 binds a port and serves. It does not prove a full render works on Fedora, or
 that your file manager opens where it should. If something is wrong, that is
-a bug here rather than something you did: [say so](https://github.com/kleZ799/stream-to-shorts/issues/new).
+a bug here rather than something you did: [say so](https://github.com/kleZ799/clipmint/issues/new).
 
-**1. Download.** Take `StreamToShorts-linux-x86_64` from the
-[latest release](https://github.com/kleZ799/stream-to-shorts/releases/latest). x86-64 only — there is no ARM build.
+**1. Download.** Take `ClipMint-linux-x86_64` from the
+[latest release](https://github.com/kleZ799/clipmint/releases/latest). x86-64 only — there is no ARM build.
 
-`StreamToShorts-linux-README.txt` is published beside it and says everything
+`ClipMint-linux-README.txt` is published beside it and says everything
 below. A separate file rather than an archive around the binary, because the
 updater downloads that binary and swaps it into place — putting it in a
 tarball would mean teaching the update path to unwrap one on every release, to
@@ -469,8 +469,8 @@ solve what a second file solves for nothing.
 bit. That is normal and not something you did:
 
 ```bash
-chmod +x StreamToShorts-linux-x86_64
-./StreamToShorts-linux-x86_64
+chmod +x ClipMint-linux-x86_64
+./ClipMint-linux-x86_64
 ```
 
 **3. Wait for the first start.** It unpacks itself into `/tmp` and loads the
@@ -484,14 +484,14 @@ the terminal and works from any browser on that machine.
 
 **5. Paste a Gemini key.** It asks on first run.
 [Get a free one](https://aistudio.google.com/apikey). It is stored at
-`~/.config/StreamToShorts/settings.json` and goes nowhere else.
+`~/.config/ClipMint/settings.json` and goes nowhere else.
 
 **6. Give it a video.** Paste a YouTube URL, or drag a file straight in. Paste
 a *channel* URL and it lists recent videos to pick from.
 
-**7. Find the clips.** They land in `~/Videos/StreamToShorts/shorts/`, in a
+**7. Find the clips.** They land in `~/Videos/ClipMint/shorts/`, in a
 folder named after the video, and **Reveal** opens your file manager on them.
-Sources and transcripts go to `~/Videos/StreamToShorts/output/`.
+Sources and transcripts go to `~/Videos/ClipMint/output/`.
 
 **8. Updating.** It notices new releases, checks them, and replaces itself in
 place — the same as Windows. The download above is the only one you do by hand.
@@ -511,8 +511,8 @@ place — the same as Windows. The download above is the only one you do by hand
   library path once it has started — so bundling them would ship two gigabytes
   that nothing is able to load. Windows can register those directories at
   runtime, which is the whole reason it gets the GPU and this does not.
-- **Files live in Linux places** — `~/Videos/StreamToShorts` for output,
-  `~/.config/StreamToShorts` for settings, instead of `Videos` and `%APPDATA%`.
+- **Files live in Linux places** — `~/Videos/ClipMint` for output,
+  `~/.config/ClipMint` for settings, instead of `Videos` and `%APPDATA%`.
 - **Finished-run notifications need `notify-send`.** Most desktops have it
   already, as part of `libnotify-bin`; KDE's `kdialog` is used instead when
   that is what is installed. With neither, the app says so in its log and
@@ -556,7 +556,7 @@ the file. It says the same about most independent software on release day.
 What you can check instead of taking that on trust:
 
 - **Every line is public**, and the exe is built from this repository by
-  GitHub's own runners — the [build log](https://github.com/kleZ799/stream-to-shorts/actions)
+  GitHub's own runners — the [build log](https://github.com/kleZ799/clipmint/actions)
   is readable by anyone.
 - **Each release publishes a SHA-256** for the exe, and the app verifies it
   when updating itself.
@@ -573,7 +573,7 @@ To run it: **More info → Run anyway**.
 
 - **Windows will warn you.** The exe isn't code-signed, so SmartScreen shows *"Windows protected your PC"*. Click **More info → Run anyway**. On a Mac it is Gatekeeper instead — see above.
 - **First launch is slow.** It's a single file that unpacks itself each time. The mac app is a normal bundle and starts faster.
-- **Where things go.** The key lives at `%APPDATA%\StreamToShorts\settings.json`; clips go to `%USERPROFILE%\Videos\StreamToShorts`, changeable in Settings. On a Mac: `~/Library/Application Support/StreamToShorts/settings.json` and `~/Movies/StreamToShorts`.
+- **Where things go.** The key lives at `%APPDATA%\ClipMint\settings.json`; clips go to `%USERPROFILE%\Videos\ClipMint`, changeable in Settings. On a Mac: `~/Library/Application Support/ClipMint/settings.json` and `~/Movies/ClipMint`.
 - **ffmpeg is bundled**, so there is nothing else to install — on both platforms.
 - **The downloadable .exe transcribes on the CPU.** The CUDA runtime is 2GB, and a single-file exe re-unpacks its whole payload on every launch — so bundling it would cost every user a slow start for something only NVIDIA owners can use. If you have an NVIDIA card and want the ~5x faster transcription, build the one-folder version from source: `pip install -r requirements-nvidia.txt` then `python build_exe.py` (CUDA is the default there; `--no-cuda` opts out).
 
@@ -810,8 +810,8 @@ in the prompt.
 **Prerequisites:** Python 3.10+, `ffmpeg` on your PATH, and a [free Gemini API key](https://aistudio.google.com/apikey).
 
 ```bash
-git clone https://github.com/kleZ799/stream-to-shorts.git
-cd stream-to-shorts
+git clone https://github.com/kleZ799/clipmint.git
+cd clipmint
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements-local.txt
@@ -889,7 +889,7 @@ which is how the published build needs nothing installed. That's what makes it
 YuNet face model in `assets/models` and the growth playbook in `assets/playbook` are bundled either way. Drop
 `--onefile` for a folder build that starts faster but has to be zipped to share.
 
-On a Mac the same command without `--onefile` produces `dist/StreamToShorts.app`:
+On a Mac the same command without `--onefile` produces `dist/ClipMint.app`:
 the icon is rendered from `assets/icon.png`, the version is written into
 Info.plist, and the bundle is signed ad-hoc so Apple Silicon will run it at all.
 Put static `ffmpeg` and `ffprobe` binaries in `./bin` — a Homebrew ffmpeg links
@@ -898,7 +898,7 @@ PyInstaller cannot cross-compile, so the published mac build is made on a macOS
 runner by [the release workflow](.github/workflows/release.yml), which is also
 where those two download URLs live.
 
-On Linux the same `--onefile` command produces `dist/StreamToShorts`, with no
+On Linux the same `--onefile` command produces `dist/ClipMint`, with no
 extension. Put static `ffmpeg` and `ffprobe` in `./bin` — a distribution's own
 ffmpeg links against that distribution's libraries and would only run on your
 own machine, the same trap as Homebrew on a Mac. No webview backend is bundled,
@@ -1121,7 +1121,7 @@ Conflicts, when they happen, land almost entirely in `highlights.py` — upstrea
 
 MIT — see [LICENSE](LICENSE). Upstream work © Anil Chandra Naidu Matcha; modifications © Parth Bhadana.
 
-The published `StreamToShorts.exe` also carries ffmpeg and ffprobe (the
+The published `ClipMint.exe` also carries ffmpeg and ffprobe (the
 [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) essentials build), which are licensed under the
 GPL v3 — not MIT. That covers the bundled binaries only; this repository's own
 source stays MIT, and building from source pulls in no ffmpeg at all.
@@ -1160,4 +1160,4 @@ packaging — is mine.
 Built and maintained by me. If you use it, fork it, or ship anything based on
 it, the MIT licence asks one thing in return: keep the copyright notice.
 
-Repository: <https://github.com/kleZ799/stream-to-shorts>
+Repository: <https://github.com/kleZ799/clipmint>

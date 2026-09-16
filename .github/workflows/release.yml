@@ -1,6 +1,6 @@
 # Builds the app for Windows and macOS and publishes both as one release.
 #
-#     git tag -a v1.6.0 -m "Stream to Shorts v1.6.0"
+#     git tag -a v1.6.0 -m "ClipMint v1.6.0"
 #     git push origin v1.6.0
 #
 # That is the whole release. The builds are made here rather than on a laptop,
@@ -176,7 +176,7 @@ jobs:
       - name: Check the built exe reports the right version
         shell: pwsh
         run: |
-          $exe = "dist/StreamToShorts.exe"
+          $exe = "dist/ClipMint.exe"
           if (-not (Test-Path $exe)) { throw "the build produced no exe" }
           $v = (Get-Item $exe).VersionInfo.FileVersion
           # A dry run has no tag to check against, so the exe is held to what
@@ -203,8 +203,8 @@ jobs:
         if: steps.tag.outputs.publish != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: StreamToShorts-windows
-          path: dist/StreamToShorts.exe
+          name: ClipMint-windows
+          path: dist/ClipMint.exe
           retention-days: 7
 
       - name: Publish the release
@@ -215,7 +215,7 @@ jobs:
         run: |
           tag="${{ steps.tag.outputs.name }}"
           notes="docs/release-notes/${tag}.md"
-          args=(--title "Stream to Shorts ${tag}")
+          args=(--title "ClipMint ${tag}")
           if [ -f "$notes" ]; then
             echo "using $notes"
             args+=(--notes-file "$notes")
@@ -226,9 +226,9 @@ jobs:
           # Re-running a release should update it, not fail on "already exists".
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "release exists — replacing the asset"
-            gh release upload "$tag" dist/StreamToShorts.exe --clobber
+            gh release upload "$tag" dist/ClipMint.exe --clobber
           else
-            gh release create "$tag" dist/StreamToShorts.exe "${args[@]}"
+            gh release create "$tag" dist/ClipMint.exe "${args[@]}"
           fi
 
       - name: Summary
@@ -239,13 +239,13 @@ jobs:
             if [ "${{ steps.tag.outputs.publish }}" = "true" ]; then
               echo "### Released $tag"
               echo ""
-              echo "- \`StreamToShorts.exe\` — SHA-256 \`$SHA256\`"
+              echo "- \`ClipMint.exe\` — SHA-256 \`$SHA256\`"
               echo "- Every installed copy from v1.5.0 onward will offer this build."
               echo "- <https://github.com/${{ github.repository }}/releases/tag/$tag>"
             else
               echo "### Dry run — Windows build (nothing published)"
               echo ""
-              echo "- \`StreamToShorts.exe\` — SHA-256 \`$SHA256\`"
+              echo "- \`ClipMint.exe\` — SHA-256 \`$SHA256\`"
               echo "- Attached to this run for 7 days. No release was created or touched."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
@@ -369,7 +369,7 @@ jobs:
 
       - name: Check the built app is what it claims to be
         run: |
-          app="dist/StreamToShorts.app"
+          app="dist/ClipMint.app"
           if [ ! -d "$app" ]; then
             echo "::error::the build produced no .app"
             exit 1
@@ -421,7 +421,7 @@ jobs:
         run: |
           set -e
           rm -rf stage
-          mkdir -p stage/StreamToShorts
+          mkdir -p stage/ClipMint
           need() {
           if [ ! -f "$1" ]; then
             echo "::error::$1 is missing from this checkout."
@@ -433,24 +433,24 @@ jobs:
           }
           need docs/install/macos.txt
 
-          ditto dist/StreamToShorts.app stage/StreamToShorts/StreamToShorts.app
-          cp docs/install/macos.txt "stage/StreamToShorts/READ ME FIRST.txt"
+          ditto dist/ClipMint.app stage/ClipMint/ClipMint.app
+          cp docs/install/macos.txt "stage/ClipMint/READ ME FIRST.txt"
 
           # The copy still has to be the app that was signed a step ago.
-          codesign --verify --deep --strict stage/StreamToShorts/StreamToShorts.app
+          codesign --verify --deep --strict stage/ClipMint/ClipMint.app
 
           ditto -c -k --sequesterRsrc --keepParent \
-            stage/StreamToShorts StreamToShorts-macOS-arm64.zip
-          ls -lh StreamToShorts-macOS-arm64.zip
-          shasum -a 256 StreamToShorts-macOS-arm64.zip
-          echo "SHA256=$(shasum -a 256 StreamToShorts-macOS-arm64.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
+            stage/ClipMint ClipMint-macOS-arm64.zip
+          ls -lh ClipMint-macOS-arm64.zip
+          shasum -a 256 ClipMint-macOS-arm64.zip
+          echo "SHA256=$(shasum -a 256 ClipMint-macOS-arm64.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       - name: Attach the build to this run instead
         if: steps.tag.outputs.publish != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: StreamToShorts-macos-arm64
-          path: StreamToShorts-macOS-arm64.zip
+          name: ClipMint-macos-arm64
+          path: ClipMint-macOS-arm64.zip
           retention-days: 7
 
       - name: Add it to the release
@@ -459,7 +459,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ steps.tag.outputs.name }}" \
-            StreamToShorts-macOS-arm64.zip --clobber
+            ClipMint-macOS-arm64.zip --clobber
 
       - name: Summary
         run: |
@@ -470,8 +470,8 @@ jobs:
               echo "### Dry run — macOS build (nothing published)"
             fi
             echo ""
-            echo "- \`StreamToShorts-macOS-arm64.zip\` — SHA-256 \`$SHA256\`"
-            echo "- Unzips to a **StreamToShorts** folder: the app, and"
+            echo "- \`ClipMint-macOS-arm64.zip\` — SHA-256 \`$SHA256\`"
+            echo "- Unzips to a **ClipMint** folder: the app, and"
             echo "  \`READ ME FIRST.txt\` explaining the first launch it is about"
             echo "  to be refused by."
             echo "- **Never run on a Mac.** What passed here is what a runner can"
@@ -659,7 +659,7 @@ jobs:
       - name: Check what came out
         run: |
           set -e
-          app="dist/StreamToShorts"
+          app="dist/ClipMint"
           if [ ! -f "$app" ]; then
             echo "::error::the build produced no binary"
             exit 1
@@ -686,8 +686,8 @@ jobs:
       - name: Start it, ask it for the interface, measure what it needs
         run: |
           set -e
-          cp dist/StreamToShorts StreamToShorts-linux-x86_64
-          ./StreamToShorts-linux-x86_64 > run.log 2>&1 &
+          cp dist/ClipMint ClipMint-linux-x86_64
+          ./ClipMint-linux-x86_64 > run.log 2>&1 &
           pid=$!
 
           for _ in $(seq 1 180); do
@@ -752,7 +752,7 @@ jobs:
             exit 1
           fi
           echo "it served $(stat -c%s page.html) bytes of interface"
-          echo "SHA256=$(sha256sum StreamToShorts-linux-x86_64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "SHA256=$(sha256sum ClipMint-linux-x86_64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       # A second file rather than an archive around the first. The updater
       # downloads this asset, makes it executable and swaps it into place, so
@@ -773,16 +773,16 @@ jobs:
           fi
           }
           need docs/install/linux.txt
-          cp docs/install/linux.txt StreamToShorts-linux-README.txt
+          cp docs/install/linux.txt ClipMint-linux-README.txt
 
       - name: Attach the build to this run instead
         if: steps.tag.outputs.publish != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: StreamToShorts-linux-x86_64
+          name: ClipMint-linux-x86_64
           path: |
-            StreamToShorts-linux-x86_64
-            StreamToShorts-linux-README.txt
+            ClipMint-linux-x86_64
+            ClipMint-linux-README.txt
           retention-days: 7
 
       - name: Add it to the release
@@ -794,8 +794,8 @@ jobs:
           # remotes. It cannot do that without git, and this repository has a
           # fork parent that gh reaches for first when it can.
           gh release upload "${{ steps.tag.outputs.name }}" \
-            StreamToShorts-linux-x86_64 \
-            StreamToShorts-linux-README.txt \
+            ClipMint-linux-x86_64 \
+            ClipMint-linux-README.txt \
             --clobber -R "${{ github.repository }}"
 
       - name: Summary
@@ -807,7 +807,7 @@ jobs:
               echo "### Dry run — Linux build (nothing published)"
             fi
             echo ""
-            echo "- \`StreamToShorts-linux-x86_64\` — ${SIZE} MB, SHA-256 \`$SHA256\`"
+            echo "- \`ClipMint-linux-x86_64\` — ${SIZE} MB, SHA-256 \`$SHA256\`"
             echo "- Started here, and served its interface when asked."
             echo "- x86-64, needs $GLIBC or newer — Ubuntu 22.04, Debian 12,"
             echo "  Fedora 36, and anything after them."
@@ -819,7 +819,7 @@ jobs:
             echo "  blank window. Running from source with python3-gi installed"
             echo "  still gets a real window."
             echo "- \`chmod +x\` it and run it. It updates itself from then on."
-            echo "- \`StreamToShorts-linux-README.txt\` is the same instructions,"
+            echo "- \`ClipMint-linux-README.txt\` is the same instructions,"
             echo "  published beside it — the binary cannot carry them itself."
             if [ "${{ steps.tag.outputs.publish }}" != "true" ]; then
               echo "- Attached to this run for 7 days. No release was created or touched."

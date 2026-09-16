@@ -3,7 +3,7 @@
 The install instructions that ship *inside* the downloads live in
 `docs/install/`: `macos.txt` goes into the zip as `READ ME FIRST.txt`, and
 `linux.txt` is published beside the binary as
-`StreamToShorts-linux-README.txt`. They repeat what the README says, for the
+`ClipMint-linux-README.txt`. They repeat what the README says, for the
 person holding the download and not the page — so a change to how either
 platform is installed or used belongs in both.
 
@@ -22,7 +22,7 @@ Cutting a release:
 #      version_info.txt              filevers / prodvers / File / ProductVersion
 # 2. write docs/release-notes/v1.6.0.md
 # 3. commit, then:
-git tag -a v1.6.0 -m "Stream to Shorts v1.6.0"
+git tag -a v1.6.0 -m "ClipMint v1.6.0"
 git push origin main
 git push origin v1.6.0
 ```
@@ -30,12 +30,12 @@ git push origin v1.6.0
 The workflow builds the exe on a GitHub runner and publishes the release.
 Every installed copy from v1.5.0 onward will offer it to its user.
 
-It also builds `StreamToShorts-macOS-arm64.zip` on a macOS runner. **Say in the
+It also builds `ClipMint-macOS-arm64.zip` on a macOS runner. **Say in the
 notes that the mac build is a beta and has not been run on a Mac** — it is
 built and checked by CI, and that is all. Someone downloading it should know
 that before they do, not after.
 
-And `StreamToShorts-linux-x86_64`, built inside an Ubuntu 22.04 container so
+And `ClipMint-linux-x86_64`, built inside an Ubuntu 22.04 container so
 the glibc floor is chosen rather than inherited. **Say in the notes that it
 has not been tested on a desktop distribution.** The workflow does more for
 this one than for either of the others — it starts the binary, fetches the
@@ -84,7 +84,7 @@ workflow, run Release by hand from `main`, give it the tag, and leave dry run
 unticked:
 
 ```bash
-gh workflow run Release -R kleZ799/stream-to-shorts --ref main -f tag=v1.11.1
+gh workflow run Release -R kleZ799/clipmint --ref main -f tag=v1.11.1
 ```
 
 It checks out the tag's code, builds all three, and replaces the release's

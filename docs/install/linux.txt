@@ -1,7 +1,7 @@
-STREAM TO SHORTS - Linux
+CLIPMINT - Linux
 Turn long videos into vertical Shorts, on your own machine.
 
-github.com/kleZ799/stream-to-shorts
+github.com/kleZ799/clipmint
 
 
 READ THIS FIRST
@@ -21,8 +21,8 @@ INSTALLING
 ----------
 There is nothing to install. The download is the program.
 
-    chmod +x StreamToShorts-linux-x86_64
-    ./StreamToShorts-linux-x86_64
+    chmod +x ClipMint-linux-x86_64
+    ./ClipMint-linux-x86_64
 
 A downloaded file arrives without permission to run -- that is the browser
 being careful, not something wrong with the file.
@@ -97,7 +97,7 @@ USING IT
 1. Paste a Gemini API key. It asks on the first run, and a free one takes a
    minute to get: aistudio.google.com/apikey
 
-   It is stored at ~/.config/StreamToShorts/settings.json and goes nowhere
+   It is stored at ~/.config/ClipMint/settings.json and goes nowhere
    else except to Google, by you.
 
 2. Give it a video. Paste a YouTube URL or drag a file straight in. Paste a
@@ -116,11 +116,11 @@ USING IT
 
 5. Find the clips in:
 
-       ~/Videos/StreamToShorts/shorts/
+       ~/Videos/ClipMint/shorts/
 
    in a folder named after the video. The Reveal button opens your file
    manager on them. Sources and transcripts go to
-   ~/Videos/StreamToShorts/output/, and that folder is safe to delete when
+   ~/Videos/ClipMint/output/, and that folder is safe to delete when
    you want the disk space back.
 
 
@@ -140,11 +140,11 @@ IF SOMETHING GOES WRONG
 Run it from a terminal rather than from a launcher -- errors print where you
 can see them. If it was started without a terminal, it writes to:
 
-    ~/Videos/StreamToShorts/app.log
+    ~/Videos/ClipMint/app.log
 
 Open an issue with what you saw, that log, and which distribution you are on:
 
-    github.com/kleZ799/stream-to-shorts/issues/new
+    github.com/kleZ799/clipmint/issues/new
 
 Nobody has used this on a desktop yet, so the first few reports are worth a
 great deal. "It printed this and stopped" is enough to act on.
@@ -154,8 +154,8 @@ UNINSTALLING
 ------------
 Delete the file. Then, if you want it gone completely:
 
-    ~/.config/StreamToShorts      settings and your key
-    ~/Videos/StreamToShorts       clips, sources, logs
+    ~/.config/ClipMint      settings and your key
+    ~/Videos/ClipMint       clips, sources, logs
 
 Nothing is installed anywhere else. No service, no autostart entry, nothing
 written outside your home directory.

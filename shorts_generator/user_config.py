@@ -22,7 +22,7 @@ def config_dir() -> Path:
         base = os.path.expanduser("~/Library/Application Support")
     else:
         base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    d = Path(base) / "StreamToShorts"
+    d = Path(base) / "ClipMint"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -149,7 +149,7 @@ def set_output_root(path: str) -> Path:
         raise ValueError(f"{p} is a file, not a folder.")
     try:
         p.mkdir(parents=True, exist_ok=True)
-        probe = p / ".stream-to-shorts-write-test"
+        probe = p / ".clipmint-write-test"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
     except OSError as e:
@@ -181,7 +181,7 @@ def shorts_dir() -> Path:
 
 _GUIDE_NAME = "READ ME - what is in here.txt"
 
-_GUIDE = """Stream to Shorts keeps everything it makes in this folder.
+_GUIDE = """ClipMint keeps everything it makes in this folder.
 
   shorts
       Your finished clips, one folder per video, named after that video.

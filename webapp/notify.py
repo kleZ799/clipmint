@@ -37,7 +37,7 @@ from typing import List, Optional
 
 from shorts_generator import proc
 
-APP_NAME = "Stream to Shorts"
+APP_NAME = "ClipMint"
 
 MAC = sys.platform == "darwin"
 LINUX = sys.platform.startswith("linux")

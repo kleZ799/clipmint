@@ -1,4 +1,4 @@
-# How Stream → Shorts works
+# How ClipMint works
 
 By **Parth Bhadana** — [YouTube](https://www.youtube.com/@ParthBhadana799) · [GitHub](https://github.com/kleZ799) · [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/) · [Discord](https://discord.gg/jnMrGbBz3m)
 
@@ -1830,7 +1830,7 @@ Three layers, and the order between them is deliberate:
 ```
 1. Real environment variables         ← always wins
 2. .env files                         ← loaded with override=False
-3. %APPDATA%\StreamToShorts\settings.json
+3. %APPDATA%\ClipMint\settings.json
 ```
 
 **Why env wins.** Someone with a working `.env` setup keeps behaving exactly as
@@ -1876,11 +1876,11 @@ clip — even partway through a paused run — without a restart.
 
 | | Path |
 |---|---|
-| Settings + usage ledger | `%APPDATA%\StreamToShorts\` (`~/.config` Linux, `~/Library/Application Support` macOS) |
+| Settings + usage ledger | `%APPDATA%\ClipMint\` (`~/.config` Linux, `~/Library/Application Support` macOS) |
 | Growth playbook: your own / fetched | `playbook.md` / `playbook-cache.md`, in that same folder |
 | Source videos, `.srt`, `.highlights.json` | `<OUTPUT_ROOT>/output/` |
 | Rendered clips + `job.json` | `<OUTPUT_ROOT>/shorts/<job-id>/` |
-| `OUTPUT_ROOT` default | cwd — which is `~/Videos/StreamToShorts` in the packaged build, `~/Movies/StreamToShorts` on a Mac |
+| `OUTPUT_ROOT` default | cwd — which is `~/Videos/ClipMint` in the packaged build, `~/Movies/ClipMint` on a Mac |
 
 `set_output_root()` **proves it can write** to a new location — creates the
 folder, writes a probe file, deletes it — before saving the setting. A save
@@ -2119,7 +2119,7 @@ first launch is *supposed* to be refused, which is worth knowing beforehand
 rather than discovering as a dialog saying the app is damaged.
 
 Linux gets the same text as a second asset instead, `docs/install/linux.txt`
-published as `StreamToShorts-linux-README.txt`. The binary there cannot carry
+published as `ClipMint-linux-README.txt`. The binary there cannot carry
 anything: the updater downloads that asset and swaps it into place, so it has
 to stay exactly a binary.
 
@@ -2131,7 +2131,7 @@ branch in `build_exe.py` is short, and most of it is things left out:
 
 | | Windows | Linux |
 |---|---|---|
-| Shape | `.exe`, or a folder | `StreamToShorts`, no extension, either shape |
+| Shape | `.exe`, or a folder | `ClipMint`, no extension, either shape |
 | Webview backend | Edge WebView2, via `winforms` + `clr` | none — it opens the user's browser |
 | Icon | `assets/icon.ico` | none; a Linux app's icon lives in a `.desktop` file |
 | Version metadata | `version_info.txt`, compiled in | none; there is nowhere to put one |
@@ -2211,7 +2211,7 @@ testing** — so packaged-app bugs must be reproduced *unredirected*.
 **2. Nowhere to write.** A packaged app must not write clips next to the `.exe`
 (often Program Files, often read-only; on a Mac, *inside* the `.app`, where the
 next download would take them with it), so a frozen build `chdir`s to
-`~/Videos/StreamToShorts` — `~/Movies/StreamToShorts` on macOS, which has no
+`~/Videos/ClipMint` — `~/Movies/ClipMint` on macOS, which has no
 Videos folder — and creates its subfolders up front.
 
 **3. Double-clicking.** A slow start looks exactly like a dead one, so the
@@ -2456,8 +2456,8 @@ Windows will not let a running `.exe` be overwritten. It will let it be
 download  -> .update-xxxx.part   (beside the exe, not in %TEMP%:
                                   a rename only works within one volume)
 verify    -> SHA-256 must match, or stop here
-rename    -> StreamToShorts.exe  -> StreamToShorts.exe.old-version
-move      -> .update-xxxx.part   -> StreamToShorts.exe
+rename    -> ClipMint.exe  -> ClipMint.exe.old-version
+move      -> .update-xxxx.part   -> ClipMint.exe
 relaunch  -> detached, from the same path
 exit      -> 1.5s later, so the reply reaches the browser first
 ```
@@ -2491,7 +2491,7 @@ The mac build is in the same position for a sharper reason: a `.app` is signed
 as a single unit, so replacing its contents piecemeal leaves a signature that
 no longer matches them, and the app macOS then refuses to open is the one the
 update was supposed to deliver. It also looks for a different release asset —
-`StreamToShorts-macOS-arm64.zip` rather than `StreamToShorts.exe` — since
+`ClipMint-macOS-arm64.zip` rather than `ClipMint.exe` — since
 looking for the exe would report every release as having nothing in it, and the
 app would go quiet about updates rather than obviously break.
 
@@ -2949,4 +2949,4 @@ how every clip is packaged — and needs no release to reach people.
 Built and maintained by me. If you use it, fork it, or ship anything based on
 it, the MIT licence asks one thing in return: keep the copyright notice.
 
-Repository: <https://github.com/kleZ799/stream-to-shorts>
+Repository: <https://github.com/kleZ799/clipmint>

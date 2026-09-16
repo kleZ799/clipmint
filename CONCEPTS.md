@@ -1,4 +1,4 @@
-# The concepts behind Stream → Shorts
+# The concepts behind ClipMint
 
 By **Parth Bhadana** — [YouTube](https://www.youtube.com/@ParthBhadana799) · [GitHub](https://github.com/kleZ799) · [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/) · [Discord](https://discord.gg/jnMrGbBz3m)
 
@@ -898,7 +898,7 @@ correct. `os.path.basename` strips directory components as a second layer.
 
 ### Secrets
 
-API keys live in `%APPDATA%\StreamToShorts\settings.json`, outside the repo,
+API keys live in `%APPDATA%\ClipMint\settings.json`, outside the repo,
 never in source. Precedence is environment first, then that file — so CI or a
 power user can override without editing anything.
 
@@ -1354,4 +1354,4 @@ Ordered by value, with the reasoning that makes each defensible:
 Built and maintained by me. If you use it, fork it, or ship anything based on
 it, the MIT licence asks one thing in return: keep the copyright notice.
 
-Repository: <https://github.com/kleZ799/stream-to-shorts>
+Repository: <https://github.com/kleZ799/clipmint>

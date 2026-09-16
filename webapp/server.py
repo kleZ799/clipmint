@@ -31,7 +31,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts", ".flv"}
 
-app = FastAPI(title="Stream to Shorts")
+app = FastAPI(title="ClipMint")
 
 
 @app.on_event("startup")
@@ -585,9 +585,9 @@ EXTERNAL_LINKS = {
     "author-github": "https://github.com/kleZ799",
     "author-linkedin": "https://www.linkedin.com/in/parth-bhadana-530014202/",
     "author-discord": "https://discord.gg/jnMrGbBz3m",
-    "repo": "https://github.com/kleZ799/stream-to-shorts",
+    "repo": "https://github.com/kleZ799/clipmint",
     "donate": "https://buymeacoffee.com/parthbhadana",
-    "releases": "https://github.com/kleZ799/stream-to-shorts/releases/latest",
+    "releases": "https://github.com/kleZ799/clipmint/releases/latest",
 }
 
 

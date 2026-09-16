@@ -112,7 +112,7 @@ def _transcript_cache_path(media_path: str) -> Path:
     for path in candidates:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            probe = path.parent / ".stream-to-shorts-write-test"
+            probe = path.parent / ".clipmint-write-test"
             probe.write_text("ok", encoding="utf-8")
             probe.unlink()
             return path

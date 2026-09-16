@@ -118,7 +118,7 @@ def refresh(force: bool = False) -> bool:
             if not force and cache.exists() and time.time() - cache.stat().st_mtime < REFRESH_EVERY:
                 return False
             req = urllib.request.Request(REMOTE_URL, headers={
-                "User-Agent": f"StreamToShorts/{APP_VERSION}"})
+                "User-Agent": f"ClipMint/{APP_VERSION}"})
             with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
                 raw = resp.read(MAX_BYTES + 1)
             text = raw.decode("utf-8")

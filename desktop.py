@@ -1,4 +1,4 @@
-"""Desktop entry point — Stream to Shorts as an app window, not a website.
+"""Desktop entry point — ClipMint as an app window, not a website.
 
 Starts the local server on a free port in a background thread, then opens it
 in a native window (Edge WebView2 on Windows, WebKit elsewhere) so there is no
@@ -8,8 +8,8 @@ If a native webview isn't available it falls back to the default browser
 rather than failing, because a working browser window beats no app at all.
 
 Run from source:   python desktop.py
-Packaged:          StreamToShorts.exe, StreamToShorts.app on a Mac, or a bare
-                   StreamToShorts binary on Linux
+Packaged:          ClipMint.exe, ClipMint.app on a Mac, or a bare
+                   ClipMint binary on Linux
 """
 import os
 import socket
@@ -20,7 +20,7 @@ import traceback
 from contextlib import closing
 from typing import Optional
 
-APP_NAME = "Stream to Shorts"
+APP_NAME = "ClipMint"
 
 
 def _resource_root() -> str:
@@ -67,7 +67,7 @@ def _prepare_environment() -> None:
     # would take them with it). Work in the user's video folder instead.
     if getattr(sys, "frozen", False):
         home = os.path.expanduser("~")
-        base = os.path.join(home, _media_dir_name(), "StreamToShorts")
+        base = os.path.join(home, _media_dir_name(), "ClipMint")
         for sub in ("", "output", "webapp_output", "webapp_uploads"):
             os.makedirs(os.path.join(base, sub), exist_ok=True)
         os.chdir(base)

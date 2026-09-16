@@ -1,6 +1,6 @@
 "use strict";
 
-/* Stream to Shorts — front end.
+/* ClipMint — front end.
    Sections: helpers · chrome · setup · source · layout · run · results
              · player · trim · mini player */
 

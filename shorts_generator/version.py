@@ -11,4 +11,4 @@ APP_VERSION = "1.14.1"
 
 # Where updates come from. Hardcoded on purpose: the page must never be able
 # to point the updater at a different repository.
-UPDATE_REPO = "kleZ799/stream-to-shorts"
+UPDATE_REPO = "kleZ799/clipmint"

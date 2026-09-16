@@ -1,4 +1,4 @@
-# Stream to Shorts from source, on Linux (x86-64, glibc 2.35 or newer:
+# ClipMint from source, on Linux (x86-64, glibc 2.35 or newer:
 # Ubuntu 22.04, Debian 12, Fedora 36 and later).
 #
 #   python3 -m venv venv

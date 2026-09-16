@@ -105,9 +105,9 @@ jobs:
           updater = pathlib.Path("webapp/updater.py").read_text(encoding="utf-8")
           release = pathlib.Path(".github/workflows/release.yml").read_text(encoding="utf-8")
 
-          # Filenames only. The module also builds a "StreamToShorts/<version>"
+          # Filenames only. The module also builds a "ClipMint/<version>"
           # user agent, which is not something a release attaches.
-          asset = r"StreamToShorts[\w.\-]*\.(?:exe|zip)"
+          asset = r"ClipMint[\w.\-]*\.(?:exe|zip)"
           wanted = set(re.findall(f'"({asset})"', updater))
           published = set(re.findall(f"({asset})", release))
 
