@@ -13,7 +13,12 @@
    lines here instead of a bad first impression on every single start. */
 (function () {
   try {
-    var saved = localStorage.getItem("sts.theme");
+    /* "sts.theme" is what this was called before the app was renamed.
+       Still read as a fallback so an existing install does not open in the
+       wrong theme once, which is exactly the flash this snippet exists to
+       prevent. The next press of the button writes the new key. */
+    var saved = localStorage.getItem("clipmint.theme")
+             || localStorage.getItem("sts.theme");
     if (saved !== "light" && saved !== "dark") {
       saved = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     }

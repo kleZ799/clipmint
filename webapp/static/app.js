@@ -160,7 +160,18 @@ const spy = new IntersectionObserver((entries) => {
    because it is a property of the screen you are looking at — someone with
    the app on a laptop and a bright desktop wants different answers, and a
    setting that syncs would give them one. */
-const THEME_KEY = "sts.theme";
+const THEME_KEY = "clipmint.theme";
+// What the key was called before the rename. Read, never written, so an
+// existing install keeps the theme it chose; see the snippet in <head>.
+const LEGACY_THEME_KEY = "sts.theme";
+
+function storedTheme() {
+  try {
+    return localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY);
+  } catch (e) {
+    return null;                              // private mode, or storage blocked
+  }
+}
 
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -192,8 +203,7 @@ $("themeBtn").onclick = () => {
 // this stops applying.
 try {
   matchMedia("(prefers-color-scheme: light)").addEventListener("change", (e) => {
-    let saved = null;
-    try { saved = localStorage.getItem(THEME_KEY); } catch (err) { /* ignore */ }
+    const saved = storedTheme();
     if (saved !== "light" && saved !== "dark") applyTheme(e.matches ? "light" : "dark");
   });
 } catch (e) { /* older webview: the theme just stays where it is */ }
