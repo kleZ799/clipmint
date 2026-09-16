@@ -345,6 +345,45 @@ A better re-fetch is written with a **quality tag in the filename**
 tidiness: **the transcript cache is keyed to the video's filename**, so
 overwriting would silently invalidate a transcription that took twenty minutes.
 
+### How fast the download says it is going
+
+`_progress_line()` prints one line a second, and the rate on it is measured
+here rather than taken from yt-dlp. That is not duplication for its own sake.
+yt-dlp's `d["speed"]` is an *instantaneous* reading, and the first one it
+hands out covers a few milliseconds of a connection that has not opened its
+window yet — it comes out near a hundred KB/s no matter how fast the line
+really is. The once-a-second gate made that worse rather than better: the
+counter starts at zero, so the first callback always cleared it, and the
+single least trustworthy sample was guaranteed to be the one on screen.
+
+On a 25 MB file that read `0.0% at 361KB/s - 1m11s left` for a download that
+finished in three seconds. On a 7 GB stream VOD the same first sample reads
+`126KB/s - 21h46m left`, and that is the line people screenshot when they
+report the app as slow — the download is usually fine.
+
+So the module keeps `(when, bytes)` samples over a trailing **20-second
+window** and divides. Nothing is claimed until the window holds at least two
+seconds and 1 MB; before that the line gives the percentage alone, which is
+true. A window rather than an average over the whole transfer, because
+YouTube does throttle mid-download and that is worth *seeing* when it happens.
+Bytes going backwards means yt-dlp has moved from the video file to the audio
+one, so the samples reset rather than reading as a stall.
+
+`webapp/jobs.py` treats the rate and the estimate as optional when it turns
+the line into `Fetching the video 5% at 35.8MB/s, 3m11s left`, so the early
+lines simply arrive as `Fetching the video 0%`.
+
+**Two yt-dlp options matter to the speed itself.** `http_chunk_size` asks for
+the file in 10 MB ranges: YouTube rate-limits a single long-lived connection,
+so a continuous download decays as it runs, and a fresh request per chunk
+sidesteps that. It is worth nothing on a healthy connection — 21.0 MB/s
+against 23.7 MB/s on a 4-hour VOD is noise — and it is insurance for the
+throttled case. `concurrent_fragment_downloads: 4` does nothing for these
+downloads at all: measured, yt-dlp picks *continuous* H.264 streams for every
+format the selector asks for. It stays for the formats that really are
+fragmented — live VODs, and the VP9 and AV1 ladders `best` reaches for above
+1080p.
+
 ### Video metadata for the SEO writer
 
 `fetch_video_meta()` pulls title, uploader, description and tags without
