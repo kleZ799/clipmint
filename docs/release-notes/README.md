@@ -43,6 +43,22 @@ interface out of it, and measures what glibc the unpacked payload actually
 needs — but a container is not a desktop, and nobody has yet made clips with
 it on one.
 
+## The old StreamToShorts names
+
+Since v1.15.0 every release also uploads byte-identical copies of the three
+downloads under their pre-rename names: `StreamToShorts.exe`,
+`StreamToShorts-linux-x86_64` and `StreamToShorts-macOS-arm64.zip`. The updater
+in v1.5.0 to v1.14.1 asks for its file by exact name and goes quiet when it is
+missing, so without the copies those installs would never see another release.
+
+Don't list them as downloads in the notes beyond a line saying they are for
+older installs. Remove the three `cp` lines in `release.yml` once the download
+counts on the old names stop moving:
+
+```bash
+gh release view vX.Y.Z -R kleZ799/clipmint --json assets --jq '.assets[] | "\(.name) \(.download_count)"'
+```
+
 ## Updating the growth playbook — no release needed
 
 What the packaging writer knows about how YouTube Shorts, Instagram Reels and
