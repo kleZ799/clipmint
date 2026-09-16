@@ -644,7 +644,20 @@ def _checkpoint_fingerprint(duration: float, chunk_count: int, num_clips: int,
     app once.
     """
     length = "-".join(str(int(x)) for x in clip_seconds) if clip_seconds else "default"
-    return f"v{PROMPT_VERSION}|{duration:.0f}|{chunk_count}|{num_clips}|{length}|{kind}"
+    # Duration to the minute, not the second. It is here to notice that the
+    # media changed, and it was measuring something else as well: a transcript
+    # reports the media's own length when it has just been made, and its last
+    # cue's end when it is read back from the cached .srt. Those differ by
+    # however much silence trails the last word -- three seconds on a 4h27m
+    # stream measured here -- so every second run of a long video computed a
+    # different fingerprint and threw away all fifteen chunks it had already
+    # paid an LLM to rank. That is the exact case the checkpoint exists for.
+    #
+    # A minute is coarse enough to absorb that and far finer than any real
+    # change of file, and it is not the only guard: the checkpoint is written
+    # beside one specific video, and chunk_count moves with the length too.
+    return (f"v{PROMPT_VERSION}|{duration / 60:.0f}|{chunk_count}|{num_clips}"
+            f"|{length}|{kind}")
 
 
 def _load_saved_content(path: Optional[Path], duration: float) -> Optional[Dict]:
@@ -659,7 +672,10 @@ def _load_saved_content(path: Optional[Path], duration: float) -> Optional[Dict]
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except Exception:
         return None
-    if not isinstance(data, dict) or data.get("duration") != round(duration):
+    # Same reasoning as the fingerprint above: compared to the minute, so a
+    # cached transcript's slightly shorter reading still matches the run that
+    # wrote it.
+    if not isinstance(data, dict) or round(data.get("duration", -1) / 60) != round(duration / 60):
         return None
     content = data.get("content")
     return content if isinstance(content, dict) else None
