@@ -94,6 +94,32 @@ architecture: the caching, the checkpointing, the provider fallback, the fact
 that re-cutting a clip doesn't re-run the pipeline. A failure in one stage must
 never throw away what the others already paid for.
 
+#### What each stage costs, measured
+
+The first three read the source end to end, so they are **linear in its
+duration**. Rendering is not: it goes by clip count. That is the whole shape of
+"how long will this take", and the README states it in those terms.
+
+Measured on an RTX 5060 laptop, `small` model, against a real 4h16m stream VOD
+and a 4m45s speech sample cut from its own clips:
+
+| Stage | Throughput | Per hour of source |
+|---|---|---|
+| Download | ~1.6 GB per hour of 1080p source | 2.2 min at 100 Mbps, 8.7 min at 25 Mbps |
+| Transcribe, CUDA | **25.1x realtime** | 2.4 min |
+| Transcribe, CPU | **6.9x realtime** | 8.7 min |
+| Render, NVENC | ~2.6x realtime per clip | *(flat — ~12s per 30s clip)* |
+
+The GPU/CPU gap on transcription is 3.6x, and on a 4-hour VOD that is the
+difference between a 26-minute run and a 50-minute one. Nothing else in the
+pipeline moves the total nearly as much, which is why **Processor** is on the
+Create page rather than buried in settings.
+
+Ranking is not in the table because it is the one stage whose cost is not ours
+to measure — it is a network round trip to whichever provider is up, chunked
+over the transcript (§6.5), so it grows with length but the constant is
+somebody else's load that day.
+
 ---
 
 ## 2. The problem this actually solves

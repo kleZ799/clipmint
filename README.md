@@ -109,6 +109,40 @@ told which stage it's on, because a three-hour VOD is not a two-second wait.
 
 <img src="assets/screenshots/02-progress.png" alt="A job mid-run, rendering its clips, with the log open showing the webcam overlay being located" width="880">
 
+### How long a run takes
+
+**Roughly: double the video, double the wait.** Three of the four stages read
+the source end to end, so they scale straight off its length. Only rendering
+doesn't — that goes by how many clips you asked for, not how long the video was.
+
+Per **hour of source video**, measured here on an RTX 5060 laptop with the
+`small` Whisper model:
+
+| Stage | Per hour of source | What moves it |
+|---|---|---|
+| Fetching the video | 1.6 GB to download — 9 min on 25 Mbps, 2 min on 100 Mbps | your connection |
+| Transcribing | **2.4 min** on an NVIDIA GPU, **8.7 min** on the CPU | GPU vs CPU, and the model |
+| Finding the moments | a few minutes, growing with the transcript | your AI provider that day |
+| Rendering | — *(scales with clip count, not length)* | about 12s per 30s clip |
+
+So on a 100 Mbps line with GPU transcription, asking for 10 clips:
+
+| Source video | Roughly |
+|---|---|
+| 1 hour | ~8 minutes |
+| 2 hours | ~14 minutes |
+| 4 hours | ~26 minutes |
+
+A four-hour stream is not four times a one-hour one — the render is a fixed
+cost either way — but it is close enough that you should expect a long VOD to
+take a while. The same video is only fetched and transcribed once, so a second
+run over it skips straight to the ranking.
+
+On the CPU, transcription becomes the whole story: that 4-hour stream goes
+from about 26 minutes to about 50, and nearly all of the difference is the
+transcribe stage. If you have an NVIDIA card, the **Processor** box is worth a
+look before you start a long one.
+
 ### Pause it when you need your machine back
 
 Rendering takes every core it can get. If that makes the PC unusable, **Pause**
