@@ -216,6 +216,12 @@ jobs:
           tag="${{ steps.tag.outputs.name }}"
           notes="docs/release-notes/${tag}.md"
           args=(--title "ClipMint ${tag}")
+          # Every install from v1.5.0 to v1.14.1 asks the API for an asset
+          # named StreamToShorts.exe and goes quiet when it is not there. A
+          # byte-identical copy under the old name is what keeps those users
+          # on the update path instead of stranding them on the build they
+          # have. It can go once the download count for it stops moving.
+          cp dist/ClipMint.exe dist/StreamToShorts.exe
           if [ -f "$notes" ]; then
             echo "using $notes"
             args+=(--notes-file "$notes")
@@ -226,9 +232,9 @@ jobs:
           # Re-running a release should update it, not fail on "already exists".
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "release exists — replacing the asset"
-            gh release upload "$tag" dist/ClipMint.exe --clobber
+            gh release upload "$tag" dist/ClipMint.exe dist/StreamToShorts.exe --clobber
           else
-            gh release create "$tag" dist/ClipMint.exe "${args[@]}"
+            gh release create "$tag" dist/ClipMint.exe dist/StreamToShorts.exe "${args[@]}"
           fi
 
       - name: Summary
@@ -442,6 +448,11 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             stage/ClipMint ClipMint-macOS-arm64.zip
           ls -lh ClipMint-macOS-arm64.zip
+          # The pre-rename name, for installs whose updater still asks
+          # for it. A mac build cannot replace itself, so this copy is
+          # what makes the "there is a new version" notice appear for
+          # them at all.
+          cp ClipMint-macOS-arm64.zip StreamToShorts-macOS-arm64.zip
           shasum -a 256 ClipMint-macOS-arm64.zip
           echo "SHA256=$(shasum -a 256 ClipMint-macOS-arm64.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
@@ -459,7 +470,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ steps.tag.outputs.name }}" \
-            ClipMint-macOS-arm64.zip --clobber
+            ClipMint-macOS-arm64.zip \
+            StreamToShorts-macOS-arm64.zip --clobber
 
       - name: Summary
         run: |
@@ -774,6 +786,8 @@ jobs:
           }
           need docs/install/linux.txt
           cp docs/install/linux.txt ClipMint-linux-README.txt
+          # Same reason as the exe: older installs look for this name.
+          cp ClipMint-linux-x86_64 StreamToShorts-linux-x86_64
 
       - name: Attach the build to this run instead
         if: steps.tag.outputs.publish != 'true'
@@ -796,6 +810,7 @@ jobs:
           gh release upload "${{ steps.tag.outputs.name }}" \
             ClipMint-linux-x86_64 \
             ClipMint-linux-README.txt \
+            StreamToShorts-linux-x86_64 \
             --clobber -R "${{ github.repository }}"
 
       - name: Summary
