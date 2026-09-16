@@ -620,6 +620,9 @@ select { appearance: none; cursor: pointer; padding-right: 34px;
 }
 
 label.fld { display: block; margin-bottom: 14px; }
+/* display:block outranks the browser's own [hidden] rule, so a field the
+   script hides stays on screen without this. */
+label.fld[hidden] { display: none; }
 label.fld > span {
   display: block;
   font-size: 12.5px;
