@@ -214,6 +214,7 @@ function openDrawer() {
   body.classList.add("drawer-on");
   loadLocations();
   loadCleanup();
+  loadYtAccess(false);
 }
 $("settingsBtn").onclick = openDrawer;
 $("gSettings").onclick = openDrawer;
@@ -536,6 +537,154 @@ $("setSave").onclick = () =>
 
 $("setSave2").onclick = () =>
   saveKey($("setProvider2"), $("setKey2"), $("setSave2"), $("setMsg2"), null);
+
+// ------------------------------------------------------------ YouTube sign-in
+//
+// The fallback for YouTube's "confirm you're not a bot" gate. The app climbs a
+// ladder of its own before it ever gets here -- see shorts_generator/local/
+// yt_access.py -- so this panel exists for the case where none of that worked
+// and somebody needs to hand over real cookies.
+//
+// The point of the panel is that it answers before it is asked: it says which
+// browsers on this PC can actually supply cookies, and why the others can't,
+// because "use --cookies-from-browser" is useless advice next to a Chrome that
+// encrypts its cookies against everything but itself.
+
+let ytAccess = null;
+
+function ytaRows(a) {
+  const rows = [];
+  const modes = {
+    auto: "Work it out", browser: "Cookies from a browser",
+    file: "A cookies.txt file", off: "Never use cookies",
+  };
+  rows.push(`<div><span>Fallback</span><b>${esc(modes[a.mode] || a.mode)}</b></div>`);
+
+  const usable = (a.browsers || []).filter(b => b.ok);
+  const signedIn = usable.filter(b => b.signed_in);
+  let ready;
+  if (a.mode === "off") ready = "Off";
+  else if (signedIn.length) ready = signedIn.map(b => titleCase(b.browser)).join(", ");
+  else if (usable.length) ready = usable.map(b => titleCase(b.browser)).join(", ") + " (not signed in)";
+  else if (a.file || a.discovered) ready = "A cookies.txt file";
+  else ready = "Nothing yet";
+  rows.push(`<div><span>Can sign in with</span><b>${esc(ready)}</b></div>`);
+
+  if (a.discovered && !a.file) {
+    rows.push(`<div><span>Found on disk</span><b>${esc(a.discovered)}</b></div>`);
+  }
+  return rows.join("");
+}
+
+function titleCase(s) { return (s || "").charAt(0).toUpperCase() + (s || "").slice(1); }
+
+function ytaFillBrowsers(a) {
+  const sel = $("ytaBrowser");
+  sel.innerHTML = "";
+  for (const b of a.browsers || []) {
+    const o = document.createElement("option");
+    o.value = b.browser;
+    // The reason lives in the option itself. A dropdown that lists Chrome and
+    // then rejects it on Save is a worse experience than one that says up front
+    // which entries are going to work.
+    o.textContent = titleCase(b.browser) + I18N.t(
+      b.signed_in ? " — signed in"
+      : b.ok ? " — has cookies, not signed in"
+      : " — can't be read");
+    o.disabled = !b.ok;
+    sel.appendChild(o);
+  }
+  if (!sel.options.length) {
+    const o = document.createElement("option");
+    o.textContent = "No browser on this PC can hand over cookies";
+    o.disabled = true;
+    sel.appendChild(o);
+  }
+  if (a.browser) sel.value = a.browser;
+}
+
+function ytaSyncFields() {
+  const mode = $("ytaMode").value;
+  $("ytaBrowserFld").hidden = mode !== "browser";
+  $("ytaFileFld").hidden = mode !== "file";
+
+  const a = ytAccess || {};
+  let hint;
+  if (mode === "off") {
+    hint = "The app will still try the tricks that need no sign-in, but when YouTube "
+         + "insists on an account the download stops with an explanation.";
+  } else if (mode === "browser") {
+    const bad = (a.browsers || []).filter(b => !b.ok);
+    hint = "Only used when YouTube refuses the download. "
+         + (bad.length ? bad[0].reason : "Sign the browser in to YouTube first.");
+  } else if (mode === "file") {
+    hint = "Export one with a \"Get cookies.txt\" browser extension, with youtube.com open "
+         + "and signed in. This is the way round Chrome and Edge locking their own cookies. "
+         + "The app copies it and works from the copy, so your export is left alone."
+         + (a.drop_folder ? ` A file saved into ${a.drop_folder} is picked up without setting anything here.` : "");
+  } else {
+    hint = "Tries the download several ways first, and only reaches for cookies if YouTube "
+         + "still refuses. Nothing leaves this PC — the cookies go to YouTube, which is "
+         + "where they came from. YouTube does get to see which account the downloads "
+         + "belong to, so use a spare account if that matters.";
+  }
+  $("ytaHint").textContent = I18N.t(hint);
+}
+
+async function loadYtAccess(recheck) {
+  const info = $("ytaInfo");
+  info.innerHTML = `<div><span>Checking this PC…</span><b></b></div>`;
+  try {
+    ytAccess = await api("/api/youtube-access" + (recheck ? "?recheck=true" : ""));
+  } catch (_) {
+    info.innerHTML = `<div><span>Couldn't check</span><b></b></div>`;
+    return;
+  }
+  info.innerHTML = ytaRows(ytAccess);
+  $("ytaMode").value = ytAccess.mode;
+  $("ytaFile").value = ytAccess.file || "";
+  ytaFillBrowsers(ytAccess);
+  ytaSyncFields();
+
+  if (ytAccess.pinned) {
+    $("ytaMsg").innerHTML = `<div class="warn-box">A YTDLP_COOKIES environment variable is set, `
+      + `and it wins over anything chosen here.</div>`;
+  } else if (ytAccess.file_check && !ytAccess.file_check.ok) {
+    $("ytaMsg").innerHTML = `<div class="err">${esc(ytAccess.file_check.reason)}</div>`;
+  }
+}
+
+$("ytaMode").onchange = ytaSyncFields;
+
+$("ytaRecheck").onclick = async () => {
+  $("ytaRecheck").disabled = true;
+  $("ytaMsg").innerHTML = "";
+  try { await loadYtAccess(true); } finally { $("ytaRecheck").disabled = false; }
+};
+
+$("ytaSave").onclick = async () => {
+  const mode = $("ytaMode").value;
+  $("ytaSave").disabled = true;
+  $("ytaMsg").innerHTML = "";
+  try {
+    ytAccess = await api("/api/youtube-access", json("POST", {
+      mode,
+      browser: $("ytaBrowser").value || "",
+      file: $("ytaFile").value.trim(),
+    }));
+    $("ytaInfo").innerHTML = ytaRows(ytAccess);
+    ytaFillBrowsers(ytAccess);
+    ytaSyncFields();
+    const check = ytAccess.file_check;
+    $("ytaMsg").innerHTML = check && check.reason
+      ? `<div class="warn-box">Saved. ${esc(check.reason)}</div>`
+      : `<div class="ok-box">Saved.</div>`;
+  } catch (e) {
+    $("ytaMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    $("ytaSave").disabled = false;
+  }
+};
 
 // ---------------------------------------------------------------- locations
 

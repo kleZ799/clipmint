@@ -436,6 +436,37 @@
   </div>
 
   <div class="d-sec">
+    <h3>YouTube sign-in</h3>
+    <p class="hint" style="margin-top:0">YouTube sometimes stops a download and asks it to
+      prove it isn't a bot. The app already tries several ways round that on its own. This
+      is what it falls back on when none of them work.</p>
+    <div class="kv" id="ytaInfo"></div>
+    <label class="fld">
+      <span>How to answer</span>
+      <select id="ytaMode">
+        <option value="auto">Work it out &mdash; use whatever this PC can offer</option>
+        <option value="browser">Cookies from a browser</option>
+        <option value="file">A cookies.txt file</option>
+        <option value="off">Never use cookies</option>
+      </select>
+    </label>
+    <label class="fld" id="ytaBrowserFld" hidden>
+      <span>Which browser &mdash; it needs to be signed in to YouTube</span>
+      <select id="ytaBrowser"></select>
+    </label>
+    <label class="fld" id="ytaFileFld" hidden>
+      <span>Path to the file</span>
+      <input type="text" id="ytaFile" placeholder="cookies.txt" spellcheck="false">
+    </label>
+    <div class="row">
+      <button class="btn ghost" id="ytaSave">Save</button>
+      <button class="btn ghost" id="ytaRecheck">Check again</button>
+    </div>
+    <p class="hint" id="ytaHint"></p>
+    <div id="ytaMsg"></div>
+  </div>
+
+  <div class="d-sec">
     <h3>Free up space</h3>
     <div class="kv" id="cleanInfo"></div>
     <button class="btn danger" id="cleanBtn" disabled>Clear space</button>

@@ -308,6 +308,91 @@ async def set_processor(req: ProcessorRequest) -> dict:
     return await get_processor()
 
 
+class YoutubeAccessRequest(BaseModel):
+    mode: str = "auto"
+    browser: str = ""
+    file: str = ""
+
+
+@app.get("/api/youtube-access")
+async def get_youtube_access(recheck: bool = False) -> dict:
+    """How the app gets past YouTube's "confirm you're not a bot" gate.
+
+    Probing a browser reads its whole cookie database, so the answers are
+    cached; `recheck` throws them away and looks again, for someone who has
+    just signed in to a browser or dropped a cookies.txt into the folder.
+    """
+    from shorts_generator.local import yt_access
+
+    if recheck:
+        await asyncio.to_thread(yt_access.forget_probes)
+
+    cfg = yt_access.settings()
+    browsers = await asyncio.to_thread(yt_access.working_browsers)
+    discovered = await asyncio.to_thread(yt_access.discovered_cookie_file)
+
+    # The configured file is checked; a merely discovered one is not, because
+    # the check parses the whole jar and nobody asked about that file yet.
+    chosen = cfg["file"]
+    check = await asyncio.to_thread(yt_access.check_file, chosen) if chosen else None
+
+    return {
+        "mode": cfg["mode"],
+        "browser": cfg["browser"],
+        "file": chosen,
+        "file_check": check,
+        "browsers": browsers,
+        "discovered": discovered,
+        "drop_folder": (yt_access.cookie_file_places() or [""])[0],
+        # An env var outranks the settings file, exactly as it does for API
+        # keys, and the UI needs to say so rather than let someone change a
+        # setting that is being overridden.
+        "pinned": bool(os.getenv("YTDLP_COOKIES", "").strip()),
+    }
+
+
+@app.post("/api/youtube-access")
+async def set_youtube_access(req: YoutubeAccessRequest) -> dict:
+    """Choose how to answer the gate, proving the choice works before saving it.
+
+    Everything here is validated up front. Somebody setting this is already
+    dealing with a failed download; storing a browser that cannot be read, or a
+    file that turns out to be the wrong format, would hand them the same
+    failure again twenty minutes later with nothing new to go on.
+    """
+    from shorts_generator import user_config
+    from shorts_generator.local import yt_access
+
+    mode = (req.mode or "auto").strip().lower()
+    if mode not in yt_access.MODES:
+        raise HTTPException(400, "Mode must be auto, off, browser or file.")
+
+    values = {"YOUTUBE_COOKIES_MODE": mode}
+
+    if mode == "browser":
+        browser = (req.browser or "").strip()
+        if not browser:
+            raise HTTPException(400, "Pick a browser first.")
+        await asyncio.to_thread(yt_access.forget_probes)
+        found = await asyncio.to_thread(yt_access.probe, browser.partition(":")[0])
+        if not found["ok"]:
+            raise HTTPException(400, found["reason"] or
+                                f"No YouTube cookies could be read from {browser}.")
+        values["YOUTUBE_COOKIES_BROWSER"] = browser
+
+    elif mode == "file":
+        check = await asyncio.to_thread(yt_access.check_file, req.file or "")
+        if not check["ok"]:
+            raise HTTPException(400, check["reason"] or "That file can't be used.")
+        values["YOUTUBE_COOKIES_FILE"] = check["path"]
+
+    await asyncio.to_thread(user_config.save, values)
+    # The next request should start from the new setting, not from whatever
+    # rung happened to work before it was changed.
+    await asyncio.to_thread(yt_access.reset)
+    return await get_youtube_access()
+
+
 class LocationRequest(BaseModel):
     path: str
 
