@@ -68,10 +68,40 @@ def _prepare_environment() -> None:
     if getattr(sys, "frozen", False):
         home = os.path.expanduser("~")
         base = os.path.join(home, _media_dir_name(), "ClipMint")
+        _adopt_legacy_media_dir(base)
         for sub in ("", "output", "webapp_output", "webapp_uploads"):
             os.makedirs(os.path.join(base, sub), exist_ok=True)
         os.chdir(base)
         os.environ.setdefault("LOCAL_OUTPUT_DIR", "output")
+
+
+# What the media folder was called before the rename to ClipMint.
+LEGACY_MEDIA_DIR_NAME = "StreamToShorts"
+
+
+def _adopt_legacy_media_dir(base: str) -> None:
+    """Move a pre-rename Videos/StreamToShorts folder to the new name, once.
+
+    This folder holds finished clips and the downloaded sources behind them --
+    tens of gigabytes after a few streams. Copying it the way the settings
+    folder is copied would stall the first launch and double the disk use, so
+    this renames the directory instead, which is instant on the same volume.
+
+    Only when there is nothing at the new name yet, so a user who has already
+    made clips under ClipMint never has that folder disturbed. If the rename
+    fails -- another process holding a file open, the two paths landing on
+    different volumes -- the app simply starts with a fresh folder and the old
+    clips stay readable where they are. Losing the app to a startup crash
+    would be the worse outcome.
+    """
+    old = os.path.join(os.path.dirname(base), LEGACY_MEDIA_DIR_NAME)
+    if os.path.exists(base) or not os.path.isdir(old):
+        return
+    try:
+        os.rename(old, base)
+        print(f"[setup] moved your clips from {old} to {base}", flush=True)
+    except OSError as e:
+        print(f"[setup] left old clips in {old} ({e})", flush=True)
 
 
 LOG_FILENAME = "app.log"

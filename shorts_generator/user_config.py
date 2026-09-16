@@ -10,8 +10,40 @@ existing .env setup keeps behaving exactly as before.
 """
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Dict, Optional
+
+# What this folder was called before the app was renamed to ClipMint. Anyone
+# who installed 1.14.1 or earlier has their API key in there.
+_LEGACY_DIR_NAME = "StreamToShorts"
+
+
+def _adopt_legacy_config(base: Path, new: Path) -> None:
+    """Copy a pre-rename config folder into the new one, once.
+
+    Someone upgrading from StreamToShorts has their key, their save location
+    and their usage ledger in the old folder. Renaming the app must not read
+    to them as being logged out, so the first run under the new name brings
+    the old settings across.
+
+    It copies rather than moves: if this build turns out to be broken and
+    they go back to the one they had, that install still finds its own
+    config exactly where it left it. The cost is a few kilobytes duplicated.
+
+    Only ever on a genuinely first run -- an existing new-name folder is the
+    user's current truth and is never overwritten by a stale old one. Any
+    failure here is silent on purpose; a missing copy costs them one paste
+    of an API key, while a crash on startup costs them the app.
+    """
+    old = base / _LEGACY_DIR_NAME
+    if new.exists() or not old.is_dir():
+        return
+    try:
+        shutil.copytree(old, new)
+        print(f"[config] carried settings over from {old}", flush=True)
+    except OSError as e:
+        print(f"[config] could not copy old settings from {old} ({e})", flush=True)
 
 
 def config_dir() -> Path:
@@ -23,6 +55,7 @@ def config_dir() -> Path:
     else:
         base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
     d = Path(base) / "ClipMint"
+    _adopt_legacy_config(Path(base), d)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
