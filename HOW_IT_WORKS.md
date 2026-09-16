@@ -63,9 +63,9 @@ anyone.
 
 ## 1. The one-paragraph answer
 
-**Stream → Shorts takes a long video — a stream VOD, a podcast, any mp4 — and
+**ClipMint takes a long video — a stream VOD, a vlog, a podcast, any mp4 — and
 produces a set of ranked vertical clips ready to upload as YouTube Shorts,
-Reels or TikToks, each with a title, description and tags written for it.**
+Reels or TikToks, each packaged for the app it is going to.**
 
 It downloads the source with **yt-dlp**, transcribes it locally with
 **faster-whisper**, sends the transcript to an **LLM (Gemini, Groq or OpenAI)**
