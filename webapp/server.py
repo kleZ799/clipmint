@@ -677,7 +677,7 @@ EXTERNAL_LINKS = {
     # these (YouTube API Services Developer Policies, III.A.1 and III.A.2).
     "youtube-terms": "https://www.youtube.com/t/terms",
     "google-privacy": "https://policies.google.com/privacy",
-    "privacy": "https://github.com/kleZ799/clipmint/blob/main/PRIVACY.md",
+    "privacy": "https://klez799.github.io/clipmint/privacy.html",
     "google-permissions": "https://security.google.com/settings/security/permissions",
 }
 
