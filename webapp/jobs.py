@@ -433,6 +433,33 @@ class JobStore:
         """Attach freshly written upload metadata to one clip."""
         return self.replace_clip(job, filename, {"seo": seo})
 
+    def forget_youtube(self, only_expired: bool = False) -> int:
+        """Drop what YouTube handed back about uploads from every clip.
+
+        YouTube's policies cap how long that may be kept, and say it goes when
+        the user disconnects. `only_expired` keeps anything younger than the
+        cap, for the sweep made at startup.
+        """
+        from .youtube_upload import expired
+
+        dropped = 0
+        with self._lock:
+            jobs = list(self._jobs.values())
+        for job in jobs:
+            changed = False
+            with self._lock:
+                for c in job.clips:
+                    rec = c.get("youtube")
+                    if rec and (not only_expired or expired(rec)):
+                        del c["youtube"]
+                        changed = True
+                        dropped += 1
+                if changed:
+                    job._version += 1
+            if changed:
+                self._persist(job)
+        return dropped
+
     def retry(self, job: Job) -> Job:
         """Run a failed job again, from wherever its caches let it pick up.
 
@@ -562,6 +589,10 @@ class JobStore:
 
         if found:
             print(f"[jobs] restored {found} earlier run(s) from {root}", flush=True)
+            try:
+                self.forget_youtube(only_expired=True)
+            except Exception as e:
+                print(f"[jobs] could not clear old YouTube upload records: {e}", flush=True)
         return found
 
     def _job_from_folder(self, folder: Path) -> Optional[Job]:

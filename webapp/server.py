@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -688,6 +688,159 @@ async def open_upload(what: str = "upload") -> dict:
     url = EXTERNAL_LINKS.get(what)
     if url is None:
         raise HTTPException(400, "Unknown link.")
+    ok = await asyncio.to_thread(webbrowser.open, url)
+    return {"opened": ok, "url": url}
+
+
+# --- uploading to YouTube -------------------------------------------------
+#
+# Through YouTube's own API, signed in on Google's own page. See
+# webapp/youtube_upload.py for why it is done this way and no other.
+
+class YoutubeClientRequest(BaseModel):
+    # The JSON Google hands out for a Desktop app client, pasted or as a path.
+    # Empty goes back to the client the build carries.
+    client: str = ""
+
+
+class YoutubeUploadRequest(BaseModel):
+    title: str
+    description: str = ""
+    tags: Optional[object] = None
+    privacy: str = "public"
+    # An ISO time with its zone. Set means scheduled, whatever privacy says.
+    publish_at: Optional[str] = None
+    made_for_kids: bool = False
+    category: str = "22"
+
+
+class YoutubeOpenRequest(BaseModel):
+    video_id: str
+    where: str = "studio"
+
+
+@app.get("/api/youtube")
+async def youtube_status() -> dict:
+    from . import youtube_upload
+    return await asyncio.to_thread(youtube_upload.status)
+
+
+@app.post("/api/youtube/client")
+async def youtube_client(req: YoutubeClientRequest) -> dict:
+    from . import youtube_upload
+    try:
+        return await asyncio.to_thread(youtube_upload.set_client, req.client)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/youtube/connect")
+async def youtube_connect(request: Request) -> dict:
+    """Open Google's consent page in the user's real browser.
+
+    Google turns sign-ins away inside embedded webviews, so this is never the
+    app window. The redirect comes back to this same local server, on the
+    loopback address Google allows for desktop apps.
+    """
+    import webbrowser
+    from . import youtube_upload
+
+    port = request.url.port or 80
+    redirect = f"http://127.0.0.1:{port}/api/youtube/callback"
+    try:
+        url = await asyncio.to_thread(youtube_upload.begin_connect, redirect)
+    except youtube_upload.NotConnected as e:
+        raise HTTPException(400, str(e))
+    await asyncio.to_thread(webbrowser.open, url)
+    return await asyncio.to_thread(youtube_upload.status)
+
+
+@app.get("/api/youtube/callback", response_class=HTMLResponse)
+async def youtube_callback(state: str = "", code: str = "", error: str = "") -> HTMLResponse:
+    """Where Google sends the browser after the consent page."""
+    import html
+    from . import youtube_upload
+
+    problem = await asyncio.to_thread(youtube_upload.finish_connect, state, code, error)
+    if problem:
+        head, text = "YouTube wasn't connected", problem
+    else:
+        who = youtube_upload.status().get("channel_title")
+        head = f"Connected to {who}" if who else "YouTube is connected"
+        text = "You can close this tab and go back to ClipMint."
+    page = f"""<!doctype html><meta charset="utf-8"><title>ClipMint</title>
+<style>body{{font:16px/1.5 system-ui,sans-serif;background:#0f0f0f;color:#f1f1f1;
+display:grid;place-items:center;min-height:100vh;margin:0;padding:16px}}
+main{{max-width:460px;text-align:center}}h1{{font-size:22px}}p{{color:#aaa}}</style>
+<main><h1>{html.escape(head)}</h1><p>{html.escape(text)}</p></main>"""
+    return HTMLResponse(page, status_code=200 if not problem else 400)
+
+
+@app.post("/api/youtube/disconnect")
+async def youtube_disconnect() -> dict:
+    """Give the permission back, and forget every upload record with it."""
+    from . import youtube_upload
+    await asyncio.to_thread(STORE.forget_youtube)
+    return await asyncio.to_thread(youtube_upload.disconnect)
+
+
+@app.post("/api/jobs/{job_id}/clips/{filename}/youtube")
+async def youtube_upload_clip(job_id: str, filename: str, req: YoutubeUploadRequest) -> dict:
+    """Send one clip to the connected channel, in the background.
+
+    The metadata is whatever is in the boxes when Upload is pressed, not what
+    was last saved -- what the person can see is what goes to YouTube.
+    """
+    from . import youtube_upload
+
+    job = _job_or_404(job_id)
+    safe = os.path.basename(filename)
+    if STORE.clip(job, safe) is None:
+        raise HTTPException(404, "No such clip")
+    path = _clip_path(job, safe)
+    if not path.exists():
+        raise HTTPException(404, "That clip's file is missing — it may have been moved.")
+
+    try:
+        meta = youtube_upload.build_metadata(
+            req.title, req.description, req.tags, req.privacy, req.publish_at,
+            req.made_for_kids, req.category)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    def record(result: dict) -> None:
+        # By file name as it is now: a title saved mid-upload renames the file.
+        name = safe if STORE.clip(job, safe) else next(
+            (c.get("file") for c in job.clips
+             if (c.get("seo") or {}).get("title") == meta["snippet"]["title"]), None)
+        if name:
+            STORE.replace_clip(job, name, {"youtube": result})
+
+    try:
+        uid = youtube_upload.start_upload(f"{job.id}/{safe}", path, meta, record)
+    except youtube_upload.NotConnected as e:
+        raise HTTPException(409, str(e))
+    return youtube_upload.upload_status(uid) or {"id": uid}
+
+
+@app.get("/api/youtube/uploads/{upload_id}")
+async def youtube_upload_progress(upload_id: str) -> dict:
+    from . import youtube_upload
+    st = youtube_upload.upload_status(upload_id)
+    if not st:
+        raise HTTPException(404, "No such upload")
+    return st
+
+
+@app.post("/api/youtube/open")
+async def youtube_open(req: YoutubeOpenRequest) -> dict:
+    """Open an uploaded video in the user's browser, by its id only."""
+    import webbrowser
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,20}", req.video_id or ""):
+        raise HTTPException(400, "That isn't a YouTube video id.")
+    url = (f"https://studio.youtube.com/video/{req.video_id}/edit" if req.where == "studio"
+           else f"https://youtube.com/shorts/{req.video_id}")
     ok = await asyncio.to_thread(webbrowser.open, url)
     return {"opened": ok, "url": url}
 
