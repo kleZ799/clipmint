@@ -59,6 +59,17 @@ counts on the old names stop moving:
 gh release view vX.Y.Z -R kleZ799/clipmint --json assets --jq '.assets[] | "\(.name) \(.download_count)"'
 ```
 
+## The website and the Google client
+
+`https://klez799.github.io/clipmint/` is deployed by the **Site** workflow, not
+by a release. Editing `PRIVACY.md` or anything in `site/` and pushing to `main`
+is the whole update. Google's consent screen links to that site, so keep it up.
+
+Releases bundle ClipMint's Google client from the `CLIPMINT_YOUTUBE_CLIENT`
+repository secret. If that client is ever deleted or replaced in Google Cloud,
+update the secret before the next tag, or connecting YouTube breaks for every
+new download.
+
 ## Updating the growth playbook — no release needed
 
 What the packaging writer knows about how YouTube Shorts, Instagram Reels and
