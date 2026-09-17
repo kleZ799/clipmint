@@ -467,6 +467,32 @@
   </div>
 
   <div class="d-sec">
+    <h3>Post to your channel</h3>
+    <p class="hint" style="margin-top:0">Uploads a clip with its title, description and tags,
+      now or on a schedule. You sign in on Google's own page, so the app never sees your
+      password, and it can upload videos but not delete or change anything.</p>
+    <div class="kv" id="ytuInfo"></div>
+    <div class="row">
+      <button class="btn yt" id="ytuConnect"><svg><use href="#i-yt"/></svg><span>Connect YouTube</span></button>
+      <button class="btn ghost" id="ytuDisconnect" hidden>Disconnect</button>
+    </div>
+    <details class="logwrap ytu-own" id="ytuOwn">
+      <summary>Use your own Google client</summary>
+      <label class="fld" style="margin-top:12px">
+        <span>Paste the Desktop app client JSON from Google Cloud, or the path to the file</span>
+        <textarea id="ytuClient" rows="3" spellcheck="false"
+                  placeholder='{"installed":{"client_id":"…"}}'></textarea>
+      </label>
+      <div class="row">
+        <button class="btn ghost" id="ytuClientSave">Save client</button>
+        <button class="btn ghost" id="ytuClientClear" hidden>Stop using mine</button>
+      </div>
+    </details>
+    <p class="hint" id="ytuHint"></p>
+    <div id="ytuMsg"></div>
+  </div>
+
+  <div class="d-sec">
     <h3>Free up space</h3>
     <div class="kv" id="cleanInfo"></div>
     <button class="btn danger" id="cleanBtn" disabled>Clear space</button>

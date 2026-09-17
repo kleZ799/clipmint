@@ -594,7 +594,7 @@ body.guide-off .content { margin-left: 0; }
 @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
 
 /* ============================ inputs ============================ */
-input[type=text], input[type=password], textarea, select {
+input[type=text], input[type=password], input[type=datetime-local], textarea, select {
   width: 100%;
   background: var(--field);
   border: 1px solid var(--line);
@@ -680,6 +680,9 @@ label.fld > span a:hover { text-decoration: underline; }
 
 .btn.ghost { background: var(--raised-2); color: var(--text); }
 .btn.ghost:hover:not(:disabled) { background: var(--hover-2); }
+
+/* Same trap as label.fld: inline-flex outranks the [hidden] attribute. */
+.btn[hidden] { display: none; }
 
 .btn.yt { background: var(--red); color: #fff; }
 .btn.yt:hover { background: var(--red-deep); }
@@ -1334,6 +1337,20 @@ label.fld > span a:hover { text-decoration: underline; }
 }
 .seo-why b { color: var(--text-2); }
 .seo-why.warnish { color: var(--warn); }
+
+/* Posting a clip straight to the channel, under the YouTube boxes. */
+.yu-box {
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding-top: 16px;
+}
+.yu-box h4 { font: 600 13px/1.3 inherit; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.yu-box h4 svg { width: 18px; height: 18px; color: var(--red); }
+.yu-box .btn.yt { width: 100%; }
+.yu-done { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.yu-prog { margin-top: 12px; }
+.yu-prog p { color: var(--text-3); font-size: 12px; margin-top: 7px; font-variant-numeric: tabular-nums; }
+.ytu-own { margin-top: 14px; }
 
 /* ============================ settings drawer ============================ */
 .scrim {

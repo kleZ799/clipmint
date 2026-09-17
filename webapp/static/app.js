@@ -215,6 +215,7 @@ function openDrawer() {
   loadLocations();
   loadCleanup();
   loadYtAccess(false);
+  loadYtu();
 }
 $("settingsBtn").onclick = openDrawer;
 $("gSettings").onclick = openDrawer;
@@ -685,6 +686,328 @@ $("ytaSave").onclick = async () => {
     $("ytaSave").disabled = false;
   }
 };
+
+// ------------------------------------------------------------ post to YouTube
+//
+// Signing in happens in the user's real browser, on Google's page; this only
+// starts it and then watches for it to finish. See webapp/youtube_upload.py.
+
+let ytu = null;
+let ytuWatch = null;
+
+function ytuRows(s) {
+  const rows = [];
+  let who;
+  if (s.connected) who = s.channel_title || "Connected";
+  else if (s.connect_state === "waiting") who = "Waiting for you to sign in…";
+  else who = "Not connected";
+  rows.push(`<div><span>Channel</span><b>${esc(I18N.t(who))}</b></div>`);
+  const client = s.client === "yours" ? "Your own"
+    : s.client === "builtin" ? "ClipMint's" : "None set up yet";
+  rows.push(`<div><span>Google client</span><b>${esc(I18N.t(client))}</b></div>`);
+  return rows.join("");
+}
+
+function paintYtu() {
+  const s = ytu;
+  if (!s) return;
+  $("ytuInfo").innerHTML = ytuRows(s);
+  $("ytuConnect").hidden = s.connected;
+  $("ytuDisconnect").hidden = !s.connected;
+  $("ytuClientClear").hidden = s.client !== "yours";
+  if (!s.client) $("ytuOwn").open = true;
+
+  let hint;
+  if (!s.client) {
+    hint = "This build has no Google client of its own yet. Make a free one in Google Cloud "
+         + "and paste it below — docs/youtube-upload.md walks through it in about ten minutes.";
+  } else if (s.connected) {
+    hint = "Open any clip, press Boost, and the YouTube tab has an Upload button. "
+         + "You can withdraw access any time at myaccount.google.com/permissions.";
+  } else {
+    hint = "Your browser opens Google's sign-in. Pick the channel the clips should go to.";
+  }
+  $("ytuHint").textContent = I18N.t(hint);
+
+  if (s.pinned) {
+    $("ytuMsg").innerHTML = `<div class="warn-box">A YOUTUBE_CLIENT_ID environment variable is `
+      + `set, and it wins over a client pasted here.</div>`;
+  } else if (s.connect_state === "error" && s.connect_error) {
+    $("ytuMsg").innerHTML = `<div class="err">${esc(s.connect_error)}</div>`;
+  }
+}
+
+async function loadYtu() {
+  try {
+    ytu = await api("/api/youtube");
+    paintYtu();
+  } catch (_) { /* the rest of the drawer works without it */ }
+  return ytu;
+}
+
+// Sign-in finishes in another window, so the only way to know is to ask.
+function watchConnect() {
+  clearInterval(ytuWatch);
+  const until = Date.now() + 5 * 60 * 1000;
+  ytuWatch = setInterval(async () => {
+    const s = await loadYtu();
+    if (!s || s.connect_state !== "waiting" || Date.now() > until) {
+      clearInterval(ytuWatch);
+      if (s && s.connected) {
+        toast(`Connected to ${s.channel_title || "YouTube"}.`);
+        if ($("player").classList.contains("seo-on")) renderUploadBox();
+      }
+    }
+  }, 2000);
+}
+
+async function connectYouTube() {
+  $("ytuMsg").innerHTML = "";
+  try {
+    ytu = await api("/api/youtube/connect", json("POST", {}));
+    paintYtu();
+    toast("Finish signing in in your browser.");
+    watchConnect();
+  } catch (e) {
+    $("ytuMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    toast(e.message, true);
+  }
+}
+$("ytuConnect").onclick = connectYouTube;
+
+$("ytuDisconnect").onclick = () => {
+  ask("Disconnect YouTube?",
+      "ClipMint gives its upload permission back to Google. Videos already uploaded stay "
+      + "exactly where they are.",
+      async () => {
+        try {
+          ytu = await api("/api/youtube/disconnect", json("POST", {}));
+          $("ytuMsg").innerHTML = "";
+          paintYtu();
+          toast("YouTube disconnected.");
+        } catch (e) {
+          toast(e.message, true);
+        }
+      });
+};
+
+async function saveYtuClient(text) {
+  $("ytuMsg").innerHTML = "";
+  try {
+    ytu = await api("/api/youtube/client", json("POST", { client: text }));
+    $("ytuClient").value = "";
+    paintYtu();
+    $("ytuMsg").innerHTML = `<div class="ok-box">${esc(I18N.t(
+      text ? "Saved. Now press Connect YouTube." : "Back to the built-in client."))}</div>`;
+  } catch (e) {
+    $("ytuMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+$("ytuClientSave").onclick = () => {
+  const text = $("ytuClient").value.trim();
+  if (!text) { $("ytuMsg").innerHTML = `<div class="err">Paste the client JSON first.</div>`; return; }
+  saveYtuClient(text);
+};
+$("ytuClientClear").onclick = () => saveYtuClient("");
+
+// ---- the Upload box, under the YouTube boxes in Boost
+
+const YU_PREF = "clipmint.ytupload";
+const ytUploads = {};          // "job/file" -> upload id, while one is running
+
+function yuPrefs() {
+  try { return JSON.parse(localStorage.getItem(YU_PREF) || "{}") || {}; }
+  catch (_) { return {}; }
+}
+function yuRemember(p) {
+  try { localStorage.setItem(YU_PREF, JSON.stringify(p)); } catch (_) { /* a nicety */ }
+}
+
+// The next whole hour at least half an hour away, as a datetime-local value.
+function yuDefaultWhen() {
+  const d = new Date(Date.now() + 30 * 60 * 1000);
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function uploadBox() {
+  return `<div class="yu-box" id="yuBox"></div>`;
+}
+
+function renderUploadBox() {
+  const box = $("yuBox");
+  const c = clips[cur];
+  if (!box || !c) return;
+  const s = ytu;
+  const prefs = yuPrefs();
+  const key = `${jobOf(c)}/${c.file}`;
+  const done = c.youtube;
+
+  const head = `<h4><svg><use href="#i-yt"/></svg>${esc(I18N.t("Post it to your channel"))}</h4>`;
+
+  if (!s || !s.connected) {
+    box.innerHTML = head + `
+      <p class="seo-why">${esc(I18N.t(
+        "Connect your channel once and clips go straight to YouTube with these words, now or on a schedule."))}</p>
+      <button class="btn yt" id="yuConnect"><svg><use href="#i-yt"/></svg><span>${esc(I18N.t("Connect YouTube"))}</span></button>
+      <div id="yuMsg"></div>`;
+    $("yuConnect").onclick = async () => {
+      if (!s || !s.client) { openDrawer(); return; }
+      await connectYouTube();
+    };
+    return;
+  }
+
+  const when = done && done.publish_at ? new Date(done.publish_at) : null;
+  const doneLine = done ? `
+    <div class="yu-done">
+      <span class="seo-why" style="margin:0">${esc(
+        done.kept_private ? I18N.t("Uploaded, but YouTube kept it private.")
+        : when ? `${I18N.t("Scheduled for")} ${when.toLocaleString()}.`
+        : `${I18N.t("On YouTube")} (${I18N.t(done.privacy || "public")}).`)}</span>
+      <button class="qbtn" data-yuopen="studio">${esc(I18N.t("Open in Studio"))}</button>
+      <button class="qbtn" data-yuopen="watch">${esc(I18N.t("Watch"))}</button>
+    </div>` : "";
+
+  const cats = (s.categories || []).map(([id, name]) =>
+    `<option value="${esc(id)}">${esc(I18N.t(name))}</option>`).join("");
+
+  box.innerHTML = head + doneLine + `
+    <p class="seo-why">${esc(I18N.t("Goes to"))} <b>${esc(s.channel_title || "your channel")}</b>
+      ${esc(I18N.t("with the title, description and tags above, exactly as they are in the boxes."))}</p>
+    <label class="fld"><span>${esc(I18N.t("Who can see it"))}</span>
+      <select id="yuPrivacy">
+        <option value="public">${esc(I18N.t("Public — now"))}</option>
+        <option value="schedule">${esc(I18N.t("Scheduled — goes public at a time you pick"))}</option>
+        <option value="unlisted">${esc(I18N.t("Unlisted — only people with the link"))}</option>
+        <option value="private">${esc(I18N.t("Private — only you"))}</option>
+      </select></label>
+    <label class="fld" id="yuWhenFld" hidden><span>${esc(I18N.t("Goes public at (your time)"))}</span>
+      <input type="datetime-local" id="yuWhen"></label>
+    <label class="fld"><span>${esc(I18N.t("Category"))}</span><select id="yuCat">${cats}</select></label>
+    <label class="check"><input type="checkbox" id="yuKids"><span>${esc(I18N.t(
+      "Made for kids — YouTube's legal question, answer it honestly"))}</span></label>
+    <button class="btn yt" id="yuGo"><svg><use href="#i-yt"/></svg><span>${esc(I18N.t(
+      done ? "Upload again" : "Upload to YouTube"))}</span></button>
+    <div class="yu-prog" id="yuProg" hidden><div class="bar"><i id="yuBar"></i></div><p id="yuProgText"></p></div>
+    <div id="yuMsg"></div>`;
+
+  $("yuPrivacy").value = prefs.privacy || "public";
+  $("yuCat").value = (s.categories || []).some(([id]) => id === prefs.category)
+    ? prefs.category : "22";
+  $("yuKids").checked = !!prefs.kids;
+  $("yuWhen").value = yuDefaultWhen();
+  const syncWhen = () => { $("yuWhenFld").hidden = $("yuPrivacy").value !== "schedule"; };
+  $("yuPrivacy").onchange = syncWhen;
+  syncWhen();
+
+  box.querySelectorAll("[data-yuopen]").forEach((b) => {
+    b.onclick = () => api("/api/youtube/open",
+      json("POST", { video_id: done.video_id, where: b.dataset.yuopen })).catch((e) => toast(e.message, true));
+  });
+
+  $("yuGo").onclick = () => startYouTubeUpload(c);
+
+  if (ytUploads[key]) followUpload(key, ytUploads[key]);
+}
+
+async function startYouTubeUpload(c) {
+  const privacy = $("yuPrivacy").value;
+  let publishAt = null;
+  if (privacy === "schedule") {
+    const v = $("yuWhen").value;
+    const t = v ? new Date(v) : null;
+    if (!t || isNaN(t)) { $("yuMsg").innerHTML = `<div class="err">Pick when it should go public.</div>`; return; }
+    publishAt = t.toISOString();
+  }
+  const prefs = { privacy, category: $("yuCat").value, kids: $("yuKids").checked };
+  yuRemember(prefs);
+
+  const key = `${jobOf(c)}/${c.file}`;
+  $("yuMsg").innerHTML = "";
+  $("yuGo").disabled = true;
+  try {
+    const st = await api(
+      `/api/jobs/${encodeURIComponent(jobOf(c))}/clips/${encodeURIComponent(c.file)}/youtube`,
+      json("POST", {
+        title: $("sfTitle").value,
+        description: $("sfDesc").value,
+        tags: $("sfTags").value,
+        privacy: privacy === "schedule" ? "private" : privacy,
+        publish_at: publishAt,
+        made_for_kids: prefs.kids,
+        category: prefs.category,
+      }));
+    ytUploads[key] = st.id;
+    followUpload(key, st.id);
+  } catch (e) {
+    $("yuGo").disabled = false;
+    $("yuMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+// One watcher per upload. It keeps going when the panel closes or another clip
+// opens, and only paints the box while that box is showing its clip.
+const yuFollowing = new Set();
+function followUpload(key, id) {
+  const showing = () => {
+    const c = clips[cur];
+    return c && `${jobOf(c)}/${c.file}` === key && $("yuBox") ? c : null;
+  };
+  const paint = (st) => {
+    if (!showing()) return;
+    const pct = st.size ? Math.floor((st.sent / st.size) * 100) : 0;
+    $("yuGo").disabled = true;
+    $("yuProg").hidden = false;
+    $("yuBar").style.transform = `scaleX(${st.size ? st.sent / st.size : 0})`;
+    const label = st.state === "checking" ? "Checking what YouTube did with it…"
+      : st.state === "uploading" ? `${I18N.t("Uploading")} ${pct}%`
+      : "Starting the upload…";
+    $("yuProgText").textContent = st.note || I18N.t(label);
+  };
+  if (yuFollowing.has(id)) return;
+  yuFollowing.add(id);
+
+  const tick = async () => {
+    let st;
+    try { st = await api(`/api/youtube/uploads/${encodeURIComponent(id)}`); }
+    catch (_) { yuFollowing.delete(id); delete ytUploads[key]; return; }
+
+    if (st.state === "done" || st.state === "error") {
+      yuFollowing.delete(id);
+      delete ytUploads[key];
+      if (st.state === "done") {
+        const r = st.result;
+        const i = clips.findIndex((x) => `${jobOf(x)}/${x.file}` === key);
+        if (i >= 0) clips[i].youtube = r;
+        const where = r.channel_title ? ` to ${r.channel_title}` : "";
+        toast(r.kept_private ? "Uploaded, but YouTube kept it private."
+              : r.publish_at ? `Scheduled${where}.` : `Uploaded${where}.`, r.kept_private);
+        if (showing()) {
+          renderUploadBox();
+          if (r.kept_private) {
+            $("yuMsg").innerHTML = `<div class="warn-box">${esc(I18N.t(
+              "YouTube locks uploads from a Google project that hasn't passed its API audit to private, and drops any schedule. You can make it public in Studio. The setup guide explains the audit."))}</div>`;
+          }
+        }
+      } else {
+        toast(st.error, true);
+        if (showing()) {
+          $("yuProg").hidden = true;
+          $("yuGo").disabled = false;
+          $("yuMsg").innerHTML = `<div class="err">${esc(st.error)}</div>`;
+        }
+        if (st.reconnect) loadYtu();
+      }
+      return;
+    }
+    paint(st);
+    setTimeout(tick, 1000);
+  };
+  tick();
+}
 
 // ---------------------------------------------------------------- locations
 
@@ -2048,6 +2371,7 @@ function renderSeo() {
         ? `<p class="seo-why"><b>Ranks for:</b> ${esc(seo.search_phrase)}</p>` : "")
     + (seo.why_it_works
         ? `<p class="seo-why"><b>Why this one travels:</b> ${esc(seo.why_it_works)}</p>` : "")
+    + uploadBox()
     + `</div>`
 
     // ---- Instagram Reels
@@ -2084,6 +2408,8 @@ function renderSeo() {
   $("sfIgCover").value = reels ? reels.cover_text || "" : "";
   $("sfIgAlt").value = reels ? reels.alt_text || "" : "";
   $("sfTtTags").value = tiktok ? (tiktok.hashtags || []).join(" ") : "";
+  renderUploadBox();
+  if (!ytu) loadYtu().then(renderUploadBox);
 
   box.querySelectorAll("[data-plat]").forEach((b) => {
     b.onclick = () => {
