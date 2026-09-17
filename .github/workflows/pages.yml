@@ -1,0 +1,58 @@
+# ClipMint's small public site: a home page and the privacy policy, at
+# https://klez799.github.io/clipmint/
+#
+# Google's OAuth consent screen and YouTube's API audit link here. Google only
+# accepts links on a domain it can authorise, and github.com is not one, so the
+# policy that lives in PRIVACY.md is also published on github.io. The privacy
+# page is rendered from that file on every run, so the two can never disagree.
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "PRIVACY.md"
+      - "assets/icon.png"
+      - "assets/screenshots/01-create.png"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build the site
+        run: |
+          pip install markdown
+          python site/build.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

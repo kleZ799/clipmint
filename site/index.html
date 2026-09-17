@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipMint — turn long videos into Shorts</title>
+<meta name="description" content="ClipMint is a free, open-source desktop app that turns long videos into YouTube Shorts, Reels and TikToks on your own PC, and can upload them to your YouTube channel.">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="icon.png" alt="">ClipMint</a>
+    <nav class="links">
+      <a href="#youtube">YouTube uploads</a>
+      <a href="privacy.html">Privacy policy</a>
+      <a href="https://github.com/kleZ799/clipmint">Source code</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <h1>Turn long videos into Shorts, on your own PC</h1>
+    <p class="lead">ClipMint is a free, open-source desktop app for Windows, macOS and Linux.
+      Give it a stream VOD, podcast, vlog or tutorial. It finds the best moments, cuts them
+      into vertical Shorts, writes the titles and tags, and can upload them to your YouTube
+      channel.</p>
+    <div class="btns">
+      <a class="btn primary" href="https://github.com/kleZ799/clipmint/releases/latest">Download ClipMint</a>
+      <a class="btn" href="https://github.com/kleZ799/clipmint">View the source</a>
+    </div>
+    <img class="shot" src="screenshot.png" width="1440" height="900"
+         alt="ClipMint's create screen: a layout prompt, the shape and kind-of-video pickers, and a live 9:16 preview">
+  </div>
+
+  <section>
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><h3>Finds the moments</h3>
+        <p>Transcribes the video on your computer and ranks the moments most worth posting.</p></div>
+      <div class="card"><h3>Cuts them vertical</h3>
+        <p>Renders 9:16 clips with faces and gameplay framed the way Shorts need them.</p></div>
+      <div class="card"><h3>Writes the packaging</h3>
+        <p>Drafts titles, descriptions and tags for YouTube, plus captions for Reels and TikTok. You can edit every word.</p></div>
+      <div class="card"><h3>Posts to your channel</h3>
+        <p>Optionally uploads a clip to YouTube, now or on a schedule, when you press Upload.</p></div>
+    </div>
+  </section>
+
+  <section id="youtube">
+    <h2>Uploading to YouTube</h2>
+    <p>ClipMint uses <b>YouTube API Services</b> to upload clips to your channel. It's optional,
+      and it only happens when you press <b>Upload to YouTube</b> on a clip.</p>
+    <ul>
+      <li>You sign in on <b>Google's own page</b>. ClipMint never sees your password.</li>
+      <li>It asks for two permissions: <b>upload videos</b>, and <b>view your YouTube account</b>
+        so it can show which channel is connected and check an upload's privacy status.
+        It can't delete or change anything on your channel.</li>
+      <li>Each upload is one clip, with the title, description, tags and schedule you
+        see and can edit first. Nothing is uploaded automatically.</li>
+      <li>Your sign-in and upload records stay <b>only on your computer</b>. ClipMint has no
+        servers and no accounts.</li>
+      <li><b>Disconnect</b> in Settings gives the permission back and deletes what ClipMint
+        stored. You can also remove access at
+        <a href="https://security.google.com/settings/security/permissions">Google's permissions page</a>.</li>
+    </ul>
+    <p>By connecting, you agree to the <a href="https://www.youtube.com/t/terms">YouTube Terms of
+      Service</a>, and the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>
+      applies. How ClipMint handles your data is in the
+      <a href="privacy.html">ClipMint privacy policy</a>.</p>
+  </section>
+
+  <section>
+    <h2>Who makes it</h2>
+    <p>ClipMint is built and maintained by <b>Parth Bhadana</b>, an independent developer, and
+      released under the MIT licence. Contact:
+      <a href="mailto:parthbhadana57@gmail.com">parthbhadana57@gmail.com</a>, or
+      <a href="https://github.com/kleZ799/clipmint/issues">open an issue on GitHub</a>.</p>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© Parth Bhadana · MIT licence</span>
+    <a href="privacy.html">Privacy policy</a>
+    <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>
+    <a href="https://github.com/kleZ799/clipmint">GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>

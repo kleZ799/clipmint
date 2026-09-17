@@ -67,3 +67,6 @@ READ ME - what is in here.txt
 # ClipMint's Google client for YouTube uploads, written by build_exe.py from a
 # secret. YouTube's API policies forbid credentials in open source projects.
 webapp/youtube_client.json
+
+# GitHub Pages output, built by site/build.py
+_site/
