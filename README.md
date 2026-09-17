@@ -290,6 +290,27 @@ box.
 
 <img src="assets/screenshots/07-reels.png" alt="Boost on the same clip, on the Instagram Reels tab: the caption with its character count, the note about the 125-character fold, two ranked caption options, and hashtags" width="880">
 
+### Post it to your channel, now or on a schedule
+
+Connect your YouTube channel once in **Settings**, and the YouTube tab in
+**Boost** gets an **Upload to YouTube** button. It sends the clip with the
+title, description and tags exactly as they are in the boxes, as public,
+unlisted, private, or **scheduled** for a time you pick, with a category and
+the made-for-kids answer. A progress bar follows it, and when it lands the clip
+shows **Open in Studio**.
+
+It goes through **YouTube's official API**. You sign in on Google's own page,
+ClipMint never sees your password, and the permission it gets can upload but
+can't delete or change anything. **Disconnect** hands the permission back. No
+bot clicks around YouTube Studio, which would break YouTube's terms and put
+your channel at risk.
+
+One catch, and it's Google's: uploads from a Google project that hasn't passed
+YouTube's API audit are **kept private**. The app tells you when that happens.
+[docs/youtube-upload.md](docs/youtube-upload.md) walks through the setup, the
+audit, and what ClipMint does to pass it, and [PRIVACY.md](PRIVACY.md) says
+what is stored and where: on your PC, and nowhere else.
+
 ### Written from a playbook that keeps up with the algorithms
 
 The packaging is written by an AI working as a social media strategist, from a
@@ -1135,6 +1156,15 @@ renderer over the original download with new timestamps, which is why the span
 can grow as well as shrink — trimming the rendered file could only ever remove.
 Clip filenames are resolved against the job's own directory and rejected if they
 escape it.
+
+**Uploading is OAuth plus a resumable upload.** Connect opens Google's consent
+page in the real browser (Google refuses sign-ins inside embedded webviews),
+with a PKCE challenge, and Google redirects back to the app's own loopback
+server. The clip then goes up in 8 MB chunks. After a dropped connection the app
+asks YouTube how much arrived and carries on from there, instead of starting a
+200 MB file again. ClipMint's Google client is written into release builds from
+a GitHub secret, because YouTube's policies forbid credentials in open-source
+code.
 
 ### The engine
 
