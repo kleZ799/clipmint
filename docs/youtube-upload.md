@@ -59,9 +59,15 @@ Google calls this area **Google Auth Platform** (older consoles call it
    - App name: `ClipMint`
    - User support email: your email
    - App logo: optional (adding one means Google has to review your branding)
-   - App home page: `https://github.com/kleZ799/clipmint`
-   - Privacy policy: `https://github.com/kleZ799/clipmint/blob/main/PRIVACY.md`
+   - App home page: `https://klez799.github.io/clipmint/`
+   - Privacy policy: `https://klez799.github.io/clipmint/privacy.html`
+   - Authorized domain: `klez799.github.io`
    - Developer contact email: your email
+
+   Use the github.io links, not github.com ones. Google only accepts links
+   on a domain it can list as authorized, and github.com isn't yours to
+   authorize. The site is built from `site/` and `PRIVACY.md` by the **Site**
+   workflow, so the published policy always matches the repo.
 2. **Audience**
    - User type: **External**
    - Add your own Google account under **Test users** for now.
@@ -178,8 +184,9 @@ uploads can be public.
 **Have these ready:**
 
 - The **project number** (Cloud console → Dashboard)
-- The app's public page: `https://github.com/kleZ799/clipmint`
-- The privacy policy: `https://github.com/kleZ799/clipmint/blob/main/PRIVACY.md`
+- The app's home page: `https://klez799.github.io/clipmint/`
+- The privacy policy: `https://klez799.github.io/clipmint/privacy.html`
+- The source code: `https://github.com/kleZ799/clipmint`
 - **How it uses the API**, in plain words. For example:
   > ClipMint is a free, open-source desktop app for creators. It cuts their own
   > long videos, such as stream VODs and podcasts, into vertical Shorts.
@@ -203,20 +210,19 @@ policy III.H says they can ask for access to test the app.
 
 Only needed to ship the client to more than 100 people. It asks for:
 
-- **A homepage and privacy policy on a domain you own and have verified** in
-  Google Search Console. A `github.com/...` URL can't be verified as yours.
-  Options:
-  - a GitHub Pages site on a **custom domain** (about $10 a year), with
-    `PRIVACY.md` published there
-  - `kleZ799.github.io`, which can be verified in Search Console, though it's
-    less certain that Google's OAuth review accepts it
+- **A homepage and privacy policy on a domain you have verified** in Google
+  Search Console. ClipMint's are on `klez799.github.io`: add it as a **URL
+  prefix** property (`https://klez799.github.io/clipmint/`) and verify it with
+  the HTML-tag method, by putting Google's `<meta>` tag in `site/index.html`.
+  If Google's review refuses a github.io address, the fallback is a custom
+  domain (about $10 a year) pointed at the same GitHub Pages site.
 - **A demo video** (unlisted on YouTube) showing the whole sign-in, the consent
   screen with both scopes, and the features that use each scope
 - **A written justification for each scope.** Use the same text as the audit.
 
 The link in the app (`EXTERNAL_LINKS["privacy"]` in `webapp/server.py`) and the
-one on the consent screen must match. Change both if the policy moves to your
-domain.
+one on the consent screen must match. Both point at
+`https://klez799.github.io/clipmint/privacy.html`; change both if the site moves.
 
 ---
 
@@ -236,7 +242,7 @@ a checklist.
 | Actions are user-started and clearly YouTube actions (III.C.2, III.I.2) | One clip at a time, from a red **Upload to YouTube** button |
 | User keeps final control; values aren't altered (III.C.3) | Uploads exactly what's in the boxes. Anything YouTube would reject is refused with the reason, never trimmed |
 | Links YouTube's Terms and Google's Privacy Policy (III.A.1, III.A.2.c) | Settings → Post to your channel |
-| Privacy policy with the required contents (III.A.2) | `PRIVACY.md` |
+| Privacy policy with the required contents (III.A.2) | `PRIVACY.md`, published at klez799.github.io/clipmint/privacy.html |
 | Easy revocation, with data deleted (III.D.2.b, III.E.4.g) | **Disconnect** revokes at Google and deletes the token, channel details and upload records; a link to Google's permissions page is in the app |
 | Keeps API data no longer than 30 days (III.E.4) | Channel details refreshed or dropped at 30 days; upload records swept at startup |
 | Identifies itself honestly (III.D.2.b.2) | App name `ClipMint` on the consent screen; the policy says who makes it |
@@ -244,8 +250,8 @@ a checklist.
 ### What you still have to do
 
 1. Create the project and client (section 1), and **publish** it to production.
-2. Make sure `PRIVACY.md` is live at the URL above. It is once this commit is
-   pushed.
+2. Put the github.io home page, privacy policy and authorized domain on the
+   **Branding** page (1.3). The site itself is already live.
 3. Record the demo video and submit the audit form (3.1).
 4. Before shipping to more than 100 people: a verified domain and OAuth
    verification (3.2).
