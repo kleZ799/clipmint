@@ -836,6 +836,42 @@ spike could still kill a run. **Classifying a failure correctly is what decides
 whether the response to it is right** — the same distinction as transient vs
 permanent in [the taxonomy above](#10-cs-reliability-and-failure-design).
 
+### Resumable uploads: ask the other side what it has
+
+A 200 MB clip over a home connection can fail partway through. The naive answer
+(retry the whole request) turns one dropped packet into a restart, and on a
+flaky line it may never finish.
+
+YouTube's **resumable upload protocol** makes the upload a sequence of chunks
+against a session URL. The key design choice is **who owns the truth about
+progress**: after every chunk, the server answers `308 Resume Incomplete` with a
+`Range: bytes=0-n` header, and the client's next offset comes from *that*, never
+from its own count of what it sent. After a failure the client sends an empty
+request with `Content-Range: bytes */total`, which just asks "how much do you
+have?"
+
+That's the same reasoning as TCP's acknowledgements, or a database replica
+asking the primary for its log position. **Sent is not received.** The only
+reliable progress marker is the receiver's. Combined with exponential backoff,
+a failure costs one 8 MB chunk and a short wait.
+
+### Refuse, don't rewrite
+
+YouTube rejects a title over 100 characters. The app could quietly cut it to
+100 and upload, and it doesn't. It refuses with the length and lets the person
+fix it.
+
+The general principle is **fail loudly at the boundary, rather than repairing
+input into something nobody wrote.** A silently truncated title can end
+mid-word on a public video. A silently dropped tag is a tag somebody wanted.
+Refusing costs one retry, and the result is exactly what the person meant.
+YouTube's policies require it as well: values a user provided must not be
+altered without their consent.
+
+It's the mirror image of how model output is handled (section 11). Text from a
+model is untrusted and gets clamped. Text from the person is authoritative and
+gets checked, never changed.
+
 ### A ladder, cheapest rung first
 
 YouTube sometimes refuses a download with "confirm you're not a bot". There are
@@ -945,7 +981,8 @@ correct. `os.path.basename` strips directory components as a second layer.
 ### Secrets
 
 API keys live in `%APPDATA%\ClipMint\settings.json`, outside the repo,
-never in source. Precedence is environment first, then that file — so CI or a
+never in source. The YouTube sign-in token sits beside them in
+`youtube_token.json`. Precedence is environment first, then that file — so CI or a
 power user can override without editing anything.
 
 **Known weakness, and say it before they find it:** the file is plaintext.
@@ -977,6 +1014,54 @@ sessions — and it stops this app just as firmly, which is correct. A Mac guard
 Safari's cookies with **Full Disk Access** instead, a permission the user grants
 per app. The app's job is not to get around either; it is to say which lock it
 hit and what the legitimate way through is.
+
+### Delegated authorisation: OAuth, and PKCE for an app that can't keep a secret
+
+Uploading to someone's channel needs their permission, and asking for their
+Google password would be the wrong way to get it. The app would hold a
+credential that can do *everything*, forever. **OAuth 2.0** splits it apart:
+
+- The user proves who they are to Google, on Google's page.
+- Google hands the app a **token** scoped to exactly what was asked
+  (`youtube.upload`, `youtube.readonly`), which the user can revoke without
+  changing their password.
+
+A server-side web app keeps a *client secret* to prove the token request is
+really from it. A desktop app can't: anything shipped inside a download can be
+pulled out of it. So installed apps use **PKCE** (Proof Key for Code Exchange):
+
+1. The app generates a random `code_verifier` and keeps it in memory.
+2. It sends Google only `SHA-256(verifier)`, as the `code_challenge`.
+3. Google redirects back with a one-time code. To exchange it for a token, the
+   app must present the verifier, which hashes to the challenge.
+
+Anything that intercepts the code on its way back (another program listening on
+the same machine) can't use it, because the verifier never left memory. It's a
+**commitment scheme**: publish the hash now, reveal the preimage later.
+
+The redirect goes to a **loopback address**, `http://127.0.0.1:{port}/...`,
+which Google allows for installed apps on any port, so it lands back in the
+app's own local server. A random **`state`** value, checked on return, stops a
+redirect the app never started from being accepted: that attack is CSRF against
+the sign-in.
+
+The **least privilege** part is real too. The app asks for two scopes and
+checks which ones were granted, because Google's consent screen lets people
+untick them one at a time.
+
+### Rules that apply to the platform, not just the code
+
+Using YouTube's API means agreeing to its developer policies, and several of
+them shape the code rather than just the paperwork:
+
+- **Credentials never live in an open-source repo**, so the client arrives at
+  build time from a CI secret. That's the same idea as keeping `.env` out of
+  git, enforced by a platform instead of good manners.
+- **Stored data has a lifetime.** Anything YouTube returns is refreshed or
+  dropped within 30 days, and deleted on disconnect. Data retention is a design
+  decision with a timer on it, not an afterthought.
+- **What the person typed is what gets sent.** See "refuse, don't rewrite" in
+  section 10.
 
 ### Not trusting the model's output
 
