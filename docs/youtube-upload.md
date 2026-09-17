@@ -29,6 +29,11 @@ tells you when YouTube kept it private, and you can flip it to public in Studio
 with one click. After the audit passes, public and scheduled uploads work as
 chosen.
 
+The lock isn't always applied. ClipMint's own project, unaudited, uploaded
+a public video that stayed public in testing on 17 September 2026. Treat the
+private lock as something that *can* happen rather than something that always
+does, and check Studio a few hours after a first upload.
+
 ---
 
 ## 1. Set up the Google client
@@ -160,7 +165,8 @@ ignores it) does the same thing.
   any time.
 - **Every downloader shares your project's limits.** That includes the daily
   upload allowance and, until verification, the 100-user cap.
-- **Until your project passes the audit, uploads are private for everyone.**
+- **Until your project passes the audit, YouTube can lock uploads to private**
+  for everyone who uses the built-in client.
 
 ---
 

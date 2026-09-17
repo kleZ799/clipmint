@@ -9,8 +9,9 @@ podcasts and tutorials. It works out what kind of video it is, finds the moments
 worth posting, cuts them to 9:16, and writes the title, captions and hashtags
 for **YouTube Shorts, Instagram Reels and TikTok**.
 
-No subscription, no per-clip credits, no watermark, and nothing is uploaded —
-transcription and ranking both run locally.
+No subscription, no per-clip credits, no watermark, and nothing is uploaded
+unless you press Upload — transcription and ranking both run locally. When you
+do, a clip goes straight to your YouTube channel, now or on a schedule.
 
 [![Download](https://img.shields.io/badge/⬇_Download_for_Windows-219_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
