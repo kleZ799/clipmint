@@ -478,7 +478,9 @@ def disconnect() -> Dict:
 def status() -> Dict:
     c = client()
     tok = _load_token()
-    if tok and c and tok.get("client_id") != c["id"]:
+    # A sign-in is only usable with the client that issued it. With that client
+    # gone, calling this "connected" would offer an Upload button that fails.
+    if tok and (not c or tok.get("client_id") != c["id"]):
         tok = None
     if (tok and "channel_title" in tok
             and time.time() - tok.get("channel_read_at", 0) >= KEEP_DAYS * 86400):
