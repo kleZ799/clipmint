@@ -301,6 +301,14 @@ unlisted, private, or **scheduled** for a time you pick, with a category and
 the made-for-kids answer. A progress bar follows it, and when it lands the clip
 shows **Open in Studio**.
 
+A whole run at once? **Upload all**, beside **Rewrite titles**, lists every
+clip with the title, description and tags it will go up with. Edit any of them,
+untick the ones to skip, and pick a first publish time and a gap (every 3 hours
+up to every 2 days). Each clip shows its own publish time before anything is
+sent, and then they upload one after another while you carry on.
+
+<img src="assets/screenshots/11-upload-all.png" alt="Upload all on a Deadpool run: scheduled, the first at 8 PM and then one a day, category Gaming, and each clip listed with its publish time, title, description and tags, ready to upload 9 clips" width="880">
+
 <img src="assets/screenshots/09-youtube-upload.png" alt="Boost on a Firewatch clip, scrolled to Post it to your channel: going to Parth Bhadana, scheduled for 7 PM, category Gaming, the made-for-kids question, and the Upload to YouTube button" width="880">
 
 It goes through **YouTube's official API**. You sign in on Google's own page,
