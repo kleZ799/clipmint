@@ -6,8 +6,8 @@
 # where a copy came from.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 16, 0, 0),
-    prodvers=(1, 16, 0, 0),
+    filevers=(1, 17, 0, 0),
+    prodvers=(1, 17, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -23,14 +23,14 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'Parth Bhadana'),
           StringStruct('FileDescription', 'ClipMint — turn long videos into Shorts, Reels and TikToks'),
-          StringStruct('FileVersion', '1.16.0'),
+          StringStruct('FileVersion', '1.17.0'),
           StringStruct('InternalName', 'ClipMint'),
           StringStruct('LegalCopyright',
                        'Copyright (c) 2026 Parth Bhadana. MIT licensed. '
                        'github.com/kleZ799/clipmint'),
           StringStruct('OriginalFilename', 'ClipMint.exe'),
           StringStruct('ProductName', 'ClipMint'),
-          StringStruct('ProductVersion', '1.16.0'),
+          StringStruct('ProductVersion', '1.17.0'),
           StringStruct('Comments',
                        'Built by Parth Bhadana. '
                        'youtube.com/@ParthBhadana799 | github.com/kleZ799 | '
