@@ -2855,6 +2855,45 @@ returns the running upload's id. The page polls
 `GET /api/youtube/uploads/{id}` once a second, and the watcher keeps going when
 the panel closes, painting only while that clip is on screen.
 
+### One queue, and stopping it when YouTube says no
+
+`start_upload` doesn't start a thread per upload. It appends to `_queue`, and a
+single worker thread takes them in order. Several uploads at once would share
+one home connection's upload bandwidth and finish no sooner, and a queue gives
+every waiting clip something true to report: `upload_status` adds `ahead`, how
+many are in front of it.
+
+Some refusals will refuse everything after them too: the channel's upload
+limit for the day, the project's quota, the API switched off, a channel that
+doesn't exist. `UploadError` carries YouTube's `reason`, and when it's one of
+`_HALTING`, `_stop_waiting` fails everything still queued with that same
+message. Twenty clips then fail once, with the reason, instead of twenty times.
+
+### Upload all
+
+Each run's header has **Upload all**. It opens a dialog built from that run's
+clips, not a background job:
+
+- every clip with the title, description and tags it will go up with, all
+  editable, and a tick to include or skip it (clips already on YouTube start
+  unticked)
+- one privacy, category and made-for-kids choice for the batch
+- for a schedule, a first time and a gap; each ticked clip's publish time is
+  computed in order and shown on its row before anything is sent
+
+Nothing is sent until the button is pressed. That's deliberate: YouTube's API
+policies want uploads to be the person's specific choice, with their say over
+what is published (III.C.3, III.I.2), and a list of exactly what will go up is
+how a batch stays that.
+
+On the press, each ticked clip is handled in order. If its words changed, they
+are saved first with `PUT …/seo`, because saving a title renames the file and
+the upload must read the renamed one. Then `POST …/youtube` queues it. The
+dialog polls every queued id and paints each row: waiting and how many are
+ahead, the percentage, then the schedule or YouTube's error. Closing the
+dialog doesn't stop anything; reopening it while a batch runs shows the same
+batch.
+
 ### Reading the upload back
 
 The upload's own response doesn't reliably show the private lock. So when the
