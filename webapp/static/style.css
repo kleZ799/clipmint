@@ -1341,8 +1341,9 @@ label.fld > span a:hover { text-decoration: underline; }
 /* Posting a clip straight to the channel, under the YouTube boxes. */
 .yu-box {
   border-top: 1px solid var(--line);
-  margin-top: 6px;
-  padding-top: 16px;
+  margin: 6px 0 18px;
+  padding: 16px 0 18px;
+  border-bottom: 1px solid var(--line);
 }
 .yu-box h4 { font: 600 13px/1.3 inherit; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .yu-box h4 svg { width: 18px; height: 18px; color: var(--red); }
