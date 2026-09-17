@@ -53,6 +53,7 @@ anyone.
     - 16a. [Subprocesses: windows, and stopping them](#16a-subprocesses-windows-and-stopping-them)
     - 16b. [Shipping updates to an installed .exe](#16b-shipping-updates-to-an-installed-exe)
     - 16c. [Telling somebody a run has finished](#16c-telling-somebody-a-run-has-finished)
+    - 16d. [Posting a clip to YouTube](#16d-posting-a-clip-to-youtube)
 
 **Reference**
 17. [Rough edges and stale docs](#17-rough-edges-and-stale-docs)
@@ -2751,6 +2752,130 @@ It is the same mechanism as the SSE `: ping` in section 14, pointed the other
 way. There a heartbeat proves a connection is still alive; here its absence
 proves a window is not.
 
+## 16d. Posting a clip to YouTube
+
+`webapp/youtube_upload.py`, behind the routes under `/api/youtube` and
+`POST …/clips/{file}/youtube`. The setup a user or maintainer does is in
+[docs/youtube-upload.md](docs/youtube-upload.md); this section is how the code
+works.
+
+### Why the API, and not a scripted browser
+
+The obvious shortcut is to drive YouTube Studio's upload page with Playwright:
+no Google Cloud project, no audit. It was turned down for three reasons:
+
+- YouTube's terms forbid automated access.
+- Studio's markup changes without notice, so the upload would break silently.
+- A flagged channel is a far worse outcome than a setup step.
+
+The Data API is the route YouTube built for this. Its one real cost is that an
+unaudited project's uploads are locked private, and the code is built around
+saying so rather than hiding it.
+
+### Signing in: OAuth for an installed app
+
+`POST /api/youtube/connect` builds Google's consent URL and opens it with
+`webbrowser`, in the user's real browser, never the app window: Google refuses
+sign-ins in embedded webviews. The redirect URI is this same local server,
+`http://127.0.0.1:{port}/api/youtube/callback`. Google allows any loopback port
+for a Desktop app client, so it survives the app picking a free port each
+launch.
+
+Two values guard the round trip:
+
+- **`state`**, random and remembered in `_pending`, so a callback the app never
+  asked for finds nothing and is refused.
+- **PKCE**: a random `code_verifier` stays in memory, and only its SHA-256
+  (`code_challenge`) goes to Google. The code that comes back to the loopback
+  address is useless without the verifier, so another program on the machine
+  that catches the redirect gets nothing.
+
+`access_type=offline` with `prompt=consent` makes Google return a refresh token
+every time, not only on the first consent. The token goes to
+`youtube_token.json` in the config folder, written through a temp file and
+`os.replace`, owner-only where the OS supports it. The page follows the sign-in
+by polling `GET /api/youtube` every two seconds until `connect_state` leaves
+`waiting`, because it finishes in a different window.
+
+Google's consent screen lets people untick individual permissions, so the
+callback checks the granted `scope` string. A sign-in without `youtube.upload`
+is refused with an explanation instead of failing at the first upload.
+
+### Which client
+
+`client()` resolves in order:
+
+1. the user's own client, from `YOUTUBE_CLIENT_ID`/`_SECRET` (environment, then
+   `settings.json`)
+2. the bundled `webapp/youtube_client.json`
+
+The bundled file is **never in git**. YouTube's developer policies (III.D.1)
+forbid credentials in open-source projects, so `build_exe.py` writes it from the
+`CLIPMINT_YOUTUBE_CLIENT` secret the release workflow passes in. It validates
+the JSON first and stops the build over a Web application client, which would
+otherwise fail much later at the redirect. A sign-in remembers the client that
+issued it; switching clients disconnects, since the old refresh token is useless
+to the new one.
+
+### Uploading: the resumable protocol
+
+`start_upload` runs `_run` on a daemon thread and returns an id at once, the
+same shape as the job queue.
+
+1. **Initiate.** `POST` the metadata JSON to the upload endpoint with
+   `uploadType=resumable`. The response's `Location` header is a session URL.
+2. **Send in chunks** of 8 MiB, which must be a multiple of 256 KiB. Each `PUT`
+   carries `Content-Range: bytes a-b/total`. A `308` answer carries
+   `Range: bytes=0-n`, the server's word on what it has, so the next offset
+   comes from that header and not from what was sent.
+3. **On a 5xx or a dropped connection:** back off exponentially, then `PUT` an
+   empty body with `Content-Range: bytes */total` to ask where to resume. The
+   cost of a failure is one chunk.
+4. **On a 401**, refresh the access token and resend, at most twice.
+5. **A 200/201** carries the video resource.
+
+The same `key` (job and file) can't be uploading twice at once: a second press
+returns the running upload's id. The page polls
+`GET /api/youtube/uploads/{id}` once a second, and the watcher keeps going when
+the panel closes, painting only while that clip is on screen.
+
+### Reading the upload back
+
+The upload's own response doesn't reliably show the private lock. So when the
+person asked for anything other than private, `_run` fetches the video's
+`status` once more. If a requested schedule came back without `publishAt`, or a
+public or unlisted request came back private, the result is marked
+`kept_private` and the page explains the audit instead of saying
+"Uploaded" as if nothing happened.
+
+### Held to YouTube's rules, not rewritten to fit them
+
+`build_metadata` refuses anything YouTube would reject, with the reason:
+
+- a title over 100 characters
+- a description over 5,000 **bytes**
+- tags over 500 characters, counted YouTube's way (a tag with a space costs two
+  extra for the quotes YouTube adds, plus one per comma)
+- `<` or `>` anywhere
+- a schedule under 10 minutes away
+- a category outside the list
+
+It never trims or substitutes. Policy III.C.3 says user-provided values must
+not be altered without consent, and a silently shortened title is exactly that.
+Scheduling sets `privacyStatus: private` with `publishAt`, which is how YouTube
+schedules: a private video it makes public at that time.
+
+### Keeping what YouTube hands back no longer than allowed
+
+Policy III.E.4 caps stored API data at 30 days:
+
+- The channel name and id carry `channel_read_at`. `status()` stops showing
+  them once they're 30 days old and refreshes them on a background thread.
+- Each clip's `youtube` record (video id, time, privacy) is swept by
+  `JobStore.forget_youtube(only_expired=True)` at the end of `restore()`.
+- `POST /api/youtube/disconnect` revokes the token at Google, deletes it, and
+  runs `forget_youtube()` over every run.
+
 ## 17. Rough edges and known limits
 
 Everything in this section is true of the code as it stands. An earlier draft of
@@ -3000,6 +3125,19 @@ rather than guessing from what the button last did.
 | `POST /api/jobs/{id}/seo` | Write or rewrite upload metadata (`?force=true` to overwrite, `?only={file}` for one clip) |
 | `PUT …/clips/{file}/seo` | Save metadata the user typed — YouTube, Reels and TikTok fields — or a corrected `subject`; renames the mp4 to a new title |
 | `POST /api/jobs/{id}/reveal` | Show a clip in the file manager |
+
+### Uploading to YouTube
+
+| Route | Purpose |
+|---|---|
+| `GET /api/youtube` | Which client is in use (`yours` / `builtin` / none), whether a channel is connected and its name, the state of a sign-in in progress, `pinned` when an environment variable sets the client, and the category list. **Never returns a token or secret** |
+| `POST /api/youtube/client` | Save the user's Desktop app client from its JSON or a path to it; an empty `client` goes back to the bundled one. Rejects a Web application client |
+| `POST /api/youtube/connect` | Open Google's consent page in the real browser, with PKCE and a loopback redirect |
+| `GET /api/youtube/callback` | Where Google sends the browser back. Checks `state`, exchanges the code, checks the granted scopes, and renders a page saying what happened |
+| `POST /api/youtube/disconnect` | Revoke at Google, delete the token, and forget every clip's upload record |
+| `POST …/clips/{file}/youtube` | Upload one clip in the background with the `title`, `description`, `tags`, `privacy`, `publish_at`, `made_for_kids` and `category` sent. Validated first; returns the upload's status with its `id` |
+| `GET /api/youtube/uploads/{id}` | Bytes sent, size, `state` (`queued` / `starting` / `uploading` / `checking` / `done` / `error`), and the result: video id, privacy, schedule and `kept_private` |
+| `POST /api/youtube/open` | Open an uploaded video in Studio or on YouTube, by a validated id only |
 
 ---
 
