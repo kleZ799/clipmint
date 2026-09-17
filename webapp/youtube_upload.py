@@ -120,6 +120,17 @@ class NotConnected(Exception):
 class UploadError(Exception):
     """An upload YouTube refused, with a message a person can act on."""
 
+    def __init__(self, message: str, reason: str = "") -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+# Refusals that will refuse every upload after this one too, today. When one
+# arrives, whatever is still waiting in the queue is stopped with the same
+# explanation instead of each clip being sent to find out for itself.
+_HALTING = ("quotaExceeded", "uploadLimitExceeded", "youtubeSignupRequired",
+            "accessNotConfigured", "SERVICE_DISABLED", "insufficientPermissions")
+
 
 # --- the client -----------------------------------------------------------
 
@@ -631,7 +642,7 @@ def _resume_offset(session: str, size: int) -> Optional[int]:
         rng = r.headers.get("Range", "")
         m = re.match(r"bytes=0-(\d+)", rng)
         return int(m.group(1)) + 1 if m else 0
-    raise UploadError(_explain(r))
+    raise UploadError(_explain(r), _google_error(r)["reason"])
 
 
 def _run(uid: str, path: Path, meta: Dict, on_done: Optional[Callable[[Dict], None]]) -> None:
@@ -653,7 +664,7 @@ def _run(uid: str, path: Path, meta: Dict, on_done: Optional[Callable[[Dict], No
                               headers={**_headers(_access_token(force=True)), **init_headers},
                               timeout=HTTP_TIMEOUT)
         if not r.ok or "Location" not in r.headers:
-            raise UploadError(_explain(r))
+            raise UploadError(_explain(r), _google_error(r)["reason"])
         session = r.headers["Location"]
 
         st["state"] = "uploading"
@@ -689,7 +700,7 @@ def _run(uid: str, path: Path, meta: Dict, on_done: Optional[Callable[[Dict], No
                 if r is not None and r.status_code == 404:
                     raise UploadError("YouTube dropped the upload session. Start the upload again.")
                 if r is not None and r.status_code < 500:
-                    raise UploadError(_explain(r))
+                    raise UploadError(_explain(r), _google_error(r)["reason"])
 
                 # A 5xx or a dropped connection: back off, then ask where to resume.
                 failures += 1
@@ -751,7 +762,12 @@ def _run(uid: str, path: Path, meta: Dict, on_done: Optional[Callable[[Dict], No
 
     except NotConnected as e:
         st.update(state="error", error=str(e), reconnect=True)
-    except (UploadError, ValueError) as e:
+        _stop_waiting(str(e))
+    except UploadError as e:
+        st.update(state="error", error=str(e))
+        if e.reason in _HALTING:
+            _stop_waiting(str(e))
+    except ValueError as e:
         st.update(state="error", error=str(e))
     except requests.RequestException as e:
         st.update(state="error", error=f"Couldn't reach YouTube ({e}).")
@@ -763,12 +779,40 @@ def _run(uid: str, path: Path, meta: Dict, on_done: Optional[Callable[[Dict], No
         st["finished"] = time.time()
 
 
+# Uploads run one at a time, in the order they were asked for. Several at once
+# would not finish sooner on a home connection -- they share the same upload
+# bandwidth -- and a queue means "Upload all" on twenty clips is twenty items
+# waiting their turn, each of which can be seen, rather than twenty threads.
+_queue: List[tuple] = []
+_queue_ready = threading.Condition(_lock)
+_worker: Optional[threading.Thread] = None
+
+
+def _stop_waiting(message: str) -> None:
+    """Cancel everything still queued, with the reason the last upload failed."""
+    with _lock:
+        for uid, _path, _meta, _done in _queue:
+            _uploads[uid].update(state="error", error=f"Not uploaded: {message}",
+                                 finished=time.time())
+        _queue.clear()
+
+
+def _work() -> None:
+    while True:
+        with _queue_ready:
+            while not _queue:
+                _queue_ready.wait()
+            uid, path, meta, on_done = _queue.pop(0)
+        _run(uid, path, meta, on_done)
+
+
 def start_upload(key: str, path: Path, meta: Dict,
                  on_done: Optional[Callable[[Dict], None]] = None) -> str:
-    """Upload in the background. `key` names the clip, so it is not sent twice at once."""
+    """Queue an upload. `key` names the clip, so it is not sent twice at once."""
+    global _worker
     if not _load_token():
         raise NotConnected("YouTube isn't connected. Connect it in Settings.")
-    with _lock:
+    with _queue_ready:
         for uid, st in _uploads.items():
             if st["key"] == key and st["state"] not in ("done", "error"):
                 return uid
@@ -778,14 +822,24 @@ def start_upload(key: str, path: Path, meta: Dict,
         uid = uuid.uuid4().hex
         _uploads[uid] = {"id": uid, "key": key, "state": "queued", "sent": 0, "size": 0,
                          "note": "", "error": "", "result": None, "started": now}
-    threading.Thread(target=_run, args=(uid, path, meta, on_done),
-                     name=f"youtube-upload-{uid[:6]}", daemon=True).start()
+        _queue.append((uid, path, meta, on_done))
+        if _worker is None or not _worker.is_alive():
+            _worker = threading.Thread(target=_work, name="youtube-uploads", daemon=True)
+            _worker.start()
+        _queue_ready.notify()
     return uid
 
 
 def upload_status(uid: str) -> Optional[Dict]:
-    st = _uploads.get(uid)
-    return dict(st) if st else None
+    with _lock:
+        st = _uploads.get(uid)
+        if not st:
+            return None
+        out = dict(st)
+        # How many are ahead of it, so a queued clip can say "3rd in line"
+        # rather than looking stuck.
+        out["ahead"] = next((n for n, item in enumerate(_queue) if item[0] == uid), None)
+        return out
 
 
 def active_for(key: str) -> Optional[Dict]:
