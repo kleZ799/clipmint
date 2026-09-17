@@ -770,6 +770,54 @@
     </div>
   </div>
 </div>
+<!-- upload a whole run: every clip reviewed, then queued -->
+<div class="bulk hidden" id="bulk" role="dialog" aria-modal="true" aria-labelledby="bkTitle">
+  <div class="bk-box">
+    <div class="bk-head">
+      <div>
+        <h3 id="bkTitle"><svg><use href="#i-yt"/></svg>Upload all to YouTube</h3>
+        <p class="bk-sub" id="bkSub"></p>
+      </div>
+      <button class="ibtn" id="bkClose" title="Close"><svg><use href="#i-close"/></svg></button>
+    </div>
+
+    <div class="bk-settings">
+      <label class="fld"><span>Who can see them</span>
+        <select id="bkPrivacy">
+          <option value="schedule">Scheduled, spaced out</option>
+          <option value="public">Public, all now</option>
+          <option value="unlisted">Unlisted</option>
+          <option value="private">Private</option>
+        </select></label>
+      <label class="fld" id="bkWhenFld"><span>First goes public at</span>
+        <input type="datetime-local" id="bkWhen"></label>
+      <label class="fld" id="bkGapFld"><span>Then one every</span>
+        <select id="bkGap">
+          <option value="3">3 hours</option>
+          <option value="6">6 hours</option>
+          <option value="12">12 hours</option>
+          <option value="24">day</option>
+          <option value="48">2 days</option>
+        </select></label>
+      <label class="fld"><span>Category</span><select id="bkCat"></select></label>
+      <label class="check bk-kids"><input type="checkbox" id="bkKids"><span>Made for kids</span></label>
+    </div>
+
+    <div class="bk-list" id="bkList"></div>
+
+    <div class="bk-foot">
+      <p class="hint" id="bkNote">Each clip uploads with the words shown here, in this order.
+        Edits are saved to the clip. Nothing uploads until you press the button, and they go up
+        one at a time. Only upload what you have the rights to.</p>
+      <div id="bkMsg"></div>
+      <div class="c-actions">
+        <button class="btn ghost" id="bkCancel">Cancel</button>
+        <button class="btn yt" id="bkGo"><svg><use href="#i-yt"/></svg><span id="bkGoLabel">Upload</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="/static/i18n.js"></script>

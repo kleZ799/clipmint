@@ -1011,6 +1011,308 @@ function followUpload(key, id) {
   tick();
 }
 
+// ---- Upload all: a whole run, reviewed first, then queued one by one
+//
+// Every clip is listed with the words it will go up with, and nothing is sent
+// until the button is pressed. That review is the point, not a formality:
+// YouTube's API policies ask that uploads be the person's own specific choice,
+// with their say over what gets published (III.C.3, III.I.2).
+
+let bulk = null;        // { runId, rows: [{key, job, file, i, ...}], running, ids }
+
+function clipKey(c) { return `${jobOf(c)}/${c.file}`; }
+
+function bulkRows() { return bulk ? bulk.rows : []; }
+
+// The chosen publish time for the n-th ticked clip, or null when not scheduling.
+function bulkWhen(n) {
+  if ($("bkPrivacy").value !== "schedule") return null;
+  const first = new Date($("bkWhen").value);
+  if (isNaN(first)) return null;
+  return new Date(first.getTime() + n * (+$("bkGap").value) * 3600 * 1000);
+}
+
+function bulkWhenText(d) {
+  return d.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short",
+                                       hour: "numeric", minute: "2-digit" });
+}
+
+function paintBulkPlan() {
+  const scheduling = $("bkPrivacy").value === "schedule";
+  $("bkWhenFld").hidden = !scheduling;
+  $("bkGapFld").hidden = !scheduling;
+  let n = 0;
+  for (const r of bulkRows()) {
+    const row = $("bkList").querySelector(`[data-bk="${r.idx}"]`);
+    if (!row) continue;
+    const on = row.querySelector("input[type=checkbox]").checked;
+    row.classList.toggle("off", !on);
+    const when = row.querySelector(".bk-when");
+    if (on && scheduling) {
+      const d = bulkWhen(n);
+      when.textContent = d ? bulkWhenText(d) : "";
+    } else {
+      when.textContent = "";
+    }
+    if (on) n++;
+  }
+  if (!bulk.running) {
+    $("bkGoLabel").textContent = n === 1 ? "Upload 1 clip" : `Upload ${n} clips`;
+    $("bkGo").disabled = n === 0;
+  }
+}
+
+async function openBulk(runId) {
+  if (bulk && bulk.running) {
+    $("bulk").classList.remove("hidden");
+    return;
+  }
+  const run = runs.find((r) => r.id === runId);
+  if (!run) return;
+  if (!ytu) await loadYtu();
+  if (!ytu || !ytu.connected) {
+    toast("Connect your YouTube channel first — Settings, Post to your channel.", true);
+    openDrawer();
+    setTimeout(() => {
+      const h = $("ytuInfo");
+      if (h) h.closest(".d-sec").scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 300);
+    return;
+  }
+
+  const prefs = yuPrefs();
+  bulk = {
+    runId, running: false, ids: {},
+    rows: run.clips.map((c, idx) => ({
+      idx, key: clipKey(c), job: jobOf(c), file: c.file, i: c._i,
+      title: (c.seo && c.seo.title) || c.title || "",
+      description: (c.seo && c.seo.description) || "",
+      tags: ((c.seo && c.seo.tags) || []).join(", "),
+      hasSeo: !!c.seo, done: c.youtube || null, rank: c.rank || c.index || idx + 1,
+      url: c.url,
+    })),
+  };
+
+  $("bkSub").textContent = `${run.source_title || "Clips from an earlier run"} · going to `
+    + (ytu.channel_title || "your channel");
+  $("bkCat").innerHTML = (ytu.categories || []).map(([id, name]) =>
+    `<option value="${esc(id)}">${esc(I18N.t(name))}</option>`).join("");
+  $("bkCat").value = (ytu.categories || []).some(([id]) => id === prefs.category)
+    ? prefs.category : "20";
+  $("bkKids").checked = !!prefs.kids;
+  $("bkPrivacy").value = "schedule";
+  $("bkGap").value = "24";
+  $("bkWhen").value = yuDefaultWhen();
+  $("bkMsg").innerHTML = "";
+  [$("bkPrivacy"), $("bkWhen"), $("bkGap"), $("bkCat"), $("bkKids")].forEach((el) => {
+    el.disabled = false;
+  });
+
+  $("bkList").innerHTML = bulk.rows.map((r) => `
+    <div class="bk-row" data-bk="${r.idx}">
+      <input type="checkbox" ${r.done ? "" : "checked"} aria-label="Include this clip">
+      <video class="bk-thumb" src="${esc(r.url)}#t=0.5" preload="metadata" muted playsinline></video>
+      <div class="bk-fields">
+        <div class="bk-top"><b>#${esc(r.rank)}</b><span class="bk-when"></span>
+          <span class="bk-count"></span><span class="bk-state"></span></div>
+        <input type="text" class="bk-title" spellcheck="false" aria-label="Title">
+        <details>
+          <summary>Description and tags</summary>
+          <textarea class="bk-desc" rows="4" spellcheck="false" aria-label="Description"></textarea>
+          <textarea class="bk-tags" rows="2" spellcheck="false" aria-label="Tags, comma-separated"></textarea>
+        </details>
+        ${r.done ? `<p class="bk-note">Already on YouTube — ticking it uploads it again.</p>` : ""}
+        ${!r.hasSeo ? `<p class="bk-note">No title written for this one yet. Check it, or use Rewrite titles first.</p>` : ""}
+        <div class="bar bk-bar" hidden><i></i></div>
+      </div>
+    </div>`).join("");
+
+  // Filled as values, not markup, so a quote in a title can't break the page.
+  for (const r of bulk.rows) {
+    const row = $("bkList").querySelector(`[data-bk="${r.idx}"]`);
+    const title = row.querySelector(".bk-title");
+    title.value = r.title;
+    row.querySelector(".bk-desc").value = r.description;
+    row.querySelector(".bk-tags").value = r.tags;
+    const count = row.querySelector(".bk-count");
+    const paint = () => {
+      count.textContent = `${title.value.trim().length}/100`;
+      count.classList.toggle("over", title.value.trim().length > 100 || !title.value.trim());
+    };
+    title.addEventListener("input", paint);
+    paint();
+    row.querySelector("input[type=checkbox]").onchange = paintBulkPlan;
+  }
+
+  paintBulkPlan();
+  $("bulk").classList.remove("hidden");
+}
+
+["bkPrivacy", "bkWhen", "bkGap"].forEach((id) => $(id).addEventListener("change", paintBulkPlan));
+
+function closeBulk() {
+  $("bulk").classList.add("hidden");
+  if (bulk && !bulk.running) {
+    // Keep the edits on screen from being mistaken for saved ones next time.
+    $("bkList").querySelectorAll("video").forEach((v) => v.removeAttribute("src"));
+    bulk = null;
+  }
+}
+$("bkClose").onclick = closeBulk;
+$("bkCancel").onclick = closeBulk;
+$("bulk").addEventListener("click", (e) => { if (e.target === $("bulk")) closeBulk(); });
+$("bulk").addEventListener("keydown", (e) => { if (e.key === "Escape") closeBulk(); });
+
+function bulkState(r, text, kind) {
+  const row = $("bkList").querySelector(`[data-bk="${r.idx}"]`);
+  if (!row) return;
+  const st = row.querySelector(".bk-state");
+  st.textContent = text;
+  st.className = "bk-state" + (kind ? ` ${kind}` : "");
+}
+
+$("bkGo").onclick = async () => {
+  if (!bulk || bulk.running) return;
+  const privacy = $("bkPrivacy").value;
+  if (privacy === "schedule") {
+    const first = bulkWhen(0);
+    if (!first || first.getTime() < Date.now() + 10 * 60 * 1000) {
+      $("bkMsg").innerHTML = `<div class="err">Pick a first publish time at least 10 minutes from now.</div>`;
+      return;
+    }
+  }
+
+  const chosen = [];
+  for (const r of bulk.rows) {
+    const row = $("bkList").querySelector(`[data-bk="${r.idx}"]`);
+    if (!row.querySelector("input[type=checkbox]").checked) continue;
+    const title = row.querySelector(".bk-title").value.trim();
+    if (!title || title.length > 100) {
+      $("bkMsg").innerHTML = `<div class="err">Clip #${esc(r.rank)} needs a title of 1 to 100 characters.</div>`;
+      row.querySelector(".bk-title").focus();
+      return;
+    }
+    chosen.push({ r, row, title,
+                  description: row.querySelector(".bk-desc").value,
+                  tags: row.querySelector(".bk-tags").value });
+  }
+  if (!chosen.length) return;
+
+  const kids = $("bkKids").checked;
+  const category = $("bkCat").value;
+  yuRemember({ ...yuPrefs(), category, kids });
+
+  bulk.running = true;
+  $("bkMsg").innerHTML = "";
+  $("bkGo").disabled = true;
+  $("bkGoLabel").textContent = "Uploading…";
+  $("bkCancel").textContent = "Close";
+  [$("bkPrivacy"), $("bkWhen"), $("bkGap"), $("bkCat"), $("bkKids")].forEach((el) => { el.disabled = true; });
+  $("bkList").querySelectorAll("input, textarea").forEach((el) => { el.disabled = true; });
+
+  // Queue them in order. Each one's words are saved to the clip first when
+  // they changed, since saving a title renames the file the upload reads.
+  let n = 0;
+  for (const item of chosen) {
+    const { r } = item;
+    const when = bulkWhen(n++);
+    try {
+      if (!r.hasSeo || item.title !== r.title || item.description !== r.description
+          || item.tags !== r.tags) {
+        bulkState(r, "Saving…");
+        const d = await api(
+          `/api/jobs/${encodeURIComponent(r.job)}/clips/${encodeURIComponent(r.file)}/seo`,
+          json("PUT", { title: item.title, description: item.description, tags: item.tags }));
+        const c = clips.find((x) => clipKey(x) === r.key);
+        if (c) Object.assign(c, { seo: d.seo, file: d.file, url: d.url });
+        if (d.file) { r.file = d.file; r.key = `${r.job}/${d.file}`; }
+      }
+      const st = await api(
+        `/api/jobs/${encodeURIComponent(r.job)}/clips/${encodeURIComponent(r.file)}/youtube`,
+        json("POST", {
+          title: item.title, description: item.description, tags: item.tags,
+          privacy: privacy === "schedule" ? "private" : privacy,
+          publish_at: when ? when.toISOString() : null,
+          made_for_kids: kids, category,
+        }));
+      bulk.ids[r.idx] = st.id;
+      ytUploads[r.key] = st.id;       // so an open Boost panel follows it too
+      bulkState(r, "Waiting its turn");
+    } catch (e) {
+      bulkState(r, e.message, "bad");
+      if (/isn't connected|Connect it/i.test(e.message)) {
+        $("bkMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+        break;
+      }
+    }
+  }
+  followBulk();
+};
+
+async function followBulk() {
+  if (!bulk) return;
+  const b = bulk;
+  const pending = b.rows.filter((r) => b.ids[r.idx]);
+  if (!pending.length) {
+    b.running = false;
+    $("bkGoLabel").textContent = "Nothing was queued";
+    return;
+  }
+
+  let open = pending.length, uploaded = 0, kept = 0, failed = 0;
+  const finished = new Set();
+  while (open > 0) {
+    for (const r of pending) {
+      if (finished.has(r.idx)) continue;
+      let st;
+      try { st = await api(`/api/youtube/uploads/${encodeURIComponent(b.ids[r.idx])}`); }
+      catch (_) { finished.add(r.idx); open--; failed++; bulkState(r, "Lost track of this upload", "bad"); continue; }
+
+      const row = $("bkList").querySelector(`[data-bk="${r.idx}"]`);
+      const bar = row && row.querySelector(".bk-bar");
+      if (st.state === "done") {
+        finished.add(r.idx); open--; delete ytUploads[r.key];
+        const res = st.result;
+        const c = clips.find((x) => clipKey(x) === r.key);
+        if (c) c.youtube = res;
+        if (bar) bar.hidden = true;
+        if (res.kept_private) { kept++; bulkState(r, "Uploaded — YouTube kept it private", "warn"); }
+        else {
+          uploaded++;
+          bulkState(r, res.publish_at ? `Scheduled · ${bulkWhenText(new Date(res.publish_at))}`
+                                      : `On YouTube · ${res.privacy}`, "ok");
+        }
+      } else if (st.state === "error") {
+        finished.add(r.idx); open--; failed++; delete ytUploads[r.key];
+        if (bar) bar.hidden = true;
+        bulkState(r, st.error, "bad");
+      } else if (st.state === "queued") {
+        bulkState(r, st.ahead ? `Waiting — ${st.ahead} ahead` : "Next up");
+      } else {
+        const pct = st.size ? Math.floor((st.sent / st.size) * 100) : 0;
+        if (bar) { bar.hidden = false; bar.firstElementChild.style.transform = `scaleX(${pct / 100})`; }
+        bulkState(r, st.state === "checking" ? "Checking…" : `Uploading ${pct}%`);
+      }
+    }
+    if (open > 0) await new Promise((res) => setTimeout(res, 1500));
+  }
+
+  b.running = false;
+  renderClips();
+  const parts = [];
+  if (uploaded) parts.push(`${uploaded} uploaded`);
+  if (kept) parts.push(`${kept} kept private by YouTube`);
+  if (failed) parts.push(`${failed} failed`);
+  toast(`YouTube: ${parts.join(", ")}.`, failed > 0 || kept > 0);
+  if (bulk === b) {
+    $("bkGoLabel").textContent = failed ? "Finished — see the list" : "All done";
+    if (kept) {
+      $("bkMsg").innerHTML = `<div class="warn-box">${esc(I18N.t(
+        "YouTube locks uploads from a Google project that hasn't passed its API audit to private, and drops any schedule. You can make them public in Studio."))}</div>`;
+    }
+  }
+}
+
 // ---------------------------------------------------------------- locations
 
 let locations = null;
@@ -1997,6 +2299,7 @@ function clipCard(c) {
         <div class="flag">
           ${c.edited ? `<span>trimmed</span>` : ""}
           ${c.muted ? `<span>muted</span>` : ""}
+          ${c.youtube ? `<span>on YouTube</span>` : ""}
           ${c.saved_to ? `<span>saved</span>` : ""}
           ${!seo ? `<span class="need">no title yet</span>` : ""}
           ${filed ? `<span class="subj">${esc(filed)}</span>` : ""}
@@ -2046,6 +2349,9 @@ function renderClips() {
               · ${esc(whenMade(r.created_at))}</span>
           </div>
           <div class="run-actions">
+            <button class="btn yt sm" data-ytrun="${esc(r.id)}"
+              title="Review every clip's title, tags and schedule, then upload them one by one">
+              <svg><use href="#i-yt"/></svg>Upload all</button>
             <button class="btn ghost sm" data-seorun="${esc(r.id)}"
               data-missing="${missing}">
               <svg><use href="#i-spark"/></svg>${missing ? "Write titles &amp; tags" : "Rewrite titles"}</button>
@@ -2090,6 +2396,9 @@ function renderClips() {
   });
   $("clips").querySelectorAll("[data-show]").forEach((b) => {
     b.onclick = (e) => { e.stopPropagation(); showClipFile(clips[+b.dataset.show]); };
+  });
+  $("clips").querySelectorAll("[data-ytrun]").forEach((b) => {
+    b.onclick = () => openBulk(b.dataset.ytrun);
   });
   $("clips").querySelectorAll("[data-seorun]").forEach((b) => {
     b.onclick = () => writeSeoForRun(b.dataset.seorun, b, +b.dataset.missing === 0);

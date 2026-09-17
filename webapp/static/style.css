@@ -1727,6 +1727,84 @@ body.player-on .player-body { transform: none; }
   animation: pop2 .25s var(--ease);
 }
 @keyframes pop2 { from { opacity: 0; transform: scale(.94); } }
+/* Upload all: a review of every clip in a run before any of it goes up. */
+.bulk {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, .62);
+}
+.bk-box {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  width: min(860px, 100%);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, .7);
+  animation: pop2 .25s var(--ease);
+}
+.bk-head { display: flex; justify-content: space-between; gap: 12px; padding: 20px 22px 6px; }
+.bk-head h3 { font: 600 18px/1.3 inherit; display: flex; align-items: center; gap: 9px; }
+.bk-head h3 svg { width: 22px; height: 22px; color: var(--red); }
+.bk-sub { color: var(--text-2); font-size: 13px; margin-top: 4px; }
+.bk-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0 14px;
+  padding: 12px 22px 0;
+  align-items: end;
+}
+.bk-settings label.fld { margin-bottom: 12px; }
+.bk-kids { margin: 0 0 22px; }
+.bk-list {
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 22px;
+  flex: 1;
+  min-height: 120px;
+}
+.bk-row {
+  display: grid;
+  grid-template-columns: auto 64px 1fr;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(var(--fg-rgb), .06);
+  align-items: start;
+}
+.bk-row:last-child { border-bottom: 0; }
+.bk-row.off .bk-thumb, .bk-row.off .bk-fields { opacity: .45; }
+.bk-row input[type=checkbox] { width: 18px; height: 18px; margin-top: 30px; accent-color: var(--red); cursor: pointer; }
+.bk-thumb { width: 64px; height: 114px; object-fit: cover; border-radius: 8px; background: var(--bg); }
+.bk-fields { min-width: 0; }
+.bk-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12.5px; color: var(--text-2); margin-bottom: 6px; }
+.bk-top b { color: var(--text); }
+.bk-when { color: var(--blue); }
+.bk-state { margin-left: auto; font-variant-numeric: tabular-nums; }
+.bk-state.ok { color: var(--ok-ink); }
+.bk-state.bad { color: var(--err-ink); }
+.bk-state.warn { color: var(--warn-ink); }
+.bk-fields input[type=text] { padding: 8px 11px; }
+.bk-count { font-size: 11.5px; color: var(--text-3); }
+.bk-count.over { color: var(--err-ink); }
+.bk-fields details { margin-top: 6px; }
+.bk-fields summary { cursor: pointer; font-size: 12.5px; color: var(--text-2); }
+.bk-fields textarea { margin-top: 6px; min-height: 0; padding: 8px 11px; font-size: 13px; }
+.bk-note { font-size: 12px; color: var(--warn-ink); margin-top: 5px; }
+.bk-bar { height: 4px; margin-top: 8px; }
+.bk-foot { padding: 12px 22px 18px; }
+.bk-foot .hint { margin: 0 0 10px; }
+.bk-foot #bkMsg:not(:empty) { margin-bottom: 10px; }
+@media (max-width: 560px) {
+  .bk-row { grid-template-columns: auto 1fr; }
+  .bk-thumb { display: none; }
+}
+
 .c-box h3 { font: 500 17px/1.3 inherit; margin-bottom: 8px; }
 .c-box p { color: var(--text-2); font-size: 13.5px; margin-bottom: 20px; }
 .c-actions { display: flex; gap: 10px; justify-content: flex-end; }
