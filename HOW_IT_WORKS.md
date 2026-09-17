@@ -2759,6 +2759,22 @@ proves a window is not.
 [docs/youtube-upload.md](docs/youtube-upload.md); this section is how the code
 works.
 
+### The site Google links to
+
+Google's consent screen needs a home page and a privacy policy on a domain it
+can list as authorized, and github.com isn't one. So ClipMint has a small
+GitHub Pages site at <https://klez799.github.io/clipmint/>:
+
+- `site/index.html` is the home page, written by hand.
+- `privacy.html` is rendered from `PRIVACY.md` by `site/build.py` on every
+  deploy, so there is one copy of the policy's words and the site can't drift
+  from the repo.
+- `.github/workflows/pages.yml` builds and deploys it whenever `site/`,
+  `PRIVACY.md` or the images it uses change.
+
+The in-app privacy link (`EXTERNAL_LINKS["privacy"]`) points at the same page as
+the consent screen, because Google expects the two to match.
+
 ### Why the API, and not a scripted browser
 
 The obvious shortcut is to drive YouTube Studio's upload page with Playwright:
