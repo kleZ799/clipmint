@@ -40,6 +40,7 @@ browser rather than in a window of its own.
 [![Downloads](https://img.shields.io/github/downloads/kleZ799/clipmint/total?style=flat-square&label=downloads&color=555)](https://github.com/kleZ799/clipmint/releases)
 
 **Built by [Parth Bhadana](https://github.com/kleZ799)**
+&nbsp;·&nbsp; [Website](https://klez799.github.io/clipmint/)
 &nbsp;·&nbsp; [YouTube](https://www.youtube.com/@ParthBhadana799)
 &nbsp;·&nbsp; [GitHub](https://github.com/kleZ799)
 &nbsp;·&nbsp; [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/)
@@ -300,17 +301,25 @@ unlisted, private, or **scheduled** for a time you pick, with a category and
 the made-for-kids answer. A progress bar follows it, and when it lands the clip
 shows **Open in Studio**.
 
+<img src="assets/screenshots/09-youtube-upload.png" alt="Boost on a Firewatch clip, scrolled to Post it to your channel: going to Parth Bhadana, scheduled for 7 PM, category Gaming, the made-for-kids question, and the Upload to YouTube button" width="880">
+
 It goes through **YouTube's official API**. You sign in on Google's own page,
 ClipMint never sees your password, and the permission it gets can upload but
 can't delete or change anything. **Disconnect** hands the permission back. No
 bot clicks around YouTube Studio, which would break YouTube's terms and put
 your channel at risk.
 
-One catch, and it's Google's: uploads from a Google project that hasn't passed
-YouTube's API audit are **kept private**. The app tells you when that happens.
-[docs/youtube-upload.md](docs/youtube-upload.md) walks through the setup, the
-audit, and what ClipMint does to pass it, and [PRIVACY.md](PRIVACY.md) says
-what is stored and where: on your PC, and nowhere else.
+<img src="assets/screenshots/10-post-to-channel.png" alt="Settings, Post to your channel: connected to the Parth Bhadana channel with your own Google client, a Disconnect button, and links to YouTube's Terms of Service, Google's Privacy Policy, ClipMint's privacy policy and Google's page for withdrawing access" width="880">
+
+When you connect, Google shows *"Google hasn't verified this app"* until its
+review of ClipMint is done: click **Advanced → Go to ClipMint**. While that
+review is pending, YouTube *can* keep an upload private. It doesn't always, and
+the app tells you straight away when it does.
+
+[docs/youtube-upload.md](docs/youtube-upload.md) walks through the Google setup
+and the review, and the
+[privacy policy](https://klez799.github.io/clipmint/privacy.html) says what is
+stored and where: on your PC, and nowhere else.
 
 ### Written from a playbook that keeps up with the algorithms
 
