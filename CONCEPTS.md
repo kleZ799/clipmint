@@ -855,6 +855,21 @@ asking the primary for its log position. **Sent is not received.** The only
 reliable progress marker is the receiver's. Combined with exponential backoff,
 a failure costs one 8 MB chunk and a short wait.
 
+### A queue that knows when to give up
+
+Uploading twenty clips starts twenty network transfers. Running them together
+doesn't make them faster, because they share one connection's upload speed, so
+they go through a **single-worker queue** instead, the same producer-consumer
+shape as the render queue in section 6.
+
+The interesting part is the failure policy. Most failures belong to one item:
+a bad title, a dropped connection. Some belong to the whole queue: YouTube
+saying this channel has uploaded all it can today. Retrying the next item
+after one of those just collects the same refusal again. So errors are
+**classified** (section "Classifying errors") by the reason YouTube gives, and a
+queue-wide one **drains the queue**: everything still waiting fails immediately
+with that reason. It's the same idea as a circuit breaker, applied to a batch.
+
 ### Refuse, don't rewrite
 
 YouTube rejects a title over 100 characters. The app could quietly cut it to
