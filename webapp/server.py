@@ -673,6 +673,12 @@ EXTERNAL_LINKS = {
     "repo": "https://github.com/kleZ799/clipmint",
     "donate": "https://buymeacoffee.com/parthbhadana",
     "releases": "https://github.com/kleZ799/clipmint/releases/latest",
+    # Uploading to YouTube. The API policies require the app to link each of
+    # these (YouTube API Services Developer Policies, III.A.1 and III.A.2).
+    "youtube-terms": "https://www.youtube.com/t/terms",
+    "google-privacy": "https://policies.google.com/privacy",
+    "privacy": "https://github.com/kleZ799/clipmint/blob/main/PRIVACY.md",
+    "google-permissions": "https://security.google.com/settings/security/permissions",
 }
 
 

@@ -889,6 +889,8 @@ function renderUploadBox() {
     <label class="fld"><span>${esc(I18N.t("Category"))}</span><select id="yuCat">${cats}</select></label>
     <label class="check"><input type="checkbox" id="yuKids"><span>${esc(I18N.t(
       "Made for kids — YouTube's legal question, answer it honestly"))}</span></label>
+    <p class="sf-hint" style="margin:-4px 0 12px">${esc(I18N.t(
+      "Only upload what you have the rights to. A clip of someone else's video can get a copyright strike."))}</p>
     <button class="btn yt" id="yuGo"><svg><use href="#i-yt"/></svg><span>${esc(I18N.t(
       done ? "Upload again" : "Upload to YouTube"))}</span></button>
     <div class="yu-prog" id="yuProg" hidden><div class="bar"><i id="yuBar"></i></div><p id="yuProgText"></p></div>

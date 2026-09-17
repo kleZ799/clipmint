@@ -126,7 +126,7 @@
     <a class="g-item" id="gUpdate"><svg><use href="#i-download"/></svg><span>Check for updates</span><i class="g-count hidden" id="gUpdateBadge">1</i></a>
     <div class="g-div"></div>
     <a class="g-item" data-go="secHelp"><svg><use href="#i-help"/></svg><span>How it works</span></a>
-    <p class="g-foot">Everything runs on this PC.<br>Nothing is uploaded anywhere.</p>
+    <p class="g-foot">Everything runs on this PC.<br>Nothing is uploaded unless you press Upload.</p>
     <p class="g-ver" id="gVer"></p>
     <button class="g-credit" id="gAbout">Built by <b>Parth Bhadana</b><i>Links and credits</i></button>
   </nav>
@@ -403,7 +403,8 @@
           the app verifies it when updating itself.</li>
         <li><b>It works with the network off.</b> Transcribing and ranking run on this PC. It talks
           to YouTube to fetch a video, to your AI provider to rank moments, and to GitHub to check
-          for updates. Nothing else, and none of your video leaves the machine.</li>
+          for updates. A clip goes to your YouTube channel only when you connect it and press
+          Upload. Nothing else.</li>
       </ul>
       <p class="safe-p">The black windows that used to flash open during a run were ffmpeg, the video
         tool doing the cutting. They are hidden now &mdash; that was ours, and it was alarming for
@@ -489,6 +490,15 @@
       </div>
     </details>
     <p class="hint" id="ytuHint"></p>
+    <p class="hint">Uploading uses YouTube API Services. By connecting you agree to YouTube's
+      Terms of Service, and Google's Privacy Policy applies. Only upload videos you have the
+      rights to.</p>
+    <div class="safe-row">
+      <button class="qbtn" data-open="youtube-terms">YouTube Terms of Service</button>
+      <button class="qbtn" data-open="google-privacy">Google Privacy Policy</button>
+      <button class="qbtn" data-open="privacy">ClipMint's privacy policy</button>
+      <button class="qbtn" data-open="google-permissions">Withdraw access at Google</button>
+    </div>
     <div id="ytuMsg"></div>
   </div>
 

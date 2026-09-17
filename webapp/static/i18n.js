@@ -26,7 +26,7 @@ window.I18N = (function () {
       "Upload to YouTube": "YouTube पर अपलोड करें",
       "How it works": "यह कैसे काम करता है",
       "Everything runs on this PC.": "सब कुछ इसी PC पर चलता है।",
-      "Nothing is uploaded anywhere.": "कुछ भी कहीं अपलोड नहीं होता।",
+      "Nothing is uploaded unless you press Upload.": "जब तक आप Upload न दबाएँ, कुछ भी अपलोड नहीं होता।",
       "Set up in 30 seconds": "30 सेकंड में सेटअप करें",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "सबसे अच्छे पल चुनने के लिए एक मुफ़्त API की ज़रूरत है। यह सिर्फ़ इसी PC पर सेव होती है।",
@@ -203,7 +203,7 @@ window.I18N = (function () {
       "Upload to YouTube": "Subir a YouTube",
       "How it works": "Cómo funciona",
       "Everything runs on this PC.": "Todo se ejecuta en este PC.",
-      "Nothing is uploaded anywhere.": "No se sube nada a ninguna parte.",
+      "Nothing is uploaded unless you press Upload.": "No se sube nada a menos que pulses Subir.",
       "Set up in 30 seconds": "Configúralo en 30 segundos",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Elegir los mejores momentos necesita una clave de API gratuita. Se guarda solo en este PC.",
@@ -380,7 +380,7 @@ window.I18N = (function () {
       "Upload to YouTube": "Enviar para o YouTube",
       "How it works": "Como funciona",
       "Everything runs on this PC.": "Tudo roda neste PC.",
-      "Nothing is uploaded anywhere.": "Nada é enviado para lugar nenhum.",
+      "Nothing is uploaded unless you press Upload.": "Nada é enviado a menos que você toque em Enviar.",
       "Set up in 30 seconds": "Configure em 30 segundos",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Escolher os melhores momentos exige uma chave de API gratuita. Ela fica salva só neste PC.",
@@ -557,7 +557,7 @@ window.I18N = (function () {
       "Upload to YouTube": "Publier sur YouTube",
       "How it works": "Comment ça marche",
       "Everything runs on this PC.": "Tout tourne sur ce PC.",
-      "Nothing is uploaded anywhere.": "Rien n'est envoyé nulle part.",
+      "Nothing is uploaded unless you press Upload.": "Rien n'est envoyé tant que vous n'appuyez pas sur Publier.",
       "Set up in 30 seconds": "Prêt en 30 secondes",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Choisir les meilleurs moments demande une clé d'API gratuite. Elle reste sur ce PC uniquement.",
@@ -734,7 +734,7 @@ window.I18N = (function () {
       "Upload to YouTube": "Zu YouTube hochladen",
       "How it works": "So funktioniert es",
       "Everything runs on this PC.": "Alles läuft auf diesem PC.",
-      "Nothing is uploaded anywhere.": "Es wird nichts irgendwohin hochgeladen.",
+      "Nothing is uploaded unless you press Upload.": "Nichts wird hochgeladen, solange du nicht auf Hochladen drückst.",
       "Set up in 30 seconds": "In 30 Sekunden eingerichtet",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Für die Auswahl der besten Momente braucht es einen kostenlosen API-Schlüssel. Er bleibt nur auf diesem PC.",
@@ -911,7 +911,7 @@ window.I18N = (function () {
       "Upload to YouTube": "YouTube にアップロード",
       "How it works": "しくみ",
       "Everything runs on this PC.": "すべてこの PC 上で動きます。",
-      "Nothing is uploaded anywhere.": "どこにもアップロードされません。",
+      "Nothing is uploaded unless you press Upload.": "アップロードを押さない限り、何も送信されません。",
       "Set up in 30 seconds": "30 秒でセットアップ",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "見どころの選定には無料の API キーが 1 つ必要です。この PC 内にのみ保存されます。",

@@ -240,7 +240,8 @@ BEST LEFT ALONE
   clips.json inside a run folder, unless you are happy to lose the titles and
   rankings for those clips.
 
-Nothing here is uploaded anywhere. All of it was made on this PC.
+All of it was made on this PC. Nothing here is uploaded anywhere unless you
+connect your YouTube channel in the app and press Upload on a clip.
 """
 
 
