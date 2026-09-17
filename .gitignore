@@ -63,3 +63,7 @@ assets/icon.icns
 # The folder guide the app drops beside its output. Lands here when run
 # from source, since the output root defaults to the working directory.
 READ ME - what is in here.txt
+
+# ClipMint's Google client for YouTube uploads, written by build_exe.py from a
+# secret. YouTube's API policies forbid credentials in open source projects.
+webapp/youtube_client.json

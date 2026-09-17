@@ -18,6 +18,7 @@ get bundled, so users don't have to install ffmpeg themselves. Without them the
 app still builds and tells the user what's missing at startup.
 """
 import argparse
+import json
 import os
 import re
 import shutil
@@ -190,6 +191,41 @@ def _finish_bundle(app: Path) -> int:
     return signed.returncode
 
 
+def _youtube_client() -> Optional[Path]:
+    """ClipMint's Google client for YouTube uploads, as a file to bundle.
+
+    It comes from the CLIPMINT_YOUTUBE_CLIENT environment variable -- the JSON
+    Google Cloud hands out for a Desktop app client -- which the release
+    workflow fills from a repository secret. It never lives in the repo:
+    YouTube's API policies (III.D.1) forbid embedding credentials in open
+    source projects. Without it the build is complete; users paste their own
+    client in Settings instead.
+    """
+    raw = os.environ.get("CLIPMINT_YOUTUBE_CLIENT", "").strip()
+    local = ROOT / "webapp" / "youtube_client.json"
+    if not raw:
+        if local.is_file():
+            print(f"bundling the YouTube client from {local.relative_to(ROOT)}")
+            return local
+        print("no CLIPMINT_YOUTUBE_CLIENT — users will add their own Google client")
+        return None
+
+    sys.path.insert(0, str(ROOT))
+    from webapp.youtube_upload import parse_client
+    try:
+        client = parse_client(raw)
+    except ValueError as e:
+        raise SystemExit(f"CLIPMINT_YOUTUBE_CLIENT is set but unusable: {e}")
+
+    out = ROOT / "build" / "youtube_client.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"installed": {"client_id": client["id"],
+                                             "client_secret": client["secret"]}}),
+                   encoding="utf-8")
+    print("bundling ClipMint's YouTube client from CLIPMINT_YOUTUBE_CLIENT")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build the ClipMint executable")
     ap.add_argument("--onefile", action="store_true",
@@ -289,6 +325,7 @@ def main() -> int:
         "--hidden-import", "openai",
         "--hidden-import", "cv2",
         "--hidden-import", "yt_dlp",
+        "--hidden-import", "webapp.youtube_upload",
         "--hidden-import", "uvicorn.logging",
         "--hidden-import", "uvicorn.loops.auto",
         "--hidden-import", "uvicorn.protocols.http.auto",
@@ -356,6 +393,10 @@ def main() -> int:
             "--hidden-import", "clr",
         ]
     cmd[-1:-1] = platform_args
+
+    youtube_client = _youtube_client()
+    if youtube_client is not None:
+        cmd[-1:-1] = ["--add-data", f"{youtube_client}{sep}webapp"]
 
     bin_dir = ROOT / "bin"
     if bin_dir.is_dir() and any(bin_dir.iterdir()):

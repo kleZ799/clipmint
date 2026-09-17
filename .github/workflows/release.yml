@@ -171,6 +171,11 @@ jobs:
       # payload on every launch, so bundled CUDA would cost every user startup
       # time for something only NVIDIA owners can use.
       - name: Build the exe
+        env:
+          # ClipMint's Google client for YouTube uploads. A secret, never a
+          # file in the repo: YouTube's API policies forbid credentials in open
+          # source projects. Unset, the build still works and users bring their own.
+          CLIPMINT_YOUTUBE_CLIENT: ${{ secrets.CLIPMINT_YOUTUBE_CLIENT }}
         run: python build_exe.py --onefile
 
       - name: Check the built exe reports the right version
@@ -371,6 +376,11 @@ jobs:
       # the version into Info.plist and signs the result ad-hoc, which is what
       # makes it launchable on Apple Silicon at all.
       - name: Build the app
+        env:
+          # ClipMint's Google client for YouTube uploads. A secret, never a
+          # file in the repo: YouTube's API policies forbid credentials in open
+          # source projects. Unset, the build still works and users bring their own.
+          CLIPMINT_YOUTUBE_CLIENT: ${{ secrets.CLIPMINT_YOUTUBE_CLIENT }}
         run: python build_exe.py
 
       - name: Check the built app is what it claims to be
@@ -666,6 +676,11 @@ jobs:
       # the updater can replace. Linux makes that easier rather than harder --
       # a running binary can be swapped underneath itself there.
       - name: Build the app
+        env:
+          # ClipMint's Google client for YouTube uploads. A secret, never a
+          # file in the repo: YouTube's API policies forbid credentials in open
+          # source projects. Unset, the build still works and users bring their own.
+          CLIPMINT_YOUTUBE_CLIENT: ${{ secrets.CLIPMINT_YOUTUBE_CLIENT }}
         run: python build_exe.py --onefile
 
       - name: Check what came out
