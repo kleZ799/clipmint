@@ -70,6 +70,7 @@ def main() -> None:
         shutil.copy2(SITE / name, OUT / name)
     shutil.copy2(ROOT / "assets" / "icon.png", OUT / "icon.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "01-create.png", OUT / "screenshot.png")
+    shutil.copy2(ROOT / "assets" / "screenshots" / "09-youtube-upload.png", OUT / "upload.png")
 
     text = (ROOT / "PRIVACY.md").read_text(encoding="utf-8")
     body = markdown.markdown(text, extensions=["tables"])
