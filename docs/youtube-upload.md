@@ -132,6 +132,12 @@ Then open any clip, press **Boost**, and scroll the **YouTube Shorts** tab to
 A progress bar follows the upload, even if you close the panel. When it
 finishes, the clip shows **On YouTube** with **Open in Studio** and **Watch**.
 
+**A whole run at once:** press **Upload all** on the run, beside **Rewrite
+titles**. Check or edit each clip's title, description and tags, untick any to
+skip, pick a first publish time and how far apart they go, and press **Upload**.
+They go up one at a time. If YouTube says the channel has hit its daily upload
+limit, the rest stop with that message; run them again tomorrow.
+
 ### For everyone who downloads ClipMint: a GitHub secret
 
 A release can carry your client, so downloaders only have to click **Connect
