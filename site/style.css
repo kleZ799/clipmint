@@ -77,6 +77,15 @@ section b, section strong { color: var(--text); }
 .card h3 { margin: 0 0 6px; font-size: 17px; }
 .card p { margin: 0; font-size: 15px; }
 
+.card.dl { display: flex; flex-direction: column; gap: 8px; }
+.card.dl p.meta { color: var(--text); font-size: 14px; }
+.card.dl .btn { margin-top: auto; }
+.tag {
+  display: inline-block; vertical-align: 2px; margin-left: 6px; padding: 1px 8px;
+  border: 1px solid var(--line); border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+}
+
 footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--text-2); font-size: 14px; }
 footer .wrap { display: flex; gap: 10px 22px; flex-wrap: wrap; }
 

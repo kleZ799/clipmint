@@ -17,6 +17,7 @@
   <div class="wrap">
     <a class="brand" href="./"><img src="icon.png" alt="">ClipMint</a>
     <nav class="links">
+      <a href="#download">Download</a>
       <a href="#youtube">YouTube uploads</a>
       <a href="privacy.html">Privacy policy</a>
       <a href="https://github.com/kleZ799/clipmint">Source code</a>
@@ -33,7 +34,7 @@
       into vertical Shorts, writes the titles and tags, and can upload them to your YouTube
       channel.</p>
     <div class="btns">
-      <a class="btn primary" href="https://github.com/kleZ799/clipmint#readme">Download ClipMint</a>
+      <a class="btn primary" href="#download">Download ClipMint</a>
       <a class="btn" href="https://github.com/kleZ799/clipmint">View the source</a>
     </div>
     <img class="shot" src="screenshot.png" width="1440" height="900"
@@ -61,6 +62,33 @@
       <div class="card"><h3>Posts to your channel</h3>
         <p>Optionally uploads a clip to YouTube, now or on a schedule, when you press Upload.</p></div>
     </div>
+  </section>
+
+  <section id="download">
+    <h2>Download</h2>
+    <p>Free, with nothing else to install. On first run it asks for a
+      <a href="https://aistudio.google.com/apikey">free Gemini API key</a>, which stays on your computer.</p>
+    <!-- Each link fetches the newest release's file, so it never needs a version bump. -->
+    <div class="grid">
+      <div class="card dl"><h3>Windows</h3>
+        <p class="meta">ClipMint.exe · 220 MB</p>
+        <p>The tested build. Double-click it and go. After this it updates itself.</p>
+        <a class="btn primary" href="https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe">Download for Windows</a></div>
+      <div class="card dl"><h3>macOS <span class="tag">Beta</span></h3>
+        <p class="meta">Apple Silicon (M1 or later) · 166 MB zip</p>
+        <p>Built and checked by GitHub's Mac runners, but no one has run it on a real Mac yet.
+          macOS blocks it the first time you open it:
+          <a href="https://github.com/kleZ799/clipmint#download">here's how to open it</a>.</p>
+        <a class="btn" href="https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip">Download for Mac</a></div>
+      <div class="card dl"><h3>Linux <span class="tag">Untested</span></h3>
+        <p class="meta">x86-64 · 279 MB</p>
+        <p>Runs under WSL but hasn't been tried on a real desktop yet. Make the file executable,
+          run it, and it opens in your browser.</p>
+        <a class="btn" href="https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64">Download for Linux</a></div>
+    </div>
+    <p>Something not working? <a href="https://github.com/kleZ799/clipmint/issues/new">Tell me what happened</a>.
+      Older versions and release notes are on the
+      <a href="https://github.com/kleZ799/clipmint/releases">releases page</a>.</p>
   </section>
 
   <section id="youtube">
