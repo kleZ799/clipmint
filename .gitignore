@@ -26,6 +26,9 @@ shorts/
 *.vtt
 *.part
 *.ytdl
+# ...except the showcase: a tour of the app made on purpose for the README
+# and the site, not something the app produced from a video.
+!assets/showcase/*.mp4
 .DS_Store
 smoketest/
 run*.log
