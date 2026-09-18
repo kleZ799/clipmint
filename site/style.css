@@ -50,6 +50,44 @@ nav.links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 15px; }
 nav.links a { color: var(--text-2); text-decoration: none; }
 nav.links a:hover { color: var(--text); }
 
+/* Author block, as in the app's top bar: name first, profile icons under it. */
+.by {
+  display: flex; align-items: center; gap: 10px;
+  padding-left: 14px; border-left: 1px solid var(--line); white-space: nowrap;
+}
+.by-who { display: flex; flex-direction: column; line-height: 1.2; }
+.by-label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.by-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.by-links { display: flex; gap: 2px; }
+.bl {
+  width: 32px; height: 32px; display: grid; place-items: center;
+  border-radius: 50%; color: var(--text-2);
+}
+.bl svg { width: 17px; height: 17px; }
+.bl:hover { background: var(--raised); color: var(--text); }
+.bl.yt:hover { color: var(--red); }
+.bl.li:hover { color: #0a66c2; }
+.bl.dc:hover { color: #5865f2; }
+/* The one icon that asks for something rather than pointing somewhere, so it
+   keeps its colour at rest and beats twice on hover. */
+.bl.donate { color: var(--red); }
+.bl.donate:hover { background: rgba(255, 0, 51, .14); }
+.bl.donate:hover svg { animation: beat .7s ease 2; }
+@keyframes beat {
+  0%, 100% { transform: scale(1); }
+  28%      { transform: scale(1.22); }
+  55%      { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bl.donate:hover svg { animation: none; }
+}
+/* On a phone the links drop to their own row, under the name and the icons. */
+@media (max-width: 760px) {
+  header.top .wrap { padding-top: 10px; padding-bottom: 10px; row-gap: 6px; }
+  header.top nav.links { order: 3; width: 100%; row-gap: 2px; }
+  .by { border-left: 0; padding-left: 0; }
+}
+
 .hero { padding: 56px 0 28px; }
 .hero h1 { font-size: clamp(30px, 6vw, 46px); line-height: 1.15; margin: 0 0 16px; }
 .hero p.lead { font-size: 19px; color: var(--text-2); margin: 0 0 26px; max-width: 640px; }

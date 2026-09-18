@@ -42,6 +42,17 @@ PAGE = """<!doctype html>
       <a href="privacy.html">Privacy policy</a>
       <a href="https://github.com/kleZ799/clipmint">Source code</a>
     </nav>
+    <!-- The same author block as the app's top bar. -->
+    <div class="by">
+      <span class="by-who"><span class="by-label">Built by</span><span class="by-name">Parth Bhadana</span></span>
+      <span class="by-links">
+        <a class="bl yt" href="https://www.youtube.com/@ParthBhadana799" title="YouTube — @ParthBhadana799" aria-label="YouTube"><svg aria-hidden="true"><use href="icons.svg#yt"/></svg></a>
+        <a class="bl gh" href="https://github.com/kleZ799" title="GitHub — kleZ799" aria-label="GitHub"><svg aria-hidden="true"><use href="icons.svg#github"/></svg></a>
+        <a class="bl li" href="https://www.linkedin.com/in/parth-bhadana-530014202/" title="LinkedIn — Parth Bhadana" aria-label="LinkedIn"><svg aria-hidden="true"><use href="icons.svg#linkedin"/></svg></a>
+        <a class="bl dc" href="https://discord.gg/jnMrGbBz3m" title="Discord — join the server" aria-label="Discord"><svg aria-hidden="true"><use href="icons.svg#discord"/></svg></a>
+        <a class="bl donate" href="https://buymeacoffee.com/parthbhadana" title="Support ClipMint — buy me a coffee" aria-label="Buy me a coffee"><svg aria-hidden="true"><use href="icons.svg#heart"/></svg></a>
+      </span>
+    </div>
   </div>
 </header>
 <main class="wrap">
@@ -66,7 +77,7 @@ def main() -> None:
     shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir()
 
-    for name in ("index.html", "style.css"):
+    for name in ("index.html", "style.css", "icons.svg"):
         shutil.copy2(SITE / name, OUT / name)
     shutil.copy2(ROOT / "assets" / "icon.png", OUT / "icon.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "01-create.png", OUT / "screenshot.png")
