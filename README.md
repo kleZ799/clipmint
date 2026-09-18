@@ -48,6 +48,8 @@ browser rather than in a window of its own.
 
 **No Python. No ffmpeg. Nothing to install.** Double-click and go.
 
+**[All downloads and setup steps ↓](#download)**
+
 <!-- GitHub will not play a video committed to the repo inside a README, so the
      poster links to the site, where the same file plays in place. -->
 <a href="https://klez799.github.io/clipmint/#showcase"><img src="assets/showcase/clipmint-showcase-play.jpg" alt="Watch the 58-second tour of ClipMint: a full-game stream goes in, ten ranked Shorts come out, titled and scheduled to YouTube" width="880"></a>
@@ -441,13 +443,21 @@ rendered file.
 
 ---
 
-## Get it
+<!-- Old release notes link to #get-it, this section's name before it was Download. -->
+<a name="get-it"></a>
 
-[**⬇ Download ClipMint.exe**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe) — 220 MB, Windows, self-contained.
+## Download
 
-[**⬇ Download ClipMint-macOS-arm64.zip**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip) — 165 MB, Apple Silicon. **Beta.**
+Every link fetches the newest release. Nothing else to install: no Python, no ffmpeg.
 
-[**⬇ Download ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) — 278 MB, x86-64, self-contained. **Untested on a desktop.**
+| Platform | Download | Size | Status |
+|---|---|---|---|
+| **Windows** | [**⬇ ClipMint.exe**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe) | 220 MB | Tested. Updates itself. |
+| **macOS**, Apple Silicon (M1 or later) | [**⬇ ClipMint-macOS-arm64.zip**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip) | 166 MB | **Beta.** Never run on a Mac. |
+| **Linux**, x86-64 | [**⬇ ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) | 279 MB | **Untested** on a desktop. Updates itself. |
+
+Older versions and release notes are on the [releases page](https://github.com/kleZ799/clipmint/releases).
+Setup for each platform follows below.
 
 > ### ⚠️ Read this before you download the Mac build
 >
