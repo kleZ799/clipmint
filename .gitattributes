@@ -1,0 +1,4 @@
+# The showcase video is for the README and the site. Leaving it out of the
+# "Source code" zip GitHub attaches to each release keeps that download light.
+# It was never in the app itself: build_exe.py bundles only what it names.
+assets/showcase/** export-ignore
