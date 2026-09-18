@@ -124,6 +124,28 @@ section b, section strong { color: var(--text); }
   font-size: 12px; font-weight: 600; color: var(--text-2);
 }
 
+.socials { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 18px 0; }
+.social {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: var(--raised); border: 1px solid var(--line); border-radius: 12px;
+  color: var(--text); text-decoration: none;
+}
+.social:hover { border-color: var(--text-2); }
+.social svg { width: 22px; height: 22px; flex: none; }
+.social.yt svg { color: var(--red); }
+.social.li svg { color: #0a66c2; }
+.social.dc svg { color: #5865f2; }
+.social span { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.social b { font-size: 15px; }
+.social i { font-style: normal; font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; }
+.give { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.give p { margin: 0; font-size: 15px; }
+.give .btn svg { width: 17px; height: 17px; margin-right: 8px; }
+.give .btn:hover svg { animation: beat .7s ease 2; }
+@media (prefers-reduced-motion: reduce) {
+  .give .btn:hover svg { animation: none; }
+}
+
 footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--text-2); font-size: 14px; }
 footer .wrap { display: flex; gap: 10px 22px; flex-wrap: wrap; }
 
