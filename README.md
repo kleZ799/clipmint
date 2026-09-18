@@ -52,7 +52,7 @@ browser rather than in a window of its own.
 
 <!-- GitHub will not play a video committed to the repo inside a README, so the
      poster links to the site, where the same file plays in place. -->
-<a href="https://klez799.github.io/clipmint/#showcase"><img src="assets/showcase/clipmint-showcase-play.jpg" alt="Watch the 58-second tour of ClipMint: a full-game stream goes in, ten ranked Shorts come out, titled and scheduled to YouTube" width="880"></a>
+<a href="https://klez799.github.io/clipmint/#showcase"><img src="assets/showcase/clipmint-showcase-play.jpg" alt="Watch the 58-second tour of ClipMint: a podcast, vlog, tutorial, interview or stream goes in, and ranked Shorts come out, titled and scheduled to YouTube" width="880"></a>
 
 **[▶ Watch the 58-second tour](https://klez799.github.io/clipmint/#showcase)** · [or the mp4](assets/showcase/clipmint-showcase.mp4)
 
