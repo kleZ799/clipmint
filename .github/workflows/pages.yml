@@ -16,6 +16,7 @@ on:
       - "assets/icon.png"
       - "assets/screenshots/01-create.png"
       - "assets/screenshots/09-youtube-upload.png"
+      - "assets/showcase/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

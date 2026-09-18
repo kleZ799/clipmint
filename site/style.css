@@ -65,6 +65,7 @@ nav.links a:hover { color: var(--text); }
 .btn.primary:hover { background: var(--red-deep); }
 
 .shot { margin: 30px 0 10px; border-radius: 14px; border: 1px solid var(--line); display: block; }
+video.shot { width: 100%; height: auto; margin-top: 16px; background: #000; }
 
 section { padding: 26px 0; border-top: 1px solid var(--line); }
 section h2 { font-size: 24px; margin: 0 0 12px; }

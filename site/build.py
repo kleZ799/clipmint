@@ -71,6 +71,8 @@ def main() -> None:
     shutil.copy2(ROOT / "assets" / "icon.png", OUT / "icon.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "01-create.png", OUT / "screenshot.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "09-youtube-upload.png", OUT / "upload.png")
+    shutil.copy2(ROOT / "assets" / "showcase" / "clipmint-showcase.mp4", OUT / "showcase.mp4")
+    shutil.copy2(ROOT / "assets" / "showcase" / "clipmint-showcase-poster.jpg", OUT / "showcase.jpg")
 
     text = (ROOT / "PRIVACY.md").read_text(encoding="utf-8")
     body = markdown.markdown(text, extensions=["tables"])
