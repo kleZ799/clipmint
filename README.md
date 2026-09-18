@@ -45,6 +45,7 @@ browser rather than in a window of its own.
 &nbsp;·&nbsp; [GitHub](https://github.com/kleZ799)
 &nbsp;·&nbsp; [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/)
 &nbsp;·&nbsp; [Discord](https://discord.gg/jnMrGbBz3m)
+&nbsp;·&nbsp; [Buy me a coffee](https://buymeacoffee.com/parthbhadana)
 
 **No Python. No ffmpeg. Nothing to install.** Double-click and go.
 
@@ -1294,7 +1295,10 @@ packaging — is mine.
 
 **Parth Bhadana**
 
-[YouTube](https://www.youtube.com/@ParthBhadana799) &middot; [GitHub](https://github.com/kleZ799) &middot; [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/) &middot; [Discord](https://discord.gg/jnMrGbBz3m)
+[YouTube](https://www.youtube.com/@ParthBhadana799) &middot; [GitHub](https://github.com/kleZ799) &middot; [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/) &middot; [Discord](https://discord.gg/jnMrGbBz3m) &middot; [Buy me a coffee](https://buymeacoffee.com/parthbhadana)
+
+ClipMint is free, and stays free. If it saves you time,
+[buy me a coffee](https://buymeacoffee.com/parthbhadana) — it pays for the hours that keep it working.
 
 Built and maintained by me. If you use it, fork it, or ship anything based on
 it, the MIT licence asks one thing in return: keep the copyright notice.
