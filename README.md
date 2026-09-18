@@ -48,6 +48,12 @@ browser rather than in a window of its own.
 
 **No Python. No ffmpeg. Nothing to install.** Double-click and go.
 
+<!-- GitHub will not play a video committed to the repo inside a README, so the
+     poster links to the site, where the same file plays in place. -->
+<a href="https://klez799.github.io/clipmint/#showcase"><img src="assets/showcase/clipmint-showcase-play.jpg" alt="Watch the 58-second tour of ClipMint: a full-game stream goes in, ten ranked Shorts come out, titled and scheduled to YouTube" width="880"></a>
+
+**[▶ Watch the 58-second tour](https://klez799.github.io/clipmint/#showcase)** · [or the mp4](assets/showcase/clipmint-showcase.mp4)
+
 <img src="assets/screenshots/01-create.png" alt="The create screen: a layout prompt, the Shape and Kind of video pickers with Stream or gaming chosen, and a live 9:16 preview on the right" width="880">
 
 <img src="assets/screenshots/00-welcome.png" alt="The launch card: what the app is, who made it, links to the channel, repo, Discord and email, and a donate button" width="640">
