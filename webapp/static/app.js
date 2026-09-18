@@ -708,10 +708,23 @@ function ytuRows(s) {
   return rows.join("");
 }
 
+// Until Google verifies the app, its sign-in opens on a "Google hasn't
+// verified this app" screen. Say so first, or it reads as a scam warning.
+function unverifiedNote(s) {
+  const whose = s.client === "yours"
+    ? "your own Google client isn't verified by Google"
+    : "ClipMint hasn't finished Google's app verification yet";
+  return I18N.t(`Google will show a “Google hasn't verified this app” warning. That's because `
+    + `${whose}, not because anything is wrong. Click Advanced, then Go to ClipMint (unsafe), `
+    + `to carry on. The app still only gets permission to upload.`);
+}
+
 function paintYtu() {
   const s = ytu;
   if (!s) return;
   $("ytuInfo").innerHTML = ytuRows(s);
+  $("ytuUnverified").hidden = s.connected || !s.client;
+  $("ytuUnverified").textContent = unverifiedNote(s);
   $("ytuConnect").hidden = s.connected;
   $("ytuDisconnect").hidden = !s.connected;
   $("ytuClientClear").hidden = s.client !== "yours";
@@ -851,6 +864,7 @@ function renderUploadBox() {
     box.innerHTML = head + `
       <p class="seo-why">${esc(I18N.t(
         "Connect your channel once and clips go straight to YouTube with these words, now or on a schedule."))}</p>
+      ${s && s.client ? `<div class="warn-box" style="margin-bottom:12px">${esc(unverifiedNote(s))}</div>` : ""}
       <button class="btn yt" id="yuConnect"><svg><use href="#i-yt"/></svg><span>${esc(I18N.t("Connect YouTube"))}</span></button>
       <div id="yuMsg"></div>`;
     $("yuConnect").onclick = async () => {
