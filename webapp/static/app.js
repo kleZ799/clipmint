@@ -25,6 +25,7 @@ const STEPS = [
   ["transcribe", "Transcribing"],
   ["rank", "Ranking"],
   ["render", "Rendering"],
+  ["edit", "Captions"],
 ];
 
 let source = null;       // { source, name }
@@ -37,6 +38,7 @@ let cur = -1;            // index of the clip in the player
 let shown = [];          // indices into `clips` currently on screen, in order
 let libQ = "";           // library search text
 let libWhen = "all";     // library date window: all | 1 | 7 | 30
+let libSort = "rank";    // order inside each run: rank | hook | energy | short
 let libTimer = null;
 let trim = null;         // { lo, hi, start, end }
 let confirmFn = null;
@@ -244,6 +246,8 @@ async function checkSetup() {
       $("setProvider2").value = d.provider;
     }
     keysOnFile = d.keys || {};
+    pexelsReady = !!keysOnFile.pexels;
+    drawPexels();
     providerPinned = !!d.provider_pinned;
     drawModels(d);
     if (d.daily_limits) $("capOpenai").value = d.daily_limits.openai || "";
@@ -1378,9 +1382,11 @@ async function loadCleanup() {
     return;
   }
   const partials = cleanup.items.filter(i => i.kind === "partial").length;
-  const sources = cleanup.count - partials;
+  const broll = cleanup.items.filter(i => i.kind === "broll").length;
+  const sources = cleanup.count - partials - broll;
   const rows = [`<div><span>Source videos</span><b>${sources}</b></div>`];
   if (partials) rows.push(`<div><span>Unfinished downloads</span><b>${partials}</b></div>`);
+  if (broll) rows.push(`<div><span>B-roll footage</span><b>${broll}</b></div>`);
   rows.push(`<div><span>Frees up</span><b>${humanBytes(cleanup.bytes)}</b></div>`);
   info.innerHTML = rows.join("");
   btn.disabled = false;
@@ -1906,6 +1912,8 @@ function drawPreview(spec, summary, notes, warning) {
     : spec.layout === "center" ? "centre crop"
     : "gameplay";
 
+  drawCaptionSample(spec, w, h);
+
   $("dims").textContent = `${spec.width} × ${spec.height}`;
   $("summary").textContent = summary;
   $("notes").innerHTML = (notes || []).map((n) => `<li>${esc(n)}</li>`).join("");
@@ -1928,11 +1936,154 @@ async function refreshPreview() {
   try {
     const d = await api("/api/layout/preview", json("POST", {
       prompt: $("prompt").value, use_llm: true, aspect_ratio: aspectChoice || null,
-      content_kind: kindChoice || null,
+      content_kind: kindChoice || null, ...editChoice,
     }));
+    // Whatever the words decided wins, and the controls show it.
+    editSaid = d.spec.edit_from_words || [];
+    drawEdit(d.spec);
     drawPreview(d.spec, d.summary, d.notes, d.warning);
   } catch (_) { /* the preview is cosmetic — never block on it */ }
 }
+
+// ---------------------------------------------------------------- edit
+//
+// Captions and the auto-edit switches under Render. Remembered per machine:
+// a caption style is a channel's look, not a choice anyone wants to make on
+// every run. Where the prompt's own words set one ("comic captions", "keep
+// the pauses") the words win, for as long as they are in the prompt, and a
+// tag beside the control says so.
+
+const EDIT_KEY = "clipmint.edit";
+const EDIT_DEFAULT = { captions: "bold", cut_pauses: true, punch_ins: true,
+                       emoji: false, broll: false };
+const EDIT_BOXES = { cut_pauses: "edPauses", punch_ins: "edPunch",
+                     emoji: "edEmoji", broll: "edBroll" };
+let editChoice = loadEditChoice();   // what the controls were set to
+let editSaid = [];                   // the fields the prompt's words decided
+let pexelsReady = false;             // whether a Pexels key is on file
+
+function loadEditChoice() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EDIT_KEY) || "{}") || {};
+    const out = { ...EDIT_DEFAULT };
+    for (const k of Object.keys(EDIT_DEFAULT)) {
+      if (typeof saved[k] === typeof EDIT_DEFAULT[k]) out[k] = saved[k];
+    }
+    return out;
+  } catch (_) { return { ...EDIT_DEFAULT }; }
+}
+
+function saveEditChoice() {
+  try { localStorage.setItem(EDIT_KEY, JSON.stringify(editChoice)); } catch (_) { /* a nicety */ }
+}
+
+// `shown` is what the run will actually do: the controls, overruled by the
+// words wherever the words said something.
+function drawEdit(shown) {
+  const e = shown || editChoice;
+  for (const b of $("capBar").querySelectorAll("[data-cap]")) {
+    b.classList.toggle("on", b.dataset.cap === e.captions);
+  }
+  for (const [k, id] of Object.entries(EDIT_BOXES)) $(id).checked = !!e[k];
+  document.querySelectorAll("[data-said]").forEach((el) =>
+    el.classList.toggle("hidden", !editSaid.includes(el.dataset.said)));
+  drawBrollHint();
+}
+
+function drawBrollHint() {
+  $("brollHint").classList.toggle("hidden", !$("edBroll").checked || pexelsReady);
+}
+
+// A control the words have already decided can't be overruled by a click --
+// the next preview would only put the words' answer back. Say so instead.
+function wordsHold(field) {
+  if (!editSaid.includes(field)) return false;
+  toast("Your prompt sets this. Change the words to change it.");
+  drawEdit();
+  refreshPreview();
+  return true;
+}
+
+$("capBar").onclick = (ev) => {
+  const btn = ev.target.closest("[data-cap]");
+  if (!btn || wordsHold("captions")) return;
+  editChoice.captions = btn.dataset.cap;
+  saveEditChoice();
+  drawEdit();
+  refreshPreview();
+};
+
+for (const [field, id] of Object.entries(EDIT_BOXES)) {
+  $(id).onchange = () => {
+    if (wordsHold(field)) return;
+    editChoice[field] = $(id).checked;
+    saveEditChoice();
+    drawEdit();
+    refreshPreview();
+  };
+}
+
+$("brollKey").onclick = () => {
+  openDrawer();
+  setTimeout(() => $("pexelsKey").focus(), 300);
+};
+
+// The caption sample on the live preview: the real typeface, at the size and
+// the height the burned-in captions will have on this layout.
+const CAPTION_SAMPLE = {
+  bold: { size: 0.084, html: "THIS IS <b>INSANE</b>" },
+  punch: { size: 0.112, html: "IS <b>INSANE</b>" },
+  clean: { size: 0.056, html: "this is <b>insane</b>" },
+  comic: { size: 0.104, html: "THIS IS <b>INSANE</b>" },
+};
+
+function captionHeight(spec) {
+  if (spec.layout === "stacked") return Math.max(0.2, Math.min(0.8, spec.cam_panel_fraction));
+  if (spec.aspect_ratio === "16:9") return 0.82;
+  if (spec.aspect_ratio === "1:1" || spec.aspect_ratio === "4:5") return 0.78;
+  return 0.70;
+}
+
+function drawCaptionSample(spec, w, h) {
+  const cap = $("pvCap");
+  const sample = CAPTION_SAMPLE[spec.captions];
+  cap.className = `pv-cap cap-${spec.captions || "off"}${sample ? "" : " hidden"}`;
+  if (!sample) return;
+  cap.innerHTML = sample.html;
+  cap.style.top = `${captionHeight(spec) * 100}%`;
+  cap.style.fontSize = `${Math.max(7, Math.round(Math.min(w, h) * sample.size))}px`;
+}
+
+function drawPexels() {
+  $("pexelsInfo").innerHTML =
+    `<div><span>Pexels key</span><b>${pexelsReady ? "saved" : "not set"}</b></div>`;
+  drawBrollHint();
+}
+
+$("pexelsSave").onclick = async () => {
+  const key = $("pexelsKey").value.trim();
+  const msg = $("pexelsMsg"), btn = $("pexelsSave");
+  if (!key && !pexelsReady) {
+    msg.innerHTML = `<div class="err">Paste a Pexels key first.</div>`;
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const d = await api("/api/settings/pexels", json("POST", { api_key: key }));
+    pexelsReady = !!d.pexels;
+    $("pexelsKey").value = "";
+    msg.innerHTML = `<div class="ok-box">${pexelsReady
+      ? "Saved. Tick B-roll under Render to use it."
+      : "Removed. B-roll is off until a key is added again."}</div>`;
+    drawPexels();
+  } catch (e) {
+    msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+drawEdit();
 
 $("arBar").onclick = (e) => {
   const btn = e.target.closest("[data-ar]");
@@ -2006,6 +2157,7 @@ async function run() {
       aspect_ratio: aspectChoice || null,
       content_kind: kindChoice || null,
       hook_replay: $("hookReplay").checked,
+      ...editChoice,
     }));
   } catch (e) {
     showErr(e.message);
@@ -2250,6 +2402,23 @@ async function loadLibrary() {
   return clips.length;
 }
 
+// Order inside a run. "Ranked" is the order the run was ranked in, which is
+// already best first; the others sort on one part of the scorecard, so a run
+// can be read for its best opening line or its loudest moment instead.
+function scorePart(c, key) {
+  const p = ((c.scorecard || {}).parts || []).find((x) => x.key === key);
+  return p ? p.value : -1;
+}
+
+function sortClips(list) {
+  const by = {
+    hook: (a, b) => scorePart(b, "hook") - scorePart(a, "hook"),
+    energy: (a, b) => scorePart(b, "energy") - scorePart(a, "energy"),
+    short: (a, b) => (a.duration ?? Infinity) - (b.duration ?? Infinity),
+  }[libSort];
+  return by ? [...list].sort(by) : list;
+}
+
 // Every card carries its own position in `clips`, so filtering the grid can
 // never make a card open the wrong clip. Anything that reorders or removes
 // from `clips` has to call this.
@@ -2292,9 +2461,30 @@ function whenMade(ts) {
   return d.toLocaleDateString();
 }
 
+// The four parts a clip's score is made of, as bars, each titled with what it
+// measures. Only the parts that were actually measured are drawn.
+function scoreBars(card, cls = "sc-bars", numbers = false) {
+  return `<div class="${cls}">${card.parts.map((p) => `
+    <span class="scb" title="${esc(p.label)} ${p.value}/100 · ${esc(p.why)}">
+      <em>${esc(p.label)}${numbers ? `<small>${esc(p.value)}</small>` : ""}</em>
+      <i><b style="width:${p.value}%"></b></i>
+    </span>`).join("")}</div>`;
+}
+
+// What the edit did, as a few words for the card's flags.
+function editFlags(c) {
+  const e = c.edit || {};
+  const out = [];
+  if (e.captions && e.captions !== "off") out.push("captions");
+  if (e.removed_seconds) out.push(`−${Number(e.removed_seconds).toFixed(1)}s`);
+  if ((e.broll || []).length) out.push("B-roll");
+  return out.map((f) => `<span>${esc(f)}</span>`).join("");
+}
+
 function clipCard(c) {
   const i = c._i;
   const seo = c.seo || null;
+  const card = c.scorecard || null;
   const title = (seo && seo.title) || c.title || "Untitled";
   const sub = (seo && seo.hook_text) || c.hook_sentence
     || (c.start_time != null ? `${clock(c.start_time)} → ${clock(c.end_time)}` : "");
@@ -2303,15 +2493,17 @@ function clipCard(c) {
   // the wrong game is visible at a glance instead of only after upload.
   const filed = c.subject_override || (seo && seo.about && seo.about.subject) || "";
   return `
-    <div class="clip" data-i="${i}" style="animation-delay:${Math.min(i, 12) * 45}ms">
+    <div class="clip${rank === 1 ? " first" : ""}" data-i="${i}" style="animation-delay:${Math.min(i, 12) * 45}ms">
       <div class="thumb">
         <video src="${esc(c.url)}#t=0.5" preload="metadata" muted playsinline data-i="${i}"></video>
         <div class="veil"><span class="pbtn"><svg><use href="#i-play"/></svg></span></div>
         <span class="rank">${rank ? `#${esc(rank)}` : ""}${
-          c.score != null ? `<i>★ ${esc(c.score)}</i>` : ""}</span>
+          c.score != null ? `<i class="${card ? `g-${esc(card.grade.key)}` : ""}"
+            title="${card ? esc(card.grade.label) : ""}">★ ${esc(c.score)}</i>` : ""}</span>
         <span class="dur">${c.duration != null ? clock(c.duration) : ""}</span>
         <div class="flag">
           ${c.edited ? `<span>trimmed</span>` : ""}
+          ${editFlags(c)}
           ${c.muted ? `<span>muted</span>` : ""}
           ${c.youtube ? `<span>on YouTube</span>` : ""}
           ${c.saved_to ? `<span>saved</span>` : ""}
@@ -2321,6 +2513,8 @@ function clipCard(c) {
       </div>
       <div class="ct">${esc(title)}</div>
       <div class="cm">${esc(sub)}</div>
+      ${card && card.parts.length ? `<div class="sc">${scoreBars(card)}${
+        card.reason ? `<p class="sc-why" title="${esc(card.reason)}">${esc(card.reason)}</p>` : ""}</div>` : ""}
       <div class="cq">
         ${seo ? `<button class="qbtn" data-copy="title" data-i="${i}">Copy title</button>
         <button class="qbtn" data-copy="tags" data-i="${i}">Copy tags</button>` : ""}
@@ -2343,9 +2537,9 @@ function renderClips() {
   $("clips").innerHTML = runs.map((r) => {
     // The date belongs to the run — every clip in it was made at once — while
     // the search is per clip, so a run can survive on just one of its clips.
-    const keep = inWindow(r.created_at)
+    const keep = sortClips(inWindow(r.created_at)
       ? r.clips.filter((c) => terms.every((t) => c._hay.includes(t)))
-      : [];
+      : []);
     if (!keep.length) return "";
 
     const cards = keep.map((c) => { shown.push(c._i); return clipCard(c); }).join("");
@@ -2500,9 +2694,11 @@ function openPlayer(i) {
     c.rank ? `#${c.rank} of this run` : "",
     c.start_time != null ? `${clock(c.start_time)} → ${clock(c.end_time)}` : "",
     c.duration != null ? `${c.duration}s` : "",
-    c.score != null ? `score ${c.score}` : "",
+    c.score != null ? (c.scorecard ? `${c.scorecard.grade.label} · score ${c.score}`
+                                   : `score ${c.score}`) : "",
     c.muted ? "muted" : "",
   ].filter(Boolean).join(" · ");
+  renderWhy(c);
   $("pDownload").href = c.url;
   $("pDownload").setAttribute("download", c.file || "short.mp4");
 
@@ -2511,6 +2707,37 @@ function openPlayer(i) {
   renderSeo();
   setMuteIcon();
   vid.play().catch(() => {});
+}
+
+// Why this clip ranked where it did, at the top of Boost: the grade, the
+// model's own sentence, the four parts, and what the edit did to it.
+function renderWhy(c) {
+  const el = $("pWhy");
+  const card = c && c.scorecard;
+  const edit = editSummary(c);
+  if (!card && !edit) { el.innerHTML = ""; return; }
+  el.innerHTML = (card ? `
+    <div class="why-head">
+      <span class="why-score g-${esc(card.grade.key)}">${esc(card.score)}</span>
+      <div><b>${esc(card.grade.label)}</b><span><span>Why it ranked</span>${c.rank ? ` #${esc(c.rank)}` : ""}</span></div>
+    </div>
+    ${card.reason ? `<p class="why-reason">${esc(card.reason)}</p>` : ""}
+    ${card.parts.length ? scoreBars(card, "why-bars", true) : ""}
+    ${card.notes.length ? `<ul class="why-notes">${
+      card.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}` : "")
+    + (edit ? `<p class="why-edit"><b>Edited</b> ${esc(edit)}</p>` : "");
+}
+
+function editSummary(c) {
+  const e = (c && c.edit) || null;
+  if (!e) return "";
+  const bits = [];
+  if (e.captions && e.captions !== "off") bits.push(`${e.captions} captions`);
+  if (e.cuts) bits.push(`${e.cuts} pause${e.cuts > 1 ? "s" : ""} cut (${Number(e.removed_seconds || 0).toFixed(1)}s)`);
+  if (e.punch_ins) bits.push(`${e.punch_ins} punch-in${e.punch_ins > 1 ? "s" : ""}`);
+  if ((e.emoji || []).length) bits.push(`${e.emoji.length} emoji`);
+  if ((e.broll || []).length) bits.push(`B-roll: ${e.broll.join(", ")}`);
+  return bits.join(" · ");
 }
 
 function closePlayer() {
@@ -3210,6 +3437,17 @@ $("libReset").onclick = () => {
   applyLibFilters();
 };
 
+try {
+  const saved = localStorage.getItem("clipmint.libsort");
+  if (saved && [...$("libSort").options].some((o) => o.value === saved)) libSort = saved;
+} catch (_) { /* private mode: ranked it is */ }
+$("libSort").value = libSort;
+$("libSort").onchange = () => {
+  libSort = $("libSort").value;
+  try { localStorage.setItem("clipmint.libsort", libSort); } catch (_) { /* a nicety */ }
+  renderClips();
+};
+
 $("tApply").onclick = async () => {
   const c = clips[cur];
   if (!c || !trim) return;
@@ -3222,6 +3460,7 @@ $("tApply").onclick = async () => {
       `/api/jobs/${encodeURIComponent(jobOf(c))}/clips/${encodeURIComponent(c.file)}/trim`,
       json("POST", { start: trim.start, end: trim.end, mute: $("tMute").checked }));
     patchClip(cur, updated);
+    renderWhy(clips[cur]);
     // Cache-bust: the new render can reuse a name the browser already holds.
     vid.src = `${updated.url}?v=${Date.now()}`;
     $("pMeta").textContent =

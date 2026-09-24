@@ -21,9 +21,12 @@ from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from shorts_generator.layout_spec import ASPECT_PRESETS, LayoutSpec, parse_layout_prompt
+from shorts_generator import captions as caption_styles
+from shorts_generator.layout_spec import (
+    ASPECT_PRESETS, EDIT_FIELDS, LayoutSpec, parse_layout_prompt,
+)
 from . import notify, updater
-from .jobs import STORE, regenerate_seo, rename_to_title
+from .jobs import STORE, clip_length, job_kind, regenerate_seo, rename_to_title
 
 STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_DIR = Path("webapp_uploads")
@@ -51,7 +54,20 @@ class ResolveRequest(BaseModel):
     url: str
 
 
-class LayoutPreviewRequest(BaseModel):
+class EditChoice(BaseModel):
+    """The edit controls under Render: captions and the auto-edit switches.
+
+    None means "not sent", which leaves the default -- how a client that
+    predates these controls still behaves.
+    """
+    captions: Optional[str] = None
+    cut_pauses: Optional[bool] = None
+    punch_ins: Optional[bool] = None
+    emoji: Optional[bool] = None
+    broll: Optional[bool] = None
+
+
+class LayoutPreviewRequest(EditChoice):
     prompt: str = ""
     use_llm: bool = True
     # An explicit pick from the UI toggle. None means "whatever the words say",
@@ -60,7 +76,7 @@ class LayoutPreviewRequest(BaseModel):
     content_kind: Optional[str] = None
 
 
-class JobRequest(BaseModel):
+class JobRequest(EditChoice):
     source: str
     prompt: str = ""
     num_clips: Optional[int] = None
@@ -106,6 +122,7 @@ async def options() -> dict:
              "hint": "Plain centre crop, no webcam panel."},
         ],
         "corners": ["bottom-left", "bottom-right", "top-left", "top-right"],
+        "captions": caption_styles.options(),
     }
 
 
@@ -180,6 +197,8 @@ async def get_settings() -> dict:
             "gemini": bool(user_config.get("GEMINI_API_KEY")),
             "groq": bool(user_config.get("GROQ_API_KEY")),
             "openai": bool(user_config.get("OPENAI_API_KEY")),
+            # Not a model: the stock-footage library B-roll is drawn from.
+            "pexels": bool(user_config.get("PEXELS_API_KEY")),
         },
         "daily_limits": {
             "gemini": user_config.get("GEMINI_DAILY_LIMIT"),
@@ -275,6 +294,42 @@ async def set_settings(req: SettingsRequest) -> dict:
     path = user_config.save(values)
     return {"saved": True, "config_path": str(path),
             "has_key": user_config.has_llm_key()}
+
+
+@app.get("/api/fonts/{name}")
+async def caption_font(name: str) -> FileResponse:
+    """A caption font, so the style picker and the preview show the real type.
+
+    Only the files a caption style names are served -- the name is checked
+    against that list, never joined onto a path as given.
+    """
+    from shorts_generator.bundled import asset_dir
+
+    allowed = {p["file"] for p in caption_styles.PRESETS.values()}
+    folder = asset_dir("fonts")
+    if folder is None or name not in allowed or not (folder / name).exists():
+        raise HTTPException(404, "No such font")
+    return FileResponse(folder / name, media_type="font/ttf",
+                        headers={"Cache-Control": "max-age=86400"})
+
+
+class PexelsRequest(BaseModel):
+    # Empty removes the stored key.
+    api_key: str = ""
+
+
+@app.post("/api/settings/pexels")
+async def set_pexels(req: PexelsRequest) -> dict:
+    """Store the key B-roll is fetched with. Kept apart from the model keys:
+    it chooses no provider and nothing about ranking depends on it."""
+    from shorts_generator import user_config
+
+    key = (req.api_key or "").strip()
+    if key and not re.fullmatch(r"[A-Za-z0-9]{20,100}", key):
+        raise HTTPException(400, "That doesn't look like a Pexels API key. It is a single "
+                                 "string of letters and numbers from pexels.com/api.")
+    user_config.save({"PEXELS_API_KEY": key})
+    return {"saved": True, "pexels": bool(key)}
 
 
 class ProcessorRequest(BaseModel):
@@ -451,6 +506,17 @@ def _cleanup_scan() -> list:
 
     src = user_config.source_dir().resolve()
     items = []
+    # Stock footage fetched for B-roll is a cache like the downloads: every
+    # file in it can be fetched again the next time a clip asks for it.
+    broll = src / "b-roll"
+    if broll.is_dir():
+        for f in sorted(broll.iterdir()):
+            if f.is_file() and f.suffix.lower() in _CLEANABLE_MEDIA:
+                try:
+                    items.append({"name": f.name, "path": str(f),
+                                  "bytes": f.stat().st_size, "kind": "broll"})
+                except OSError:
+                    continue
     for f in sorted(src.iterdir()):
         if not f.is_file():
             continue
@@ -679,6 +745,8 @@ EXTERNAL_LINKS = {
     "google-privacy": "https://policies.google.com/privacy",
     "privacy": "https://klez799.github.io/clipmint/privacy.html",
     "google-permissions": "https://security.google.com/settings/security/permissions",
+    # A free key for the stock footage B-roll is drawn from.
+    "pexels-key": "https://www.pexels.com/api/",
 }
 
 
@@ -881,6 +949,23 @@ def _override_kind(spec: LayoutSpec, kind: Optional[str]) -> None:
     spec.validate()
 
 
+def _override_edit(spec: LayoutSpec, req: EditChoice) -> None:
+    """Apply the edit controls, except where the prompt's words said otherwise.
+
+    The prompt is this app's main control, and a phrase like "no captions" is
+    as deliberate as a click -- more so, since it had to be typed. So the words
+    win for whatever they name, the controls decide the rest, and the preview
+    hands `edit_from_words` back so the controls can show which is which.
+    """
+    said = set(spec.edit_from_words or [])
+    for name in EDIT_FIELDS:
+        value = getattr(req, name, None)
+        if value is None or name in said:
+            continue
+        setattr(spec, name, value)
+    spec.validate()
+
+
 @app.post("/api/layout/preview")
 async def layout_preview(req: LayoutPreviewRequest) -> dict:
     """Parse a layout prompt without running anything, so the UI can show
@@ -888,6 +973,7 @@ async def layout_preview(req: LayoutPreviewRequest) -> dict:
     spec = await asyncio.to_thread(parse_layout_prompt, req.prompt, None, req.use_llm)
     _override_aspect(spec, req.aspect_ratio)
     _override_kind(spec, req.content_kind)
+    _override_edit(spec, req)
     return {"spec": spec.to_dict(), "summary": spec.describe(),
             "notes": spec.notes, "warning": spec.warning()}
 
@@ -943,6 +1029,7 @@ async def create_job(req: JobRequest) -> dict:
     spec = await asyncio.to_thread(parse_layout_prompt, req.prompt, None, req.use_llm)
     _override_aspect(spec, req.aspect_ratio)
     _override_kind(spec, req.content_kind)
+    _override_edit(spec, req)
     if req.hook_replay is not None:
         spec.hook_replay = bool(req.hook_replay)
     if req.num_clips:
@@ -1155,8 +1242,11 @@ async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
     prefix = f"edit_{clip.get('index', 1):02d}_{int(time.time())}"
 
     def _render():
+        from shorts_generator.local.llm import call_local_llm
         out = render_highlights(job.source_path, [highlight], job.spec,
-                                out_dir=job.out_dir, name_prefix=prefix)
+                                out_dir=job.out_dir, name_prefix=prefix,
+                                language=job.language, kind=job_kind(job),
+                                llm_fn=call_local_llm)
         return out[0] if out else {}
 
     try:
@@ -1190,7 +1280,9 @@ async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
         "url": f"/api/jobs/{job.id}/clips/{new_name}",
         "start_time": start,
         "end_time": end,
-        "duration": round(end - start, 1),
+        "duration": clip_length({**result, "start_time": start, "end_time": end}),
+        "hook_replay_seconds": result.get("hook_replay_seconds"),
+        "edit": result.get("edit"),
         "muted": bool(req.mute),
         "edited": True,
     })

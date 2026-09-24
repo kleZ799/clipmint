@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 import json
 import re
 
+from . import captions as caption_styles
 from . import content_kinds
 
 # aspect ratio -> (width, height). Values are the platform-native upload sizes,
@@ -75,6 +76,8 @@ def pick_output_size(src_w: int, src_h: int, aspect_ratio: str,
     return best
 
 LAYOUTS = ("stacked", "facetrack", "center")
+# The LayoutSpec fields that describe the edit rather than the framing.
+EDIT_FIELDS = ("captions", "cut_pauses", "punch_ins", "emoji", "broll")
 CORNERS = ("bottom-left", "bottom-right", "top-left", "top-right")
 
 
@@ -119,6 +122,21 @@ class LayoutSpec:
     # Only a default framing is the kind of video's to change: someone who
     # typed "webcam at the top" over a vlog meant it.
     layout_set: bool = False
+    # The edit made after the cut -- see autoedit. Captions burned in, one
+    # word lit at a time, in one of captions.PRESETS or "off".
+    captions: str = caption_styles.DEFAULT
+    # Take out quiet pauses and "um"s. A pause with sound in it is kept.
+    cut_pauses: bool = True
+    # Zoom in on the lines said with emphasis.
+    punch_ins: bool = True
+    # Pop an emoji over words that name a feeling or a thing.
+    emoji: bool = False
+    # Stock footage over lines that name something filmable. Needs a Pexels
+    # key, and never runs on a stream.
+    broll: bool = False
+    # Which of the edit settings above the prompt's own words decided, so the
+    # interface can show the words won rather than silently ignoring them.
+    edit_from_words: List[str] = field(default_factory=list)
     # Human-readable notes about what the parser understood, shown in the UI
     # so the user can see their prompt was actually applied.
     notes: List[str] = field(default_factory=list)
@@ -146,6 +164,11 @@ class LayoutSpec:
         self.num_clips = max(1, min(10, int(self.num_clips)))
         self.content_kind = content_kinds.normalise(self.content_kind)
         self.layout_set = bool(self.layout_set)
+        self.captions = caption_styles.normalise(self.captions)
+        for name in ("cut_pauses", "punch_ins", "emoji", "broll"):
+            setattr(self, name, bool(getattr(self, name)))
+        self.edit_from_words = [f for f in (self.edit_from_words or [])
+                                if f in EDIT_FIELDS]
 
         # Keep only sane, ordered, non-duplicate spans.
         clean: List[List[float]] = []
@@ -179,6 +202,11 @@ class LayoutSpec:
         spec = cls()
         if not isinstance(data, dict):
             return spec.validate()
+        # A run made before the app edited its clips. Re-cutting one of those
+        # must give back the plain look it was made with, not a new one.
+        if "captions" not in data:
+            spec.captions = caption_styles.OFF
+            spec.cut_pauses = spec.punch_ins = spec.emoji = spec.broll = False
         fields = {f.name for f in dataclass_fields(cls)}
         for key, value in data.items():
             if key in fields and value is not None:
@@ -225,7 +253,23 @@ class LayoutSpec:
             prefix += "hook up front · "
         if self.content_kind != content_kinds.AUTO:
             prefix = f"{content_kinds.LABELS[self.content_kind]} · " + prefix
-        return prefix + self._describe_layout()
+        edit = self.describe_edit()
+        return prefix + self._describe_layout() + (f" · {edit}" if edit else "")
+
+    def describe_edit(self) -> str:
+        """The edit made after the cut, in a few words, or "" for none."""
+        bits = []
+        if self.captions != caption_styles.OFF:
+            bits.append(f"{self.captions} captions")
+        if self.cut_pauses:
+            bits.append("pauses cut")
+        if self.punch_ins:
+            bits.append("punch-ins")
+        if self.emoji:
+            bits.append("emoji")
+        if self.broll:
+            bits.append("B-roll")
+        return ", ".join(bits)
 
     def _describe_layout(self) -> str:
         if self.layout == "stacked":
@@ -400,10 +444,68 @@ def _parse_clip_length(p: str, spec: LayoutSpec) -> tuple:
     return p, False
 
 
+_CAPTION_WORD = r"(?:captions?|subtitles?|subs)"
+_STYLE_WORD = "(" + "|".join(caption_styles.PRESETS) + ")"
+
+# Each is (pattern, field, value). Matched first and cut out of the prompt,
+# because the phrases are full of words the framing rules also read: "cut the
+# pauses" would otherwise switch on the exact-span parser, and "zoom in on
+# emphasis" would tighten the webcam crop.
+_EDIT_PHRASES = [
+    (rf"\b(?:no|without|turn off|remove the|hide the)\s+{_CAPTION_WORD}\b"
+     rf"|\b{_CAPTION_WORD}\s+off\b", "captions", caption_styles.OFF),
+    (rf"\b{_STYLE_WORD}\s+{_CAPTION_WORD}\b", "captions", None),
+    (rf"\b{_CAPTION_WORD}\s+(?:in\s+)?{_STYLE_WORD}\b", "captions", None),
+    (rf"\b(?:add|with|burn in|burned in|show)\s+{_CAPTION_WORD}\b", "captions", "on"),
+    (r"\bkeep (?:the |my )?(?:pauses|silences?|ums?)\b|\bno jump ?cuts\b"
+     r"|\bdon'?t cut (?:the |my )?(?:pauses|silences?)\b", "cut_pauses", False),
+    (r"\b(?:cut|remove|trim|take out) (?:the |all the )?(?:pauses|silences?|dead air"
+     r"|filler(?: words)?|ums?)\b|\bjump ?cuts\b", "cut_pauses", True),
+    (r"\bno (?:zooms?|punch[\s-]?ins?)\b", "punch_ins", False),
+    (r"\bpunch[\s-]?ins?\b|\bzoom(?:s|ing)? on (?:the )?emphasis\b", "punch_ins", True),
+    (r"\b(?:no|without) emojis?\b", "emoji", False),
+    (r"\bemojis?\b", "emoji", True),
+    (r"\b(?:no|without) (?:b[\s-]?roll|stock footage)\b", "broll", False),
+    (r"\bb[\s-]?roll\b|\bstock footage\b", "broll", True),
+]
+
+
+def _parse_edit(p: str, spec: LayoutSpec) -> tuple:
+    """Read the edit settings out of the prompt. Returns (rest, fields set)."""
+    found = set()
+    for pattern, name, value in _EDIT_PHRASES:
+        if name in found:
+            continue
+        m = re.search(pattern, p)
+        if not m:
+            continue
+        if name == "captions":
+            if value is None:
+                value = m.group(1)
+            elif value == "on":
+                value = (spec.captions if spec.captions != caption_styles.OFF
+                         else caption_styles.DEFAULT)
+            spec.captions = value
+            spec.notes.append("captions → off" if value == caption_styles.OFF
+                              else f"captions → {value}")
+        else:
+            setattr(spec, name, value)
+            label = {"cut_pauses": "cut pauses and fillers", "punch_ins": "punch-ins",
+                     "emoji": "emoji", "broll": "B-roll"}[name]
+            spec.notes.append(f"{label} → {'on' if value else 'off'}")
+        found.add(name)
+        p = p[:m.start()] + " " + p[m.end():]
+    spec.edit_from_words = sorted(found)
+    return p, found
+
+
 def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
     """Apply what we can read directly. Returns the set of fields we resolved."""
     p = prompt.lower()
     resolved = set()
+
+    p, edits = _parse_edit(p, spec)
+    resolved |= edits
 
     # Clip length first — see _parse_clip_length for why it has to beat the
     # time-range pass. It also strips the phrase, so "45 second clips" cannot

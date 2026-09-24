@@ -278,7 +278,7 @@ def explain_exit_status(code: Optional[int]) -> str:
 
 
 def run_checked(cmd, *, what: str = "ffmpeg", capture_stdout: bool = False,
-                tail: int = 12) -> subprocess.CompletedProcess:
+                tail: int = 12, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
     """Run a child that has to succeed, and if it does not, say why.
 
     check=True raises CalledProcessError, whose message is the command and a
@@ -295,6 +295,12 @@ def run_checked(cmd, *, what: str = "ffmpeg", capture_stdout: bool = False,
     kwargs = {"stderr": subprocess.PIPE, "text": True}
     if capture_stdout:
         kwargs["stdout"] = subprocess.PIPE
+    # A working folder lets a filter name its own files (a subtitles script,
+    # a fonts folder) relatively. An absolute path inside a filtergraph needs
+    # escaping at two levels, and a Windows drive colon or an apostrophe in a
+    # user's name gets one of them wrong sooner or later.
+    if cwd:
+        kwargs["cwd"] = cwd
 
     result = run(cmd, **kwargs)
     if result.returncode == 0:

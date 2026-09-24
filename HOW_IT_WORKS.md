@@ -241,6 +241,12 @@ shorts_generator/
 ├── hook_open.py            prepend a late payoff to the front of a clip
 ├── layout_spec.py          natural language → LayoutSpec; quality ladder
 ├── render.py               one entry point that dispatches a LayoutSpec
+├── autoedit.py             after the cut: jump cuts, punch-ins, emoji, B-roll, one encode
+├── captions.py             burned-in word-by-word captions: four presets, ASS for libass
+├── words.py                word timings for a rendered clip (faster-whisper, per clip)
+├── broll.py                where stock footage fits (the LLM) and fetching it (Pexels)
+├── scorecard.py            a clip's score split into Hook / Moment / Energy / Pace + why
+├── bundled.py              finds assets/ in a checkout or a PyInstaller build
 ├── vision.py               what each clip shows, from four of its frames
 ├── faces.py                face detection: YuNet, with Haar as the fallback
 ├── accel.py                which processor encodes video and runs Whisper
@@ -1088,6 +1094,99 @@ samples (Haar: 125), and the stacked locator's samples agreeing 18–20 times ou
 of ~20 (Haar: 3–16), at about 12 ms a frame on a laptop CPU. YuNet sees *more*
 faces, not fewer — including the photos inside a game — which is why the
 recurring-face vote stays.
+
+### 7.7 The edit — `autoedit.py`, `captions.py`, `words.py`, `broll.py`
+
+What the Shorts tools sell on top of the cut is editing: captions, the dead air
+taken out, a zoom on the line that matters. `render_highlights()` does all of
+it after the layout render and before the cold open, so every layout gets it
+from one place and the replayed moment carries its captions with it. It is a
+second pass over the finished clips, in three steps:
+
+1. **Listen** (`words.py`). Each rendered clip goes through faster-whisper
+   again with `word_timestamps=True`. The source transcript is in sentences,
+   because ranking needs nothing finer and word timings over a four-hour VOD
+   are not free. A 30–90 second clip is cheap, and its times are the clip's
+   own, so trims, re-cuts and exact spans need no mapping back to the source.
+   The model is loaded once per batch and released at the end of it.
+2. **Plan** (`autoedit.analyse`). Nothing is encoded yet:
+   - *Cuts.* A gap between words longer than 0.55s (0.9s on a stream) is dead
+     air **only if it is quiet**, judged against the clip's own loudness
+     envelope (`signals.analyse_audio`) at under 30% of the median speech
+     level. A gap holding a laugh or an explosion in the game stays. So does
+     the three seconds before the clip's `hook_peak`, because a quiet run-up
+     to the loudest moment is a build, not a gap (`silence_to_peak` rewards
+     exactly that). Fillers ("um", "uh") are cut; "like" is not. The envelope
+     comes in 0.25s windows, so a pause is only listened to from one window in
+     from each edge, or it hears the word next to it. Slivers under 0.2s
+     without a word in them are dropped, and the piece count is capped at 40.
+   - Every word is **remapped** onto the new, shorter timeline, and so is
+     `hook_peak`, which the cold open reads afterwards (`hook_peak_offset`).
+   - *Punch-ins.* A trigger phrase from `signals.TRIGGER_PHRASES`, a word
+     with "!", or a word in the loudest 10% gets a 1.14× zoom to the end of
+     its sentence, at most one per 8 seconds and 3.5s apart. On the face-crop
+     layout, jump cuts alternate between 1× and 1.06×, the editor's trick
+     that makes a cut read as a new angle rather than a stumble. The zoom
+     aims at the webcam panel on the stacked layout.
+   - *Emoji* are a controlled word list (`EMOJI_WORDS`, English), a few per
+     clip, never the same one twice. The art is Twemoji (CC-BY 4.0), rendered
+     to PNG in `assets/emoji/`.
+   - *B-roll* is opt-in and needs the user's own Pexels key. One LLM request
+     for the whole batch reads each clip's timed lines and names up to two
+     concrete, filmable things, never in the first 3s or last 2s. Each is
+     searched on Pexels, downloaded once to `output/b-roll/`, and reused. It
+     never runs on a stream, where the gameplay is the picture.
+3. **Render** (`autoedit.render`). One ffmpeg filtergraph per clip:
+   `trim`/`atrim` + `concat` for the cuts (with 12ms audio fades so they
+   don't click), a fixed-size `scale`+`crop` copy of the frame laid over it
+   with `enable='between(t,…)'` for each zoom level (so nothing reconfigures
+   mid-stream), `overlay` for B-roll and emoji, and `subtitles` last so the
+   words sit on top. It runs with a working directory holding the ASS script
+   and the style's font, so the filter names both relatively. An absolute
+   Windows path inside a filtergraph needs escaping twice, and a drive colon
+   or an apostrophe in a user name gets it wrong sooner or later. That is
+   why `proc.run_checked` and `accel.run_encode` take `cwd`.
+
+**Captions** (`captions.py`) are ASS for libass, one event per word: the whole
+line on screen, the spoken word recoloured and popped with `\t` scale
+transforms. The four presets are complete looks, not knobs: *bold* (Montserrat
+Black, yellow), *punch* (Anton, two words, green), *clean* (sentence case on an
+opaque box; a see-through box shows darker patches where libass's per-run
+boxes overlap) and *comic* (Bangers, purple edge). The fonts ship in
+`assets/fonts/` (OFL) because a caption look that depends on installed fonts
+looks different on every PC. On the stacked layout the line sits on the seam
+between webcam and gameplay; elsewhere at 70% height, above the band each app
+covers with its own buttons. Lines break at the word limit, on punctuation, and
+before a pause. Scripts written without spaces (Japanese, Chinese, Thai) are
+joined without them.
+
+**Settings** live on `LayoutSpec` (`captions`, `cut_pauses`, `punch_ins`,
+`emoji`, `broll`), so a trim or a retry re-renders with the edit the run was
+made with. A manifest from before these fields existed reads back with all of
+them off, so re-cutting an old clip does not suddenly add captions. The prompt
+can set them ("comic captions", "keep the pauses", "no zooms", "add b-roll").
+Those phrases are parsed **first** and cut out of the prompt, because "cut the
+pauses" would otherwise switch on the exact-span parser and "zoom in on
+emphasis" would tighten the webcam crop. Where the words set a field they
+win over the controls, and `edit_from_words` tells the UI which fields to tag.
+
+Every step fails soft. No faster-whisper means no words, so no captions, cuts
+or punch-ins. An encode that fails keeps the plain render. `polish()` never
+raises into the run. What was done is recorded on the clip as `edit`.
+
+### 7.8 Why it ranked — `scorecard.py`
+
+Every clip already carried the numbers it was ranked on: `hook_score` and
+`viral_score` from the model, and `signals` from the audio and the words.
+`scorecard.build()` turns them into four 0–100 parts: **Hook**, **Moment**,
+**Energy** (`audio_spike`) and **Pace** (opening words per second against
+2.5), each drawn only when it was actually measured. It adds a grade (Top pick
+≥ 85, Strong ≥ 70, Worth a look ≥ 55, Long shot), the model's own
+`virality_reason`, and up to three plain notes ("A quiet beat before the
+payoff"). It is attached in `_finalize` and again when a run is restored from
+disk, so older runs get one too. Exact spans and adopted files have no score
+and get no card rather than an invented one. The library can sort each run by
+Hook, Energy or length as well as by rank.
 
 ---
 
@@ -3135,7 +3234,9 @@ rather than guessing from what the button last did.
 
 | Route | Purpose |
 |---|---|
-| `GET /api/options` | Aspect ratios, layouts and corners for the UI controls |
+| `GET /api/options` | Aspect ratios, layouts, corners and caption styles for the UI controls |
+| `GET /api/fonts/{name}` | One of the bundled caption fonts, so the style picker and the preview show the real type. Only the files a caption preset names are served |
+| `POST /api/settings/pexels` | Store (or, empty, remove) the Pexels key B-roll is fetched with. Kept apart from the model keys: it chooses no provider |
 | `GET /api/settings` | Whether a key exists, which provider, where it came from, ffmpeg presence, available Gemini models with free-tier limits. **Never returns the key itself** |
 | `POST /api/settings` | Save a key / switch provider / pick a model / set a self-imposed daily cap. Gemini models are probe-tested before storing |
 | `GET /api/usage` | Today's spend per provider per model, seconds until reset, whether an OpenAI fallback is ready |

@@ -266,6 +266,32 @@
               <option value="ur">Urdu</option>
             </select>
           </label>
+          <!-- The edit made after the cut. Each control can also be set in
+               words ("comic captions", "keep the pauses"), and the words win;
+               the tag beside a control says when they have. -->
+          <div class="edit-box" id="editBox">
+            <div class="ed-head">
+              <h3>Edit</h3>
+              <span class="p-hint">Applied to every clip after it is cut</span>
+            </div>
+            <div class="ar-row">
+              <span class="ar-label">Captions. Burned in, the spoken word lit up <em class="said hidden" data-said="captions">set by your words</em></span>
+              <div class="chipbar capbar" id="capBar">
+                <button class="chip" data-cap="off">Off</button>
+                <button class="chip cap cap-bold on" data-cap="bold"><span>BOLD</span></button>
+                <button class="chip cap cap-punch" data-cap="punch"><span>PUNCH</span></button>
+                <button class="chip cap cap-clean" data-cap="clean"><span>Clean</span></button>
+                <button class="chip cap cap-comic" data-cap="comic"><span>COMIC</span></button>
+              </div>
+            </div>
+            <!-- One line per string: translation matches whole text nodes. -->
+            <label class="check"><input type="checkbox" id="edPauses" checked><span>Cut quiet pauses and &ldquo;um&rdquo;s. A pause with sound in it &mdash; a laugh, the game &mdash; stays <em class="said hidden" data-said="cut_pauses">set by your words</em></span></label>
+            <label class="check"><input type="checkbox" id="edPunch" checked><span>Punch in on the lines said with emphasis <em class="said hidden" data-said="punch_ins">set by your words</em></span></label>
+            <label class="check"><input type="checkbox" id="edEmoji"><span>Pop an emoji on words like &ldquo;insane&rdquo;, &ldquo;money&rdquo; or &ldquo;no way&rdquo; <em class="said hidden" data-said="emoji">set by your words</em></span></label>
+            <label class="check"><input type="checkbox" id="edBroll"><span>Stock B-roll over lines that name something you can film. Never on streams <em class="said hidden" data-said="broll">set by your words</em></span></label>
+            <p class="hint hidden" id="brollHint">B-roll needs a free Pexels key. <button class="linkish" id="brollKey">Add one in Settings</button></p>
+          </div>
+
           <label class="check"><input type="checkbox" id="hookReplay" checked><span>Start
             each clip with its own loudest moment, then play it in full. Only
             applies when the payoff lands late &mdash; clips that already open on
@@ -286,6 +312,7 @@
             <div class="frame" id="frame">
               <div class="cam" id="pvCam">webcam</div>
               <div class="game" id="pvGame">gameplay</div>
+              <div class="pv-cap" id="pvCap"><span>THIS IS</span> <b>INSANE</b></div>
               <div class="scanline"></div>
             </div>
           </div>
@@ -369,6 +396,15 @@
           <button class="chip" data-when="7">This week</button>
           <button class="chip" data-when="30">This month</button>
         </div>
+        <label class="lib-sort" title="Order the clips inside each run">
+          <span>Sort</span>
+          <select id="libSort">
+            <option value="rank">Ranked</option>
+            <option value="hook">Strongest hook</option>
+            <option value="energy">Most energy</option>
+            <option value="short">Shortest first</option>
+          </select>
+        </label>
       </div>
       <p class="lib-count hidden" id="libCount"></p>
 
@@ -556,6 +592,21 @@
   </div>
 
   <div class="d-sec">
+    <h3>B-roll</h3>
+    <div class="kv" id="pexelsInfo"></div>
+    <label class="fld">
+      <span>Pexels key &mdash; free, for the stock footage B-roll is drawn from</span>
+      <input type="password" id="pexelsKey" placeholder="Paste your Pexels API key">
+    </label>
+    <div class="row-btns">
+      <button class="btn ghost" id="pexelsSave">Save key</button>
+      <button class="btn ghost" data-open="pexels-key">Get a free key</button>
+    </div>
+    <p class="hint">Only used when B-roll is ticked. The footage is downloaded once into your output folder and reused.</p>
+    <div id="pexelsMsg"></div>
+  </div>
+
+  <div class="d-sec">
     <h3>Today's API use</h3>
     <div id="meters"></div>
     <div class="kv" id="usageInfo"></div>
@@ -613,6 +664,7 @@
         <button class="ibtn sm" id="seoClose"><svg><use href="#i-close"/></svg></button>
       </div>
 
+      <div class="why" id="pWhy"></div>
       <div class="seo-body" id="seoBody"></div>
 
       <div class="t-actions">

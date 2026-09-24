@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from shorts_generator import proc
+from shorts_generator import proc, scorecard
 from shorts_generator.layout_spec import LayoutSpec
 
 from shorts_generator import user_config
@@ -175,7 +175,11 @@ _STAGE_BANDS = {
     "download":   (0.0, 0.15),
     "transcribe": (0.15, 0.55),
     "rank":       (0.55, 0.70),
-    "render":     (0.70, 1.0),
+    "render":     (0.70, 0.86),
+    # Captions and the edit: a short Whisper pass and one encode per clip,
+    # about as long again as the render when it is on. When it is off the
+    # bar jumps from the render straight to done, which is fine.
+    "edit":       (0.86, 1.0),
     "done":       (1.0, 1.0),
 }
 
@@ -185,6 +189,7 @@ _STAGE_LABELS = {
     "transcribe": "Transcribing audio",
     "rank": "Finding the best moments",
     "render": "Rendering clips",
+    "edit": "Captions and edits",
     "done": "Done",
 }
 
@@ -194,6 +199,7 @@ _PREFIX_STAGE = [
     (r"^\[transcribe", "transcribe"),
     (r"^\[highlights|^\[llm|^\[rank", "rank"),
     (r"^\[stack|^\[clip/local|^\[center|^\[render", "render"),
+    (r"^\[edit|^\[broll", "edit"),
 ]
 
 # How many times a stage is tried before the run gives up on it. A download
@@ -619,6 +625,9 @@ class JobStore:
             on_disk.discard(name)
             clips.append({**c, "job_id": job_id,
                           "url": f"/api/jobs/{job_id}/clips/{name}"})
+        # Runs from before the scorecard existed carry every number it is
+        # built from, so they get one on the way in.
+        scorecard.attach(clips)
 
         # Anything left is a file the manifest didn't know about — an older
         # run, or a clip dropped in by hand. Take it at face value.
@@ -741,7 +750,7 @@ class JobStore:
                 # as, because that stage also reports a webcam found "from 4/6
                 # samples" -- and a bare search takes a detection score for a
                 # clip count.
-                if stage == "render":
+                if stage in ("render", "edit"):
                     m = re.match(r"^\[[^\]]+\]\s+(\d+)\s*/\s*(\d+)\s*:", line)
                 elif stage == "rank":
                     m = re.search(r"\bchunk\s+(\d+)\s*/\s*(\d+)\b", line)
@@ -847,9 +856,11 @@ class JobStore:
         half-written file from the failed attempt cannot be mistaken for it,
         and _finalize renames every clip to its title anyway.
         """
+        from shorts_generator.local.llm import call_local_llm
         from shorts_generator.render import render_highlights
 
-        shorts = render_highlights(source_path, top, job.spec, out_dir=job.out_dir)
+        extra = {"language": job.language, "kind": job_kind(job), "llm_fn": call_local_llm}
+        shorts = render_highlights(source_path, top, job.spec, out_dir=job.out_dir, **extra)
         for attempt in range(2, CLIP_ATTEMPTS + 1):
             failed = [i for i, s in enumerate(shorts) if not s.get("clip_url")]
             if not failed:
@@ -861,7 +872,8 @@ class JobStore:
             for i in failed:
                 again = render_highlights(source_path, [top[i]], job.spec,
                                           out_dir=job.out_dir,
-                                          name_prefix=f"short_{i + 1:02d}_try{attempt}")
+                                          name_prefix=f"short_{i + 1:02d}_try{attempt}",
+                                          **extra)
                 shorts[i] = again[0]
         return shorts
 
@@ -892,7 +904,9 @@ class JobStore:
                                        or old.get("title") or "")
                 updates = {"file": name, "url": f"/api/jobs/{job.id}/clips/{name}",
                            "error": None,
-                           "hook_replay_seconds": s.get("hook_replay_seconds")}
+                           "hook_replay_seconds": s.get("hook_replay_seconds"),
+                           "edit": s.get("edit"),
+                           "duration": clip_length(s)}
                 fixed += 1
             else:
                 updates = {"error": s.get("error")}
@@ -1125,9 +1139,10 @@ class JobStore:
                 "score": s.get("score"),
                 "start_time": s.get("start_time"),
                 "end_time": s.get("end_time"),
-                "duration": round(float(s.get("end_time", 0)) - float(s.get("start_time", 0)), 1),
+                "duration": clip_length(s),
                 "hook_sentence": s.get("hook_sentence"),
                 "hook_score": s.get("hook_score"),
+                "viral_score": s.get("viral_score"),
                 "first_line": s.get("first_line"),
                 "virality_reason": s.get("virality_reason"),
                 # What this clip was actually chosen on. Kept per clip and
@@ -1138,6 +1153,8 @@ class JobStore:
                 "model_score": s.get("model_score"),
                 "signal_score": s.get("signal_score"),
                 "signals": s.get("signals"),
+                "opening_density": s.get("opening_density"),
+                "opening_penalty": s.get("opening_penalty"),
                 "boundary_notes": s.get("boundary_notes"),
                 "hook_replay_seconds": s.get("hook_replay_seconds"),
                 # Where its loudest moment is, so a clip rendered again later
@@ -1147,11 +1164,15 @@ class JobStore:
                 # later files it under the same thing without looking again.
                 "scene": s.get("scene"),
                 "seo": s.get("seo"),
+                # What the edit did to it: captions, cuts, punch-ins, emoji,
+                # B-roll. See shorts_generator/autoedit.py.
+                "edit": s.get("edit"),
                 "error": s.get("error"),
                 "job_id": job.id,
                 "file": name,
                 "url": f"/api/jobs/{job.id}/clips/{name}" if name else None,
             })
+        scorecard.attach(rendered)
 
         ok = [c for c in rendered if c["url"]]
         with self._lock:
@@ -1169,6 +1190,30 @@ class JobStore:
         # Record the run next to its clips, so it is still here next launch.
         if ok:
             self._persist(job)
+
+
+def job_kind(job: Job) -> str:
+    """What kind of video a run turned out to be: chosen, or else detected."""
+    from shorts_generator import content_kinds
+
+    chosen = content_kinds.normalise(job.spec.content_kind)
+    if chosen != content_kinds.AUTO:
+        return chosen
+    detected = content_kinds.normalise((job.subject or {}).get("content_kind"))
+    return detected if detected != content_kinds.AUTO else content_kinds.OTHER
+
+
+def clip_length(clip: Dict) -> Optional[float]:
+    """How long the rendered file runs: its span, less the pauses cut out of
+    it, plus the cold open put in front of it."""
+    try:
+        length = float(clip.get("end_time", 0)) - float(clip.get("start_time", 0))
+    except (TypeError, ValueError):
+        return None
+    edit = clip.get("edit") or {}
+    length -= float(edit.get("removed_seconds") or 0)
+    length += float(clip.get("hook_replay_seconds") or 0)
+    return round(max(0.0, length), 1)
 
 
 def _clip_words(job: Job, clip: Dict) -> str:

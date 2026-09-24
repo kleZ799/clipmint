@@ -258,11 +258,49 @@ answer.
 
 Failed runs say so too, and name what went wrong.
 
-### Clips come back ranked
+### Clips come back ranked — and say why
 
-Each card carries its score and the exact span it was cut from.
+Each card carries its score, the exact span it was cut from, and the reason
+behind the score. The score is split into four bars: **Hook** (how hard the
+first line stops a scroll), **Moment** (how strong the moment is overall),
+**Energy** (how loud its peak is against the rest of the video) and **Pace**
+(how quickly the talking starts). Under the bars is the model's own sentence
+on why the moment works. "Strong moment, weak hook" means post it with a
+better cover line, not skip it. Open **Boost** on any clip to see the numbers
+and a grade: Top pick, Strong, Worth a look or Long shot. The library can sort
+each run by its strongest hook or its most energy as well as by rank.
 
 <img src="assets/screenshots/03-clips.png" alt="Finished clips from a Deadpool stream in a grid, each with its rank, score, length, the game it is filed under, and its title" width="880">
+
+### Captions, jump cuts and punch-ins, done for you
+
+Most Shorts are watched on mute, so every clip comes back with **captions
+burned in**, a few words at a time, with the word being said lit up as it is
+said. There are four looks: **Bold**, **Punch**, **Clean** and **Comic**. Each
+uses its own typeface, shipped with the app so it looks the same on every PC.
+On the webcam-over-gameplay layout the captions sit on the seam between the
+two panels, where they cover neither your face nor the game.
+
+The same pass does the edit an editor would do next:
+
+- **Dead air goes.** Quiet pauses and "um"s are cut. A pause with sound in it
+  stays: a laugh, or the game going off while you are silent. So does the
+  quiet beat right before the clip's loudest moment, because that is the
+  build-up, not a gap.
+- **Punch-ins** zoom in on the lines said with emphasis. On a face-cam clip,
+  jump cuts alternate between two framings, so a cut reads as a new angle
+  rather than a stumble.
+- **Emoji pops** (off by default) on words like "insane", "money" or "no way".
+- **B-roll** (off by default) puts two or three seconds of stock footage over
+  lines that name something you can film, like "I moved to Tokyo". It needs a
+  free [Pexels](https://www.pexels.com/api/) key in Settings, and it never
+  runs on a stream, where the gameplay is the picture.
+
+Pick them under **Render**, or say them in the prompt: *"comic captions, keep
+the pauses, add emoji"*. The words win over the switches, and the switches
+show it. Each clip is listened to again for word timings, a Whisper pass over
+seconds rather than hours, so this adds roughly the render time again on a
+CPU and very little on an NVIDIA GPU.
 
 ### The title knows what is on screen
 
