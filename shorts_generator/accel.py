@@ -157,7 +157,7 @@ def video_args(crf: int = 23, preset: str = "medium") -> List[str]:
 
 
 def run_encode(build_cmd: Callable[[List[str]], List[str]], what: str,
-               crf: int = 23, preset: str = "medium"):
+               crf: int = 23, preset: str = "medium", cwd: Optional[str] = None):
     """Run an ffmpeg encode on the chosen encoder, and on the CPU if that fails.
 
     `build_cmd` takes the encoder arguments and returns the whole command, so
@@ -168,7 +168,7 @@ def run_encode(build_cmd: Callable[[List[str]], List[str]], what: str,
     """
     name, label = video_encoder()
     try:
-        return proc.run_checked(build_cmd(video_args(crf, preset)), what=what)
+        return proc.run_checked(build_cmd(video_args(crf, preset)), what=what, cwd=cwd)
     except RuntimeError as e:
         if name == CPU_ENCODER:
             raise
@@ -179,7 +179,7 @@ def run_encode(build_cmd: Callable[[List[str]], List[str]], what: str,
               f"redoing it on the CPU, and using the CPU for the rest of this run",
               flush=True)
         cpu = ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"]
-        return proc.run_checked(build_cmd(cpu), what=what)
+        return proc.run_checked(build_cmd(cpu), what=what, cwd=cwd)
 
 
 # --- transcription --------------------------------------------------------

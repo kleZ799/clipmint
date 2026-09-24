@@ -313,6 +313,14 @@ def main() -> int:
         # can fetch a newer one, but a build must work offline from day one.
         "--add-data", f"{ROOT / 'assets' / 'playbook'}{sep}assets/playbook",
 
+        # The caption fonts and the emoji the auto-edit pops in. Burned-in
+        # captions have to look the same on every PC, which means shipping
+        # the typeface rather than hoping the system has one; both folders
+        # are looked up at render time and a build without them renders
+        # captions in whatever font libass finds, and skips the emoji.
+        "--add-data", f"{ROOT / 'assets' / 'fonts'}{sep}assets/fonts",
+        "--add-data", f"{ROOT / 'assets' / 'emoji'}{sep}assets/emoji",
+
         # The native window. pywebview picks its backend at runtime, so
         # PyInstaller sees none of it without being told.
         "--hidden-import", "webview",

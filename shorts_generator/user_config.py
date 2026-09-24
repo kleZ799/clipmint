@@ -231,6 +231,9 @@ _GUIDE = """ClipMint keeps everything it makes in this folder.
       space -- clips you have already made are untouched. Re-running the same
       video downloads it again.
 
+      output\b-roll holds stock footage fetched from Pexels for B-roll, if
+      you turned that on. Safe to delete; it is fetched again when needed.
+
 SAFE TO DELETE
   Anything inside "output". Any run folder inside "shorts" whose clips you no
   longer want. Settings has a "Clear space" button that does the first of

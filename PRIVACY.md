@@ -52,6 +52,9 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
   next time it starts.
 - **Your upload choices** (privacy, category, made-for-kids), kept in the app
   window's local storage so the form remembers them.
+- **Your caption style and edit choices**, kept the same way.
+- **Your Pexels key**, if you add one for B-roll, in the settings file. It
+  stays until you remove it in Settings.
 
 ClipMint does not use cookies or any tracking or analytics. The YouTube sign-in
 cookies feature, used only to *download* videos when YouTube asks for proof
@@ -69,6 +72,11 @@ YouTube.
   and the source video's title and description, so it can pick moments and
   write titles. Nothing from your Google account or YouTube channel is ever
   sent to an AI provider.
+- **Pexels**, only if you add a Pexels key and tick **B-roll**: a search of
+  one to three words for each cutaway (for example "city at night"), sent
+  with your own key, and the stock video it finds downloaded to your
+  computer. Nothing you said, no frame of your video and nothing from your
+  Google account is sent.
 - **GitHub:** the app checks GitHub for updates and for a newer copy of its
   writing guide. These requests carry no personal data.
 

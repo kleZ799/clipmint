@@ -1,0 +1,18 @@
+The images in this folder are Twemoji, rasterised to 192x192 PNG.
+
+Twemoji graphics: Copyright 2019 Twitter, Inc and other contributors;
+Copyright 2024 jdecked and other contributors (https://github.com/jdecked/twemoji).
+Licensed under CC-BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+The PNGs were rendered from the SVGs published in the @twemoji/svg 15.0.0
+package. Nothing else was changed. Each file is named for what it is used for
+rather than for its codepoint:
+
+  laugh 1f602      fire 1f525       mindblown 1f92f  scream 1f631
+  money 1f4b0      heart 2764       skull 1f480      trophy 1f3c6
+  bulb 1f4a1       warning 26a0     rocket 1f680     angry 1f621
+  cry 1f62d        hundred 1f4af    game 1f3ae       food 1f355
+  party 1f389      flushed 1f633    eyes 1f440       thinking 1f914
+  check 2705       cross 274c       cool 1f60e       pray 1f64f
+  muscle 1f4aa     goat 1f410       brain 1f9e0      alarm 23f0
+  chart 1f4c8

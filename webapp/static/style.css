@@ -908,6 +908,7 @@ label.fld > span a:hover { text-decoration: underline; }
 .st.st-transcribe.now::after { content: "▁▃▅"; letter-spacing: -1px; animation: st-wave .9s steps(3) infinite; }
 .st.st-rank.now::after { content: "★"; animation: st-twinkle 1.3s ease-in-out infinite; }
 .st.st-render.now::after { content: "▦"; animation: st-slide 1.2s ease-in-out infinite; }
+.st.st-edit.now::after { content: "Aa"; font-weight: 800; animation: st-twinkle 1.3s ease-in-out infinite; }
 
 @keyframes st-fall { 0%, 100% { transform: translateY(-2px); opacity: .55; } 55% { transform: translateY(2px); opacity: 1; } }
 @keyframes st-wave { 0% { opacity: .45; } 50% { opacity: 1; } 100% { opacity: .45; } }
@@ -1148,7 +1149,13 @@ label.fld > span a:hover { text-decoration: underline; }
   color: #fff;
 }
 .clip .rank i { font: 600 10.5px/1.3 inherit; color: var(--on-media-warn); font-style: normal; }
-.clip:first-child .rank { background: linear-gradient(120deg, var(--red), #7a2bff); }
+.clip.first .rank { background: linear-gradient(120deg, var(--red), #7a2bff); }
+/* The score takes the colour of its grade. These sit on the black badge in
+   both themes, so they are fixed values rather than tokens that flip. */
+.clip .rank i.g-top { color: #5be37d; }
+.clip .rank i.g-strong { color: var(--on-media-warn); }
+.clip .rank i.g-good { color: var(--on-media-2); }
+.clip .rank i.g-weak { color: #8d8d8d; }
 .clip .flag .need { color: var(--on-media-warn); }
 .clip .flag {
   position: absolute;
@@ -2338,3 +2345,180 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 .safe-l li { margin-bottom: 6px; }
 .safe-l b { color: var(--text); font-weight: 600; }
 .safe-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+/* ======================= captions and the edit ======================= */
+/* The typefaces the burned-in captions are drawn in, served by the app from
+   the same files ffmpeg uses, so the picker and the preview show the real
+   thing rather than an approximation of it. */
+@font-face { font-family: "CM Bold"; src: url("/api/fonts/Montserrat-Black.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "CM Punch"; src: url("/api/fonts/Anton-Regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "CM Clean"; src: url("/api/fonts/Montserrat-ExtraBold.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "CM Comic"; src: url("/api/fonts/Bangers-Regular.ttf") format("truetype"); font-display: swap; }
+
+.edit-box {
+  margin: 18px 0 4px;
+  padding: 14px 16px 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: rgba(var(--fg-rgb), .02);
+}
+.ed-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.ed-head h3 { font-weight: 600; font-size: 14px; line-height: 1; }
+.ed-head .p-hint { color: var(--text-3); font-size: 12px; margin-left: auto; }
+.edit-box .ar-row { margin-top: 0; }
+.edit-box .check { margin: 12px 0; }
+
+/* "set by your words": the prompt decided this one, not the control. */
+.said {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--pill);
+  background: rgba(62, 166, 255, .14);
+  color: var(--blue-ink);
+  font-weight: 500; font-size: 10.5px; line-height: 1.5;
+  font-style: normal;
+  vertical-align: 1px;
+}
+
+/* Each caption chip is set in its own style's type and colours. */
+.capbar .chip.cap span { display: inline-block; line-height: 1; }
+.capbar .cap-bold span  { font-family: "CM Bold", sans-serif; font-size: 13px; letter-spacing: .02em; }
+.capbar .cap-punch span { font-family: "CM Punch", sans-serif; font-size: 15px; letter-spacing: .04em; }
+.capbar .cap-clean span { font-family: "CM Clean", sans-serif; font-size: 13px; }
+.capbar .cap-comic span { font-family: "CM Comic", sans-serif; font-size: 16px; letter-spacing: .05em; }
+.capbar .chip.cap.on span { text-shadow: none; }
+.capbar .chip.cap-bold.on  { background: #111; color: #ffe14d; }
+.capbar .chip.cap-punch.on { background: #111; color: #4dff7c; }
+.capbar .chip.cap-clean.on { background: #141414; color: #ffd54a; }
+.capbar .chip.cap-comic.on { background: #3b1f6e; color: #ffd43b; }
+
+.linkish {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--blue);
+  font: inherit;
+  cursor: pointer;
+}
+.linkish:hover { text-decoration: underline; }
+.row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* The caption sample on the live preview, where the real one will sit. */
+.pv-cap {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  transform: translateY(-50%);
+  text-align: center;
+  color: #fff;
+  line-height: 1.1;
+  pointer-events: none;
+  z-index: 2;
+  transition: top var(--med), font-size var(--med);
+}
+.pv-cap.hidden { display: none; }
+.pv-cap b { font-weight: inherit; }
+.pv-cap.cap-bold  { font-family: "CM Bold", sans-serif; -webkit-text-stroke: .09em #000; paint-order: stroke fill; text-shadow: 0 .05em 0 rgba(0, 0, 0, .5); }
+.pv-cap.cap-bold b  { color: #ffe14d; }
+.pv-cap.cap-punch { font-family: "CM Punch", sans-serif; letter-spacing: .02em; -webkit-text-stroke: .07em #000; paint-order: stroke fill; }
+.pv-cap.cap-punch b { color: #4dff7c; }
+.pv-cap.cap-clean {
+  font-family: "CM Clean", sans-serif;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  background: #141414;
+  padding: .15em .45em;
+  border-radius: .15em;
+  white-space: nowrap;
+}
+.pv-cap.cap-clean b { color: #ffd54a; }
+.pv-cap.cap-comic { font-family: "CM Comic", sans-serif; letter-spacing: .04em; -webkit-text-stroke: .09em #3b1f6e; paint-order: stroke fill; }
+.pv-cap.cap-comic b { color: #ffd43b; }
+
+/* ======================= why it ranked ======================= */
+.lib-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.lib-sort select {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: var(--raised-2);
+  color: var(--text);
+  font-weight: 500; font-size: 13px; line-height: 1;
+  cursor: pointer;
+}
+
+/* On the card: four slim bars and the model's own sentence, so the reason a
+   clip is #1 is readable without opening it. */
+.clip .sc { margin-top: 7px; }
+.sc-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; }
+.sc-bars .scb { flex-direction: row; align-items: center; gap: 6px; }
+.sc-bars .scb em { flex: 0 0 46px; }
+.sc-bars .scb i { flex: 1; }
+.scb { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.scb em {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-weight: 500; font-size: 10.5px; line-height: 1;
+  font-style: normal;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.scb em small { font-size: inherit; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.scb i { display: block; height: 4px; border-radius: 2px; background: rgba(var(--fg-rgb), .09); overflow: hidden; }
+.scb i b { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--red), #ff6b8a); }
+.sc-why {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* At the top of Boost: the same, with room for the numbers. */
+.why:empty { display: none; }
+.why {
+  margin: 4px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: rgba(var(--fg-rgb), .025);
+}
+.why-head { display: flex; align-items: center; gap: 12px; }
+.why-head b { display: block; font-weight: 600; font-size: 14px; line-height: 1.3; }
+.why-head > div span { color: var(--text-3); font-size: 12px; }
+.why-score {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700; font-size: 15px; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: var(--hover-2);
+}
+.why-score.g-top { background: var(--ok); }
+.why-score.g-strong { background: linear-gradient(135deg, var(--red), #ff6b8a); }
+.why-score.g-good { background: var(--blue); }
+.why-reason { margin-top: 10px; font-size: 13px; line-height: 1.5; color: var(--text); }
+.why-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin-top: 12px; }
+.why-bars .scb em { font-size: 11px; }
+.why-bars .scb i { height: 5px; }
+.why-notes { margin-top: 10px; padding-left: 16px; color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.why-edit { margin-top: 10px; color: var(--text-2); font-size: 12px; line-height: 1.5; }
+.why-edit b { color: var(--text); font-weight: 600; margin-right: 4px; }

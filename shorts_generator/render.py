@@ -7,7 +7,7 @@ one it asks for, so callers (CLI, web UI) never branch on layout themselves.
 """
 import os
 import subprocess
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from . import accel, proc
 from .layout_spec import LayoutSpec
@@ -88,11 +88,18 @@ def render_highlights(
     spec: LayoutSpec,
     out_dir: Optional[str] = None,
     name_prefix: str = "short",
+    language: Optional[str] = None,
+    kind: Optional[str] = None,
+    llm_fn: Optional[Callable[[str], str]] = None,
 ) -> List[Dict]:
     """Render `highlights` from `source_path` according to `spec`.
 
     Returns the highlights with `clip_url` set (or `error` on failure) —
     the same shape every renderer in this repo already produces.
+
+    `language` is the spoken language, for the captions; `kind` is what sort
+    of video this turned out to be, which decides how hard pauses are cut;
+    `llm_fn` is only used to place B-roll, and B-roll is skipped without it.
     """
     from .config import LOCAL_OUTPUT_DIR
     from .layout_spec import pick_output_size
@@ -116,9 +123,25 @@ def render_highlights(
 
     results = _render_by_layout(source_path, highlights, spec, out_dir,
                                 out_w, out_h, name_prefix)
+    _edit(results, spec, language, kind, llm_fn)
     if spec.hook_replay:
         _add_hook_openings(results)
     return results
+
+
+def _edit(results: List[Dict], spec: LayoutSpec, language: Optional[str],
+          kind: Optional[str], llm_fn) -> None:
+    """Captions, jump cuts, punch-ins, emoji and B-roll -- see autoedit.
+
+    After the layout, so all three renderers get it from one place, and before
+    the cold open, so the replayed moment carries its captions with it.
+    """
+    from .autoedit import options_from_spec, polish
+
+    opts = options_from_spec(spec, kind)
+    if not opts.anything:
+        return
+    polish(results, opts, language=language, llm_fn=llm_fn)
 
 
 def _add_hook_openings(results: List[Dict]) -> None:
@@ -134,7 +157,13 @@ def _add_hook_openings(results: List[Dict]) -> None:
         path = r.get("clip_url")
         if not path or not os.path.exists(path):
             continue
-        added = apply(path, r)
+        target = r
+        # Cutting pauses moved the peak earlier in the clip. The cold open
+        # has to point at where it is now, not where it was in the source.
+        offset = r.pop("hook_peak_offset", None)
+        if offset is not None and r.get("start_time") is not None:
+            target = {**r, "hook_peak": float(r["start_time"]) + float(offset)}
+        added = apply(path, target)
         if added:
             r["hook_replay_seconds"] = round(added, 2)
 
