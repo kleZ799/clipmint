@@ -6,12 +6,14 @@
 
 An all-in-one short-form clip generator for stream VODs, gaming videos, vlogs,
 podcasts and tutorials. It works out what kind of video it is, finds the moments
-worth posting, cuts them to 9:16, and writes the title, captions and hashtags
-for **YouTube Shorts, Instagram Reels and TikTok**.
+worth posting, cuts them to 9:16, burns in word-by-word captions, cuts the dead
+air, and writes the title, captions and hashtags for **YouTube Shorts,
+Instagram Reels and TikTok**. Every clip tells you why it ranked where it did.
 
 No subscription, no per-clip credits, no watermark, and nothing is uploaded
 unless you press Upload — transcription and ranking both run locally. When you
 do, a clip goes straight to your YouTube channel, now or on a schedule.
+
 
 [![Download](https://img.shields.io/badge/⬇_Download_for_Windows-235_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
@@ -57,11 +59,24 @@ browser rather than in a window of its own.
 
 **[▶ Watch the 58-second tour](https://klez799.github.io/clipmint/#showcase)** · [or the mp4](assets/showcase/clipmint-showcase.mp4)
 
-<img src="assets/screenshots/01-create.png" alt="The create screen: a layout prompt, the Shape and Kind of video pickers with Stream or gaming chosen, and a live 9:16 preview on the right" width="880">
+<img src="assets/screenshots/01-create.png" alt="The create screen: a layout prompt, the Shape and Kind of video pickers with Stream or gaming chosen, and a live 9:16 preview on the right with a caption sample and the logo in its corner" width="880">
 
 <img src="assets/screenshots/00-welcome.png" alt="The launch card: what the app is, who made it, links to the channel, repo, Discord and email, and a donate button" width="640">
 
 </div>
+
+**At a glance**
+
+| | |
+|---|---|
+| **Finds the moments** | Ranks every moment by the rules for its kind of video: stream, vlog, podcast, tutorial |
+| **Frames them** | Webcam over gameplay, a crop that follows your face, or plain centre crop, at the source's real quality |
+| **Captions them** | Burned in, a few words at a time, the spoken word lit up. Four styles; fix a misheard word afterwards |
+| **Edits them** | Cuts quiet pauses and "um"s, punches in on emphasis, adds emoji, stock B-roll and your logo if you want |
+| **Explains them** | A score split into Hook, Moment, Energy and Pace, with the reason each clip ranked where it did |
+| **Packages them** | Ranked titles, descriptions and tags for Shorts, captions for Reels and TikTok, all editable |
+| **Posts them** | Straight to your YouTube channel, one clip or a whole run, now or on a schedule |
+| **Stays on your PC** | Free, no account, no watermark; it runs on your GPU if you have one |
 
 ---
 
@@ -118,7 +133,7 @@ Transcribes the audio locally with faster-whisper, then ranks every moment for
 what actually travels: hooks, revelations, opinion bombs, story peaks. You get
 told which stage it's on, because a three-hour VOD is not a two-second wait.
 
-<img src="assets/screenshots/02-progress.png" alt="A job mid-run, rendering its clips, with the log open showing the webcam overlay being located" width="880">
+<img src="assets/screenshots/02-progress.png" alt="A run on its last stage, Captions and edits, at 8 of 10, with the log open showing each clip listened to and then captioned, cut and punched in" width="880">
 
 ### How long a run takes
 
@@ -277,7 +292,7 @@ better cover line, not skip it. Open **Boost** on any clip to see the numbers
 and a grade: Top pick, Strong, Worth a look or Long shot. The library can sort
 each run by its strongest hook or its most energy as well as by rank.
 
-<img src="assets/screenshots/03-clips.png" alt="Finished clips from a Deadpool stream in a grid, each with its rank, score, length, the game it is filed under, and its title" width="880">
+<img src="assets/screenshots/03-clips.png" alt="Finished clips in a grid, each with its rank and a score coloured by grade, burned-in captions on the thumbnail, the Hook, Moment, Energy and Pace bars, and the reason it ranked" width="880">
 
 ### Captions, jump cuts and punch-ins, done for you
 
@@ -303,14 +318,20 @@ The same pass does the edit an editor would do next:
   free [Pexels](https://www.pexels.com/api/) key in Settings, and it never
   runs on a stream, where the gameplay is the picture.
 
+<img src="assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words because the prompt says so, punch-ins and the logo ticked, emoji and B-roll off" width="880">
+
 **Whisper got a name wrong?** Open the clip and press **Captions**. Type the
 line as it should read and burn it in again. Words you keep stay exactly where
 they were said, and the pause cuts still follow what was actually said, so
 only the text on screen changes.
 
+<img src="assets/screenshots/13-captions.png" alt="The clip player with the Fix the captions panel open: the clip's words in a text box, Reset and Burn in again" width="880">
+
 **Your logo**, uploaded once in Settings, goes in the corner of every clip,
 small and slightly see-through, in whichever corner you pick. A clip that
 gets reposted or screen-recorded still carries your name.
+
+<img src="assets/screenshots/14-logo-and-broll.png" alt="Settings: Your logo with its thumbnail, Upload and Remove and the corner picker, then B-roll with the Pexels key saved" width="880">
 
 Pick them under **Render**, or say them in the prompt: *"comic captions, keep
 the pauses, add emoji"*. The words win over the switches, and the switches
@@ -355,9 +376,9 @@ see it, and hashtags that don't belong on that app. All of it is editable.
 the new title, so what is in the folder is always what goes into YouTube's title
 box.
 
-<img src="assets/screenshots/05-boost.png" alt="Boost on a Firewatch clip, on the YouTube Shorts tab: what the clip is filed under, the title, and five ranked title options with their scores and angles" width="880">
+<img src="assets/screenshots/05-boost.png" alt="Boost on the top clip: a Top pick scorecard with its reason, the four bars with their numbers, three notes and what the edit did, then what the clip is filed under and five ranked title options" width="880">
 
-<img src="assets/screenshots/07-reels.png" alt="Boost on the same clip, on the Instagram Reels tab: the caption with its character count, the note about the 125-character fold, two ranked caption options, and hashtags" width="880">
+<img src="assets/screenshots/07-reels.png" alt="Boost on the same clip, on the Instagram Reels tab: the caption with its character count and ranked caption options" width="880">
 
 ### Post it to your channel, now or on a schedule
 
@@ -374,9 +395,9 @@ untick the ones to skip, and pick a first publish time and a gap (every 3 hours
 up to every 2 days). Each clip shows its own publish time before anything is
 sent, and then they upload one after another while you carry on.
 
-<img src="assets/screenshots/11-upload-all.png" alt="Upload all on a Deadpool run: scheduled, the first at 8 PM and then one a day, category Gaming, and each clip listed with its publish time, title, description and tags, ready to upload 9 clips" width="880">
+<img src="assets/screenshots/11-upload-all.png" alt="Upload all on a run: scheduled, the first at 9 AM and then one a day, and each clip listed with its publish time and title, ready to edit" width="880">
 
-<img src="assets/screenshots/09-youtube-upload.png" alt="Boost on a Firewatch clip, scrolled to Post it to your channel: going to Parth Bhadana, scheduled for 7 PM, category Gaming, the made-for-kids question, and the Upload to YouTube button" width="880">
+<img src="assets/screenshots/09-youtube-upload.png" alt="Boost scrolled to Post it to your channel: going to Parth Bhadana, who can see it, the category, the made-for-kids question, and the Upload to YouTube button" width="880">
 
 It goes through **YouTube's official API**. You sign in on Google's own page,
 ClipMint never sees your password, and the permission it gets can upload but
@@ -384,7 +405,7 @@ can't delete or change anything. **Disconnect** hands the permission back. No
 bot clicks around YouTube Studio, which would break YouTube's terms and put
 your channel at risk.
 
-<img src="assets/screenshots/10-post-to-channel.png" alt="Settings, Post to your channel: connected to the Parth Bhadana channel with your own Google client, a Disconnect button, and links to YouTube's Terms of Service, Google's Privacy Policy, ClipMint's privacy policy and Google's page for withdrawing access" width="880">
+<img src="assets/screenshots/10-post-to-channel.png" alt="Settings, Post to your channel: connected to the Parth Bhadana channel, a Disconnect button, and links to YouTube's Terms of Service, Google's Privacy Policy and ClipMint's own" width="880">
 
 When you connect, Google shows *"Google hasn't verified this app"* until its
 review of ClipMint is done: click **Advanced → Go to ClipMint**. While that
@@ -502,7 +523,7 @@ To change only the words on screen, press **Captions** in the player instead
 (or **C**): type the line as it should read and it is burned in again, on the
 same span, with the same cuts.
 
-<img src="assets/screenshots/04-player-trim.png" alt="The clip player with the trim panel open, showing in and out handles" width="880">
+<img src="assets/screenshots/04-player-trim.png" alt="The clip player, its burned-in caption and emoji on screen, with the trim panel open showing in and out handles" width="880">
 
 ---
 
@@ -1397,6 +1418,12 @@ Their work is in this repository because it earned its place, and the MIT
 licence keeps their names on it. Everything else — the desktop application, the
 stream-aware ranking, the renderers, the job runner, the interface, the
 packaging — is mine.
+
+**The footage in the screenshots** is from *Big Buck Bunny* and a cycling
+sample, as bundled with scikit-video. *Big Buck Bunny* is © 2008 Blender
+Foundation, [peach.blender.org](https://peach.blender.org/), used under
+CC-BY 3.0. The clips were cut, captioned and edited by ClipMint itself; the
+words on them were written for the demo.
 
 ---
 
