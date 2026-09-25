@@ -1585,7 +1585,8 @@ body.player-on .player-body { transform: none; }
   display: none;
   animation: slidein .3s var(--ease);
 }
-.player.trim-on .trim { display: block; }
+/* By id: the captions panel borrows the trim panel's look, not its switch. */
+.player.trim-on #trim { display: block; }
 @keyframes slidein { from { opacity: 0; transform: translateX(-16px); } }
 @media (max-width: 900px) { .trim { width: min(390px, 90vw); margin: 0 auto; } }
 
