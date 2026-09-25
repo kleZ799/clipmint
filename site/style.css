@@ -124,6 +124,37 @@ section b, section strong { color: var(--text); }
   font-size: 12px; font-weight: 600; color: var(--text-2);
 }
 
+/* The caption styles, drawn with the same fonts the app burns into clips. */
+@font-face { font-family: "CM Bold"; src: url("fonts/Montserrat-Black.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "CM Punch"; src: url("fonts/Anton-Regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "CM Clean"; src: url("fonts/Montserrat-ExtraBold.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "CM Comic"; src: url("fonts/Bangers-Regular.ttf") format("truetype"); font-display: swap; }
+.capstrip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 18px 0 8px; }
+.capstrip figure { margin: 0; text-align: center; }
+.capstrip figcaption { margin-top: 8px; font-size: 14px; color: var(--text-2); }
+.phone {
+  position: relative; aspect-ratio: 9 / 16; border-radius: 14px; overflow: hidden;
+  border: 1px solid var(--line);
+  background: linear-gradient(160deg, #3a1d5c 0%, #1b2a4a 45%, #0e1a1f 100%);
+}
+.phone .cap {
+  position: absolute; left: 6%; right: 6%; top: 70%; transform: translateY(-50%);
+  margin: 0; color: #fff; text-align: center; line-height: 1.1; font-size: clamp(15px, 2.4vw, 21px);
+}
+.phone .cap b { font-weight: inherit; }
+.cap-bold { font-family: "CM Bold", sans-serif; -webkit-text-stroke: .09em #000; paint-order: stroke fill; }
+.cap-bold b { color: #ffe14d; }
+.cap-punch { font-family: "CM Punch", sans-serif; font-size: clamp(19px, 3vw, 27px) !important; letter-spacing: .02em; -webkit-text-stroke: .07em #000; paint-order: stroke fill; }
+.cap-punch b { color: #4dff7c; }
+.phone .cap-clean {
+  font-family: "CM Clean", sans-serif; left: 50%; right: auto; transform: translate(-50%, -50%);
+  background: #141414; padding: .15em .45em; border-radius: .15em; white-space: nowrap;
+  font-size: clamp(12px, 1.8vw, 15px);
+}
+.cap-clean b { color: #ffd54a; }
+.cap-comic { font-family: "CM Comic", sans-serif; letter-spacing: .04em; -webkit-text-stroke: .09em #3b1f6e; paint-order: stroke fill; }
+.cap-comic b { color: #ffd43b; }
+
 .socials { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 18px 0; }
 .social {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px;

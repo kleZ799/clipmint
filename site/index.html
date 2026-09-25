@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClipMint — turn long videos into Shorts</title>
-<meta name="description" content="ClipMint is a free, open-source desktop app that turns long videos into YouTube Shorts, Reels and TikToks on your own PC, and can upload them to your YouTube channel.">
+<meta name="description" content="ClipMint is a free, open-source desktop app that turns long videos into captioned YouTube Shorts, Reels and TikToks on your own PC, and can upload them to your YouTube channel.">
 <!-- Proves to Google Search Console that this site is ClipMint's, which Google's
      OAuth branding review asks for. Removing it un-verifies the site. -->
 <meta name="google-site-verification" content="Lge57H8QSGDn8R-JYkWi4zFzk-WNQsPT2nCxVKq3afo" />
@@ -18,6 +18,7 @@
     <a class="brand" href="./"><img src="icon.png" alt="">ClipMint</a>
     <nav class="links">
       <a href="#download">Download</a>
+      <a href="#captions">Captions</a>
       <a href="#youtube">YouTube uploads</a>
       <a href="privacy.html">Privacy policy</a>
       <a href="https://github.com/kleZ799/clipmint">Source code</a>
@@ -42,8 +43,8 @@
     <h1>Turn long videos into Shorts, on your own PC</h1>
     <p class="lead">ClipMint is a free, open-source desktop app for Windows, macOS and Linux.
       Give it a stream VOD, podcast, vlog or tutorial. It finds the best moments, cuts them
-      into vertical Shorts, writes the titles and tags, and can upload them to your YouTube
-      channel.</p>
+      into vertical Shorts with captions burned in and the dead air taken out, writes the
+      titles and tags, and can upload them to your YouTube channel.</p>
     <div class="btns">
       <a class="btn primary" href="#download">Download ClipMint</a>
       <a class="btn" href="https://github.com/kleZ799/clipmint">View the source</a>
@@ -65,9 +66,16 @@
     <h2>What it does</h2>
     <div class="grid">
       <div class="card"><h3>Finds the moments</h3>
-        <p>Transcribes the video on your computer and ranks the moments most worth posting.</p></div>
+        <p>Transcribes the video on your computer, ranks the moments most worth posting, and
+          tells you why each one ranked where it did.</p></div>
       <div class="card"><h3>Cuts them vertical</h3>
         <p>Renders 9:16 clips with faces and gameplay framed the way Shorts need them.</p></div>
+      <div class="card"><h3>Captions them</h3>
+        <p>Burns in captions a few words at a time, with the word being said lit up. Four
+          styles, and a misheard name can be fixed afterwards.</p></div>
+      <div class="card"><h3>Edits out the dead air</h3>
+        <p>Cuts quiet pauses and "um"s, zooms in on the lines that land, and can add emoji,
+          stock B-roll and your logo.</p></div>
       <div class="card"><h3>Writes the packaging</h3>
         <p>Drafts titles, descriptions and tags for YouTube, plus captions for Reels and TikTok. You can edit every word.</p></div>
       <div class="card"><h3>Posts to your channel</h3>
@@ -82,17 +90,17 @@
     <!-- Each link fetches the newest release's file, so it never needs a version bump. -->
     <div class="grid">
       <div class="card dl"><h3>Windows</h3>
-        <p class="meta">ClipMint.exe · 220 MB</p>
+        <p class="meta">ClipMint.exe · 235 MB</p>
         <p>The tested build. Double-click it and go. After this it updates itself.</p>
         <a class="btn primary" href="https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe">Download for Windows</a></div>
       <div class="card dl"><h3>macOS <span class="tag">Beta</span></h3>
-        <p class="meta">Apple Silicon (M1 or later) · 166 MB zip</p>
+        <p class="meta">Apple Silicon (M1 or later) · 175 MB zip</p>
         <p>Built and checked by GitHub's Mac runners, but no one has run it on a real Mac yet.
           macOS blocks it the first time you open it:
           <a href="https://github.com/kleZ799/clipmint#download">here's how to open it</a>.</p>
         <a class="btn" href="https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip">Download for Mac</a></div>
       <div class="card dl"><h3>Linux <span class="tag">Untested</span></h3>
-        <p class="meta">x86-64 · 279 MB</p>
+        <p class="meta">x86-64 · 294 MB</p>
         <p>Runs under WSL but hasn't been tried on a real desktop yet. Make the file executable,
           run it, and it opens in your browser.</p>
         <a class="btn" href="https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64">Download for Linux</a></div>
@@ -100,6 +108,32 @@
     <p>Something not working? <a href="https://github.com/kleZ799/clipmint/issues/new">Tell me what happened</a>.
       Older versions and release notes are on the
       <a href="https://github.com/kleZ799/clipmint/releases">releases page</a>.</p>
+  </section>
+
+  <section id="captions">
+    <h2>Captions and the edit</h2>
+    <p>Most Shorts are watched on mute, so every clip comes back with captions on the video
+      itself, in one of four styles. The fonts ship with the app, so they look the same on
+      every PC:</p>
+    <!-- Drawn with the app's own caption fonts, not screenshots, so they stay true to it. -->
+    <div class="capstrip" aria-label="The four caption styles: Bold, Punch, Clean and Comic">
+      <figure><div class="phone"><p class="cap cap-bold">THIS IS <b>INSANE</b></p></div><figcaption>Bold</figcaption></figure>
+      <figure><div class="phone"><p class="cap cap-punch">IS <b>INSANE</b></p></div><figcaption>Punch</figcaption></figure>
+      <figure><div class="phone"><p class="cap cap-clean">this is <b>insane</b></p></div><figcaption>Clean</figcaption></figure>
+      <figure><div class="phone"><p class="cap cap-comic">THIS IS <b>INSANE</b></p></div><figcaption>Comic</figcaption></figure>
+    </div>
+    <ul>
+      <li><b>Dead air goes.</b> Quiet pauses and "um"s are cut. A pause with sound in it
+        stays: a laugh, the game going off, the quiet beat right before the payoff.</li>
+      <li><b>Punch-ins</b> zoom in on the lines said with emphasis.</li>
+      <li><b>Emoji, stock B-roll and your logo</b> are there when you want them. B-roll uses a
+        free Pexels key and never goes over gameplay.</li>
+      <li><b>Say it instead of clicking:</b> <i>"comic captions, keep the pauses"</i>.</li>
+      <li><b>Every clip says why it ranked,</b> with bars for its hook, the moment, its energy
+        and its pace.</li>
+    </ul>
+    <p>The full guide, including how to fix a misheard word, is
+      <a href="https://github.com/kleZ799/clipmint/blob/main/docs/captions-and-editing.md">on GitHub</a>.</p>
   </section>
 
   <section id="youtube">
