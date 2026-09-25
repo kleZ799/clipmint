@@ -84,6 +84,10 @@ def main() -> None:
     shutil.copy2(ROOT / "assets" / "screenshots" / "09-youtube-upload.png", OUT / "upload.png")
     shutil.copy2(ROOT / "assets" / "showcase" / "clipmint-showcase.mp4", OUT / "showcase.mp4")
     shutil.copy2(ROOT / "assets" / "showcase" / "clipmint-showcase-poster.jpg", OUT / "showcase.jpg")
+    # The caption samples on the home page use the fonts the app burns in.
+    (OUT / "fonts").mkdir()
+    for font in (ROOT / "assets" / "fonts").iterdir():   # the fonts and their OFL licences
+        shutil.copy2(font, OUT / "fonts" / font.name)
 
     text = (ROOT / "PRIVACY.md").read_text(encoding="utf-8")
     body = markdown.markdown(text, extensions=["tables"])
