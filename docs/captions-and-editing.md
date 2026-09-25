@@ -26,6 +26,8 @@ said.
 
 Pick a style under **Render → Edit → Captions**:
 
+<img src="../assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words, punch-ins and the logo ticked" width="880">
+
 | Style | Looks like | Words at a time |
 |---|---|---|
 | **Bold** (default) | Heavy white capitals, the spoken word in yellow and a little larger | 3 |
@@ -96,6 +98,8 @@ talking-head clips name nothing concrete enough, and those get no B-roll,
 which is the right answer. Footage is downloaded once into `output/b-roll/`
 and reused; **Clear space** in Settings deletes it.
 
+<img src="../assets/screenshots/14-logo-and-broll.png" alt="Settings: Your logo with its thumbnail and corner picker, then B-roll with the Pexels key saved" width="880">
+
 **Your logo** goes in the corner of every clip once you upload one: *Settings →
 Your logo → Upload a logo*. A PNG with a transparent background looks best. Pick
 the corner there. The bottom corners sit above the apps' own buttons, not in
@@ -136,6 +140,8 @@ Whisper gets names wrong. Open the clip, press **Captions** in the player's
 rail (or **C**), and the box holds the captions as one line of text. Type it as
 it should read and press **Burn in again**.
 
+<img src="../assets/screenshots/13-captions.png" alt="The clip player with the Fix the captions panel open" width="880">
+
 - Words you **keep** stay exactly where they were said.
 - Words you **change or add** take the time of the words they replace.
 - The **cuts don't change**: they follow what was actually said, so deleting
@@ -157,6 +163,8 @@ later.
 Every clip card shows four bars under its title, and the model's own sentence
 on why the moment works:
 
+<img src="../assets/screenshots/03-clips.png" alt="Clips in a grid with burned-in captions, each card showing its score, the four bars and the reason it ranked" width="880">
+
 | Bar | Measures | From |
 |---|---|---|
 | **Hook** | How hard the first line stops a scroll | the model |
@@ -166,6 +174,8 @@ on why the moment works:
 
 A bar is only drawn when it was actually measured. A video with no usable
 audio has no Energy bar rather than an empty one.
+
+<img src="../assets/screenshots/05-boost.png" alt="Boost on the top clip: the scorecard with its reason, four numbered bars, notes and what the edit did" width="880">
 
 Open **Boost** on a clip for the numbers, a grade, a few plain notes (*"A quiet
 beat before the payoff"*, *"Slow first seconds cost it points"*), and a line
