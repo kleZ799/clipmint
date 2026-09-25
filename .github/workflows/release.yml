@@ -3,7 +3,8 @@
 #     git tag -a v1.6.0 -m "ClipMint v1.6.0"
 #     git push origin v1.6.0
 #
-# That is the whole release. The builds are made here rather than on a laptop,
+# That is the whole release. Or, with no terminal: Actions -> Release -> Run
+# workflow on main, with the new tag typed in. The tag is made for you. The builds are made here rather than on a laptop,
 # which matters more than convenience now that the app updates itself: what
 # this workflow publishes is what every installed copy will download and run.
 # It is also the only way the mac build exists at all — PyInstaller cannot
@@ -82,6 +83,32 @@ jobs:
             echo "ref=$ref"
             echo "publish=$publish"
           } >> "$GITHUB_OUTPUT"
+
+      # Started by hand with a tag that does not exist yet: make it, on the
+      # commit this run was started from, so a release can be cut from the
+      # Actions tab without a terminal. Only from the default branch -- a tag
+      # is what every installed copy updates to, and it must not point at a
+      # branch nobody merged. The macOS and Linux jobs wait for this one, so
+      # the tag exists by the time they check it out. A tag made with the
+      # workflow's own token does not start a second run.
+      - name: Create the tag if it does not exist yet
+        if: github.event_name == 'workflow_dispatch' && steps.tag.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.tag.outputs.name }}"
+          if gh api "repos/${{ github.repository }}/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists"
+            exit 0
+          fi
+          if [ "${{ github.ref_name }}" != "${{ github.event.repository.default_branch }}" ]; then
+            echo "::error::$tag does not exist, and a new tag is only made from ${{ github.event.repository.default_branch }}. Run this from there."
+            exit 1
+          fi
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/$tag" -f sha="${{ github.sha }}" >/dev/null
+          echo "created $tag at ${{ github.sha }}"
 
       - uses: actions/checkout@v4
         with:
