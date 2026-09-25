@@ -15,7 +15,7 @@ unless you press Upload — transcription and ranking both run locally. When you
 do, a clip goes straight to your YouTube channel, now or on a schedule.
 
 
-[![Download](https://img.shields.io/badge/⬇_Download_for_Windows-235_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
+[![Download](https://img.shields.io/badge/⬇_Download_for_Windows-224_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
 [![Download for Mac](https://img.shields.io/badge/⬇_Download_for_Mac-BETA_·_Apple_Silicon-f59e0b?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip)
@@ -536,9 +536,9 @@ Every link fetches the newest release. Nothing else to install: no Python, no ff
 
 | Platform | Download | Size | Status |
 |---|---|---|---|
-| **Windows** | [**⬇ ClipMint.exe**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe) | 235 MB | Tested. Updates itself. |
-| **macOS**, Apple Silicon (M1 or later) | [**⬇ ClipMint-macOS-arm64.zip**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip) | 175 MB | **Beta.** Never run on a Mac. |
-| **Linux**, x86-64 | [**⬇ ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) | 294 MB | **Untested** on a desktop. Updates itself. |
+| **Windows** | [**⬇ ClipMint.exe**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe) | 224 MB | Tested. Updates itself. |
+| **macOS**, Apple Silicon (M1 or later) | [**⬇ ClipMint-macOS-arm64.zip**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip) | 167 MB | **Beta.** Never run on a Mac. |
+| **Linux**, x86-64 | [**⬇ ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) | 280 MB | **Untested** on a desktop. Updates itself. |
 
 Older versions and release notes are on the [releases page](https://github.com/kleZ799/clipmint/releases).
 Setup for each platform follows below.
@@ -1121,7 +1121,7 @@ python build_exe.py --onefile --clean
 
 Put `ffmpeg.exe` and `ffprobe.exe` in a `./bin` folder first and they get bundled,
 which is how the published build needs nothing installed. That's what makes it
-about 235 MB, of which ffmpeg is roughly 67 MB; without them ffmpeg has to be
+about 224 MB, of which ffmpeg is roughly 67 MB; without them ffmpeg has to be
 on the user's PATH. The YuNet face model in `assets/models`, the growth playbook
 in `assets/playbook`, and the caption fonts and emoji in `assets/fonts` and
 `assets/emoji` are bundled either way. Drop

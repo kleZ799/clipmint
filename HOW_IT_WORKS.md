@@ -2427,7 +2427,7 @@ everything PyInstaller's static analysis can't see:
 `webview.platforms.edgechromium`, `faster_whisper`, `ctranslate2`, `cv2`,
 `google.genai`, `yt_dlp`, and the uvicorn loop/protocol/lifespan modules.
 `torch`, `matplotlib`, `tkinter` and `pytest` are excluded to keep size down
-(about 235 MB with ffmpeg as of v1.19.0; ffmpeg is roughly 67 MB of that). The webview backend is the one hidden
+(about 224 MB with ffmpeg as of v1.19.1; ffmpeg is roughly 67 MB of that). The webview backend is the one hidden
 import that differs per platform, and each is unavailable on the others.
 
 **Where `./bin` comes from on a release.** Each release job downloads a static
