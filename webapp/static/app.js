@@ -214,6 +214,7 @@ applyTheme(currentTheme());
 
 function openDrawer() {
   body.classList.add("drawer-on");
+  loadBrand();
   loadLocations();
   loadCleanup();
   loadYtAccess(false);
@@ -1955,9 +1956,9 @@ async function refreshPreview() {
 
 const EDIT_KEY = "clipmint.edit";
 const EDIT_DEFAULT = { captions: "bold", cut_pauses: true, punch_ins: true,
-                       emoji: false, broll: false };
+                       emoji: false, broll: false, logo: true };
 const EDIT_BOXES = { cut_pauses: "edPauses", punch_ins: "edPunch",
-                     emoji: "edEmoji", broll: "edBroll" };
+                     emoji: "edEmoji", broll: "edBroll", logo: "edLogo" };
 let editChoice = loadEditChoice();   // what the controls were set to
 let editSaid = [];                   // the fields the prompt's words decided
 let pexelsReady = false;             // whether a Pexels key is on file
@@ -1988,6 +1989,7 @@ function drawEdit(shown) {
   document.querySelectorAll("[data-said]").forEach((el) =>
     el.classList.toggle("hidden", !editSaid.includes(el.dataset.said)));
   drawBrollHint();
+  $("pvLogo").classList.toggle("hidden", !brandState.logo || !e.logo);
 }
 
 function drawBrollHint() {
@@ -2044,7 +2046,72 @@ function captionHeight(spec) {
   return 0.70;
 }
 
+// The channel's logo, when one is stored: shown on the preview in its corner,
+// offered under Render, managed in Settings.
+let brandState = { logo: false, corner: "top-right" };
+let brandVersion = Date.now();     // cache-bust the thumbnail after an upload
+
+async function loadBrand() {
+  try {
+    brandState = await api("/api/brand");
+  } catch (_) { /* no logo is the safe reading */ }
+  drawBrand();
+}
+
+function drawBrand() {
+  const has = !!brandState.logo;
+  const src = `/api/brand/logo?v=${brandVersion}`;
+  $("brandThumb").innerHTML = has ? `<img src="${src}" alt="Your logo">` : "<span>No logo</span>";
+  $("brandRemove").classList.toggle("hidden", !has);
+  $("brandCorner").value = brandState.corner || "top-right";
+  $("edLogoRow").classList.toggle("hidden", !has);
+  const pv = $("pvLogo");
+  pv.dataset.corner = brandState.corner || "top-right";
+  if (has) pv.src = src;
+  pv.classList.toggle("hidden", !has || !$("edLogo").checked);
+}
+
+$("brandFile").onchange = async () => {
+  const f = $("brandFile").files[0];
+  if (!f) return;
+  const msg = $("brandMsg");
+  const form = new FormData();
+  form.append("file", f);
+  try {
+    brandState = await api("/api/brand/logo", { method: "POST", body: form });
+    brandVersion = Date.now();
+    msg.innerHTML = `<div class="ok-box">Saved. It goes on every clip from the next run.</div>`;
+    drawBrand();
+    refreshPreview();
+  } catch (e) {
+    msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    $("brandFile").value = "";
+  }
+};
+
+$("brandRemove").onclick = async () => {
+  try {
+    brandState = await api("/api/brand/logo", { method: "DELETE" });
+    $("brandMsg").innerHTML = `<div class="ok-box">Removed.</div>`;
+    drawBrand();
+    refreshPreview();
+  } catch (e) {
+    $("brandMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+};
+
+$("brandCorner").onchange = async () => {
+  try {
+    brandState = await api("/api/brand/corner", json("POST", { corner: $("brandCorner").value }));
+    drawBrand();
+  } catch (e) {
+    $("brandMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+};
+
 function drawCaptionSample(spec, w, h) {
+  $("pvLogo").classList.toggle("hidden", !brandState.logo || !spec.logo);
   const cap = $("pvCap");
   const sample = CAPTION_SAMPLE[spec.captions];
   cap.className = `pv-cap cap-${spec.captions || "off"}${sample ? "" : " hidden"}`;
@@ -2084,6 +2151,7 @@ $("pexelsSave").onclick = async () => {
 };
 
 drawEdit();
+loadBrand();
 
 $("arBar").onclick = (e) => {
   const btn = e.target.closest("[data-ar]");
@@ -2703,7 +2771,8 @@ function openPlayer(i) {
   $("pDownload").setAttribute("download", c.file || "short.mp4");
 
   body.classList.add("player-on");
-  $("player").classList.remove("trim-on");
+  $("player").classList.remove("trim-on", "cap-on");
+  $("pCapBtn").classList.toggle("hidden", !canFixCaptions(c));
   renderSeo();
   setMuteIcon();
   vid.play().catch(() => {});
@@ -2742,7 +2811,7 @@ function editSummary(c) {
 
 function closePlayer() {
   body.classList.remove("player-on");
-  $("player").classList.remove("trim-on", "seo-on");
+  $("player").classList.remove("trim-on", "seo-on", "cap-on");
   vid.pause();
 }
 $("pClose").onclick = closePlayer;
@@ -2811,6 +2880,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === " ") { e.preventDefault(); togglePlay(); }
   else if (k === "m") { vid.muted = !vid.muted; setMuteIcon(); }
   else if (k === "t") { toggleTrim(); }
+  else if (k === "c") { toggleCaptions(); }
   else if (k === "b") { toggleSeo(); }
   else if (k === "f") { showClipFile(clips[cur]); }
   else if (e.key === "ArrowRight") { vid.currentTime = Math.min(vid.duration || 0, vid.currentTime + 2); }
@@ -3159,7 +3229,7 @@ function toggleSeo() {
   const p = $("player");
   if (p.classList.contains("seo-on")) { p.classList.remove("seo-on"); return; }
   if (!clips[cur]) return;
-  p.classList.remove("trim-on");
+  p.classList.remove("trim-on", "cap-on");
   renderSeo();
   p.classList.add("seo-on");
 }
@@ -3272,9 +3342,70 @@ function toggleTrim() {
   if (p.classList.contains("trim-on")) { p.classList.remove("trim-on"); return; }
   if (!clips[cur]) return;
   resetTrim();
-  p.classList.remove("seo-on");
+  p.classList.remove("seo-on", "cap-on");
   p.classList.add("trim-on");
 }
+
+// ---------------------------------------------------------------- captions
+//
+// Whisper mishears names. The fix is typed as the line should read, and the
+// server lays it back onto the timings that were heard and burns it in again.
+
+function canFixCaptions(c) {
+  return !!(c && (c.heard_words || []).length && c.edit
+            && c.edit.captions && c.edit.captions !== "off");
+}
+
+// Scripts written without spaces are joined without them.
+function joinWords(words) {
+  const sample = words.slice(0, 40).map((w) => w.word).join("");
+  const tight = (sample.match(/[\u3040-\u30ff\u3400-\u9fff\u0e00-\u0e7f]/g) || []).length
+    > sample.length * 0.3;
+  return words.map((w) => String(w.word || "").trim()).join(tight ? "" : " ");
+}
+
+function toggleCaptions() {
+  const p = $("player");
+  if (p.classList.contains("cap-on")) { p.classList.remove("cap-on"); return; }
+  const c = clips[cur];
+  if (!canFixCaptions(c)) return;
+  $("capText").value = joinWords((c.caption_words || []).length ? c.caption_words : c.heard_words);
+  $("capMsg").innerHTML = "";
+  p.classList.remove("seo-on", "trim-on");
+  p.classList.add("cap-on");
+}
+$("pCapBtn").onclick = toggleCaptions;
+$("capClose").onclick = () => $("player").classList.remove("cap-on");
+$("capReset").onclick = () => {
+  const c = clips[cur];
+  if (c && c.heard_words) $("capText").value = joinWords(c.heard_words);
+};
+
+$("capApply").onclick = async () => {
+  const c = clips[cur];
+  if (!canFixCaptions(c)) return;
+  $("capApply").disabled = true;
+  busy(true, "Burning the captions in again…");
+  $("capMsg").innerHTML = "";
+  vid.pause();
+  try {
+    const updated = await api(
+      `/api/jobs/${encodeURIComponent(jobOf(c))}/clips/${encodeURIComponent(c.file)}/captions`,
+      json("PUT", { text: $("capText").value }));
+    patchClip(cur, updated);
+    vid.src = `${updated.url}?v=${Date.now()}`;
+    $("pDownload").href = updated.url;
+    $("pDownload").setAttribute("download", updated.file);
+    vid.play().catch(() => {});
+    toast("Captions fixed.");
+    $("player").classList.remove("cap-on");
+  } catch (e) {
+    $("capMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    busy(false);
+    $("capApply").disabled = false;
+  }
+};
 $("pTrimBtn").onclick = toggleTrim;
 $("trimClose").onclick = () => $("player").classList.remove("trim-on");
 
@@ -3461,6 +3592,7 @@ $("tApply").onclick = async () => {
       json("POST", { start: trim.start, end: trim.end, mute: $("tMute").checked }));
     patchClip(cur, updated);
     renderWhy(clips[cur]);
+    $("pCapBtn").classList.toggle("hidden", !canFixCaptions(clips[cur]));
     // Cache-bust: the new render can reuse a name the browser already holds.
     vid.src = `${updated.url}?v=${Date.now()}`;
     $("pMeta").textContent =

@@ -296,6 +296,15 @@ The same pass does the edit an editor would do next:
   free [Pexels](https://www.pexels.com/api/) key in Settings, and it never
   runs on a stream, where the gameplay is the picture.
 
+**Whisper got a name wrong?** Open the clip and press **Captions**. Type the
+line as it should read and burn it in again. Words you keep stay exactly where
+they were said, and the pause cuts still follow what was actually said, so
+only the text on screen changes.
+
+**Your logo**, uploaded once in Settings, goes in the corner of every clip,
+small and slightly see-through, in whichever corner you pick. A clip that
+gets reposted or screen-recorded still carries your name.
+
 Pick them under **Render**, or say them in the prompt: *"comic captions, keep
 the pauses, add emoji"*. The words win over the switches, and the switches
 show it. Each clip is listened to again for word timings, a Whisper pass over

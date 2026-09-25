@@ -55,6 +55,8 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
 - **Your caption style and edit choices**, kept the same way.
 - **Your Pexels key**, if you add one for B-roll, in the settings file. It
   stays until you remove it in Settings.
+- **Your logo**, if you upload one, in the settings folder. It stays until
+  you remove it in Settings.
 
 ClipMint does not use cookies or any tracking or analytics. The YouTube sign-in
 cookies feature, used only to *download* videos when YouTube asks for proof

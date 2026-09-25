@@ -165,6 +165,10 @@ jobs:
           Remove-Item ffmpeg.zip, ffmpeg-tmp -Recurse -Force
           if (-not (Test-Path bin/ffmpeg.exe)) { throw "ffmpeg.exe was not in the archive" }
           & ./bin/ffmpeg.exe -version | Select-Object -First 1
+          # Captions need libass. A build without it renders every clip
+          # without them and says nothing, so it is caught here instead.
+          python .github/scripts/check_captions.py bin/ffmpeg.exe
+          if ($LASTEXITCODE -ne 0) { throw "the bundled ffmpeg cannot burn captions" }
 
       # --onefile is what the release ships and what the updater can replace.
       # It deliberately leaves CUDA out: a one-file build re-extracts its whole
@@ -371,6 +375,9 @@ jobs:
             exit 1
           fi
           ./bin/ffmpeg -version | head -1
+          # A warning rather than a failure on the beta: a mac build without
+          # captions is still worth shipping, and this says so in the run.
+          python .github/scripts/check_captions.py bin/ffmpeg --warn-only
 
       # No --onefile: a mac release ships the .app bundle. build_exe.py stamps
       # the version into Info.plist and signs the result ad-hoc, which is what
@@ -671,6 +678,8 @@ jobs:
           ff=$(./bin/ffmpeg -version | head -1)
           echo "$ff"
           echo "FFMPEG=$ff" >> "$GITHUB_ENV"
+          # Captions need libass; see the Windows job.
+          python .github/scripts/check_captions.py bin/ffmpeg
 
       # --onefile, as on Windows and for the same reason: it is the only shape
       # the updater can replace. Linux makes that easier rather than harder --

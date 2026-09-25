@@ -2522,3 +2522,52 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 .why-notes { margin-top: 10px; padding-left: 16px; color: var(--text-2); font-size: 12px; line-height: 1.6; }
 .why-edit { margin-top: 10px; color: var(--text-2); font-size: 12px; line-height: 1.5; }
 .why-edit b { color: var(--text); font-weight: 600; margin-right: 4px; }
+
+/* ======================= the channel's logo ======================= */
+.brand-row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.brand-thumb {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--edge);
+  border-radius: var(--r-sm);
+  background: repeating-conic-gradient(var(--ghost-a) 0 25%, var(--ghost-b) 0 50%) 0 0 / 12px 12px;
+  overflow: hidden;
+}
+.brand-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.brand-thumb span { color: var(--text-3); font-size: 10.5px; text-align: center; }
+.brand-ctl { display: flex; gap: 8px; flex-wrap: wrap; }
+.filebtn { cursor: pointer; }
+
+.pv-logo {
+  position: absolute;
+  width: 16%;
+  max-height: 16%;
+  object-fit: contain;
+  opacity: .85;
+  z-index: 2;
+  pointer-events: none;
+}
+.pv-logo[data-corner="top-right"]    { top: 3%; right: 4%; }
+.pv-logo[data-corner="top-left"]     { top: 3%; left: 4%; }
+.pv-logo[data-corner="bottom-right"] { bottom: 20%; right: 4%; }
+.pv-logo[data-corner="bottom-left"]  { bottom: 20%; left: 4%; }
+
+/* ======================= fixing the captions ======================= */
+.player.cap-on .capfix { display: block; }
+.capfix textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--field);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.capfix textarea:focus { outline: none; border-color: var(--blue); }
+.capfix .t-actions { margin-top: 12px; }

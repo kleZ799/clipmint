@@ -23,6 +23,7 @@ above the band the apps cover with their own buttons and captions.
 """
 from __future__ import annotations
 
+import difflib
 import re
 import shutil
 from pathlib import Path
@@ -285,3 +286,63 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     return header + "\n".join(events) + "\n"
+
+
+# --- fixing the words ---------------------------------------------------------
+
+def _key(word: str) -> str:
+    return re.sub(r"[^\w']+", "", str(word or "").lower())
+
+
+def plain_text(words: List[Dict]) -> str:
+    """The words as the person fixing them sees them: one line of text."""
+    joiner = _joiner(words)
+    return joiner.join(str(w.get("word", "")).strip() for w in words).strip()
+
+
+def retime(words: List[Dict], text: str) -> List[Dict]:
+    """Put corrected text back on the timings Whisper heard it at.
+
+    Whisper gets a name or a word wrong; the person fixing it types the line
+    as it should read. The two are aligned word by word: words that did not
+    change keep their exact timing (with the new spelling or punctuation),
+    and a stretch that was rewritten -- one word for two, a name for a
+    mishearing -- has its new words spread evenly over the time the old ones
+    took. A deleted word simply drops out.
+    """
+    if not words:
+        return []
+    joiner = _joiner(words)
+    tokens = list(text.strip()) if not joiner else text.split()
+    tokens = [t for t in tokens if t.strip()]
+    if not tokens:
+        return []
+
+    old = [_key(w.get("word")) for w in words]
+    new = [_key(t) for t in tokens]
+    out: List[Dict] = []
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            for k in range(i2 - i1):
+                out.append({**words[i1 + k], "word": tokens[j1 + k]})
+            continue
+        if op == "delete" or j2 == j1:
+            continue
+        if i2 > i1:
+            start, end = float(words[i1]["start"]), float(words[i2 - 1]["end"])
+        else:
+            # Words added where nothing was heard: the gap between neighbours,
+            # or a short slot at the edge of the clip.
+            start = float(words[i1 - 1]["end"]) if i1 > 0 else max(
+                0.0, float(words[0]["start"]) - 0.3)
+            end = float(words[i1]["start"]) if i1 < len(words) else start + 0.3 * (j2 - j1)
+            if end - start < 0.1 * (j2 - j1):
+                end = start + 0.1 * (j2 - j1)
+        step = (end - start) / (j2 - j1)
+        for k in range(j2 - j1):
+            out.append({"start": round(start + k * step, 3),
+                        "end": round(start + (k + 1) * step, 3),
+                        "word": tokens[j1 + k]})
+    out.sort(key=lambda w: w["start"])
+    return out

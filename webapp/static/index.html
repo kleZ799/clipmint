@@ -52,6 +52,7 @@
   <symbol id="i-save" viewBox="0 0 24 24"><path d="M6 4.5h12a1 1 0 0 1 1 1V20l-7-3.6L5 20V5.5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></symbol>
   <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-film" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M8.5 4.5v15M15.5 4.5v15M3.5 12h17" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-captions" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M6.5 14.5h5M13.5 14.5h4M6.5 11h3M11.5 11h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.6L12 17l-1.9-5.4L4.5 10l5.6-1.6z" fill="currentColor"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" fill="currentColor" opacity=".7"/></symbol>
   <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.7-.9 1.3v.5" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="12" cy="16.4" r="1" fill="currentColor"/></symbol>
   <symbol id="i-yt" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4.2" fill="currentColor"/><path d="M10 9l5.5 3L10 15z" fill="#0f0f0f"/></symbol>
@@ -289,6 +290,7 @@
             <label class="check"><input type="checkbox" id="edPunch" checked><span>Punch in on the lines said with emphasis <em class="said hidden" data-said="punch_ins">set by your words</em></span></label>
             <label class="check"><input type="checkbox" id="edEmoji"><span>Pop an emoji on words like &ldquo;insane&rdquo;, &ldquo;money&rdquo; or &ldquo;no way&rdquo; <em class="said hidden" data-said="emoji">set by your words</em></span></label>
             <label class="check"><input type="checkbox" id="edBroll"><span>Stock B-roll over lines that name something you can film. Never on streams <em class="said hidden" data-said="broll">set by your words</em></span></label>
+            <label class="check hidden" id="edLogoRow"><input type="checkbox" id="edLogo" checked><span>Put my logo in the corner <em class="said hidden" data-said="logo">set by your words</em></span></label>
             <p class="hint hidden" id="brollHint">B-roll needs a free Pexels key. <button class="linkish" id="brollKey">Add one in Settings</button></p>
           </div>
 
@@ -312,6 +314,7 @@
             <div class="frame" id="frame">
               <div class="cam" id="pvCam">webcam</div>
               <div class="game" id="pvGame">gameplay</div>
+              <img class="pv-logo hidden" id="pvLogo" alt="">
               <div class="pv-cap" id="pvCap"><span>THIS IS</span> <b>INSANE</b></div>
               <div class="scanline"></div>
             </div>
@@ -592,6 +595,28 @@
   </div>
 
   <div class="d-sec">
+    <h3>Your logo</h3>
+    <div class="brand-row">
+      <div class="brand-thumb" id="brandThumb"><span>No logo</span></div>
+      <div class="brand-ctl">
+        <label class="btn ghost sm filebtn">Upload a logo<input type="file" id="brandFile" accept="image/png,image/jpeg" hidden></label>
+        <button class="btn ghost sm hidden" id="brandRemove">Remove</button>
+      </div>
+    </div>
+    <label class="fld">
+      <span>Corner</span>
+      <select id="brandCorner">
+        <option value="top-right">Top right</option>
+        <option value="top-left">Top left</option>
+        <option value="bottom-right">Bottom right</option>
+        <option value="bottom-left">Bottom left</option>
+      </select>
+    </label>
+    <p class="hint">A PNG with a transparent background looks best. It goes on every clip, small and slightly see-through, unless you untick it under Render.</p>
+    <div id="brandMsg"></div>
+  </div>
+
+  <div class="d-sec">
     <h3>B-roll</h3>
     <div class="kv" id="pexelsInfo"></div>
     <label class="fld">
@@ -648,6 +673,7 @@
         <button class="rbtn" id="pPlay" title="Play / pause (Space)"><svg><use href="#i-play"/></svg><span>Play</span></button>
         <button class="rbtn" id="pMute" title="Mute (M)"><svg><use href="#i-vol"/></svg><span>Sound</span></button>
         <button class="rbtn" id="pTrimBtn" title="Trim (T)"><svg><use href="#i-scissors"/></svg><span>Trim</span></button>
+        <button class="rbtn hidden" id="pCapBtn" title="Fix the captions (C)"><svg><use href="#i-captions"/></svg><span>Captions</span></button>
         <button class="rbtn" id="pSeoBtn" title="Title, description and tags (B)"><svg><use href="#i-spark"/></svg><span>Boost</span></button>
         <button class="rbtn" id="pSave" title="Save to your folder"><svg><use href="#i-save"/></svg><span>Save</span></button>
         <a class="rbtn" id="pDownload" download title="Download"><svg><use href="#i-download"/></svg><span>Download</span></a>
@@ -677,6 +703,21 @@
       <p class="hint">Every box here is yours to rewrite. Saving keeps your wording and
         renames the file on your PC to match the title.</p>
       <div id="seoMsg"></div>
+    </div>
+
+    <!-- caption fix panel -->
+    <div class="trim capfix" id="capfix">
+      <div class="t-head">
+        <h3><svg><use href="#i-captions"/></svg>Fix the captions</h3>
+        <button class="ibtn sm" id="capClose"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <textarea id="capText" rows="9" spellcheck="true"></textarea>
+      <div class="t-actions">
+        <button class="btn ghost" id="capReset">Reset</button>
+        <button class="btn primary" id="capApply">Burn in again</button>
+      </div>
+      <p class="hint">Correct a name or a word Whisper misheard. Words you keep stay exactly where they were said; words you change or add take the time of the ones they replace.</p>
+      <div id="capMsg"></div>
     </div>
 
     <!-- trim panel -->
