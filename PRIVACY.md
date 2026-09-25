@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 17 September 2026_
+_Last updated: 25 September 2026_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,

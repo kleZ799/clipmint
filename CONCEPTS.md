@@ -32,6 +32,7 @@ engineering is.
 4. [AI/ML: working with LLMs](#4-aiml-working-with-llms)
 5. [AI/ML: computer vision](#5-aiml-computer-vision)
 5a. [AI/ML: audio signal processing and feature fusion](#5a-aiml-audio-signal-processing-and-feature-fusion)
+5b. [Media: word timing, captions and the edit](#5b-media-word-timing-captions-and-the-edit)
 6. [CS: concurrency and the job model](#6-cs-concurrency-and-the-job-model)
 7. [CS: the web layer](#7-cs-the-web-layer)
 8. [CS: algorithms actually used here](#8-cs-algorithms-actually-used-here)
@@ -57,9 +58,11 @@ engineering is.
 > work out what kind of video it is and rank the transcript for clippable
 > moments by that kind's rules, then cut and re-frame those spans with ffmpeg
 > into 9:16: the webcam stacked over the gameplay for a stream, a crop that
-> follows the face for a vlog or podcast.
+> follows the face for a vlog or podcast. Then each clip is edited the way a
+> person would: captions burned in word by word, quiet pauses cut, a zoom on
+> the line that matters. Each clip says why it ranked where it did.
 >
-> Everything runs locally except one LLM call. It ships as a desktop app for
+> Everything runs locally except the LLM calls. It ships as a desktop app for
 > Windows, macOS and Linux — a FastAPI server behind a native webview window,
 > or behind the browser on Linux, where that window cannot be bundled and
 > carried. Packaged with PyInstaller, and it raises a desktop notification
@@ -68,7 +71,7 @@ engineering is.
 > The interesting parts aren't the models, they're everything around them:
 > a 3h47m VOD does not fit in a context window, so ranking is chunked and
 > checkpointed; the LLM is unreliable, so there's a retry budget and a
-> degradation path; transcription is the expensive step, so there are five
+> degradation path; transcription is the expensive step, so there are seven
 > layers of caching that make every re-rank free.
 
 If they want less, stop after the first paragraph. If they want more, the
@@ -103,7 +106,12 @@ YouTube URL ──yt-dlp──> source.mp4 ──ffmpeg──> 16kHz mono audio
                                                      │
                                     ffmpeg: cut + stack + scale
                                                      │
+                   faster-whisper again, per clip ──> word timings
+                                                     │
+          one filtergraph: pause cuts, punch-ins, captions (libass)
+                                                     │
                                             1080×1920 h264 .mp4
+                                        + a scorecard: why it ranked
 ```
 
 The single most important property of this diagram: **cost increases sharply
@@ -564,6 +572,86 @@ rest.**
 
 ---
 
+## 5b. Media: word timing, captions and the edit
+
+**Files:** `shorts_generator/words.py`, `captions.py`, `autoedit.py`
+
+### Word-level timestamps, and choosing what to run them over
+
+Whisper decodes text in 30-second windows; **word timestamps** come from a
+second step, aligning the decoder's cross-attention to the audio frames
+(faster-whisper's `word_timestamps=True`). They cost extra decoding work, so
+where to pay for them is a design choice. Over a four-hour source they would
+be paid for hours nobody clips. Over each finished clip they are seconds each,
+and they come out **on the clip's own timeline**, which is the one captions
+need. A trimmed or re-cut clip is simply listened to again; nothing has to be
+mapped back from the source.
+
+The model is loaded once per batch and released afterwards: loading is most of
+the cost of a 30-second transcription, and a few hundred MB of weights should
+not sit in memory between runs.
+
+### Captions as a declarative format, not pixels
+
+The captions are not drawn frame by frame in Python. They are written as an
+**ASS script**, a subtitle format with styles and inline override tags, and
+drawn by **libass** inside ffmpeg's `subtitles` filter. The "karaoke" look is
+one event per word: the whole line is on screen, and in each event a different
+word is recoloured and scaled with `\t(...)` transforms, which libass
+animates itself. Declaring *what* should appear and letting a renderer built
+for it decide *how* is the same division of labour as SQL over hand-written
+loops. It also means the fonts have to ship with the app, or the same script
+renders differently on every machine.
+
+### Silence detection with a relative threshold
+
+"Is this pause silent?" has no absolute answer: a podcast's silence is room
+tone, a stream's silence may be a game at full volume. So the threshold is
+**relative to the clip's own speech**: the median loudness of the words, times
+0.3. A gap is dead air only if nothing in it rises above that. Two refinements
+make it correct rather than approximate:
+
+- **Window edges.** The envelope has 0.25s windows, so the window a pause
+  starts in still contains the end of the previous word. The check starts one
+  full window in from each edge, or it would hear the word and never cut.
+- **Protected spans.** The three seconds before the clip's loudest moment are
+  never cut, however quiet. That quiet is the build-up the ranker's
+  *silence-to-peak* feature rewarded; a later stage must not delete what an
+  earlier stage valued.
+
+### Piecewise time remapping
+
+Cutting pauses turns one timeline into another. The kept spans are an ordered
+list of intervals (the **complement** of the merged cuts), and a time `t` maps
+to `offset(i) + (t − start(i))` for the span `i` holding it, or to the start of
+the next kept span if `t` fell inside a cut. That one function moves every word,
+the cold open's peak, and every zoom window. A word whose remapped length is
+zero was cut, so a filler word disappears from the captions for free.
+
+### A filter graph is a DAG
+
+ffmpeg's `-filter_complex` is a **directed acyclic graph** of filters with
+named pads: `split` fans a stream out, `trim`/`concat` cut and rejoin it,
+`overlay` merges two streams, and each pad can be consumed exactly once. The
+whole edit (cuts, zooms, B-roll, emoji, logo, captions) is compiled into one
+graph, so the clip is decoded and encoded once rather than once per effect,
+which matters both for speed and for generation loss. The zoom is a fixed-size
+`scale`+`crop` copy laid over the frame with `enable='between(t,a,b)'`, rather
+than a scale that changes size mid-stream, because a graph whose frame size
+changes mid-stream has to reconfigure every filter downstream of it.
+
+### Sequence alignment for corrected text
+
+Fixing a misheard name is a **diff** problem. The heard words and the typed
+words are two sequences; `difflib.SequenceMatcher` (Ratcliff/Obershelp, the
+longest-matching-block recursion) finds what is unchanged. Unchanged words keep
+their exact timing; a replaced stretch spreads its new words evenly over the
+time the old ones took; an insertion takes the gap between its neighbours.
+The cuts are still planned from what was *heard*, because the audio did not
+change, only the text on screen.
+
+---
+
 ## 6. CS: concurrency and the job model
 
 **File:** `webapp/jobs.py`
@@ -681,6 +769,21 @@ keeping a clip only if it overlaps ≤50% with everything already kept.
 
 Covered in [§4](#4-aiml-working-with-llms). Windows of 1200s, stride 1140s.
 
+### Interval complement and merging (pause cuts)
+
+Cuts arrive as overlapping intervals from three sources (pauses, fillers, the
+leading and trailing silence). They are sorted and **merged** in one pass,
+then the **complement** over `[0, duration]` gives the spans to keep. Slivers
+too short to hold a word are dropped, and if more than 40 pieces remain the
+smallest cuts are put back one at a time: a bounded graph is worth more than
+the last few hundred milliseconds.
+
+### Longest common subsequence, practically (caption fixes)
+
+See [§5b](#5b-media-word-timing-captions-and-the-edit). The same family of
+algorithm as `diff`, and chosen for the same reason: it is stable on the parts
+that did not change, which is exactly the property timing must have.
+
 ### Fingerprint-based cache validation
 
 `_checkpoint_fingerprint()` hashes prompt version, duration, chunk count, clip
@@ -712,10 +815,12 @@ silently never hits looks exactly like a cache that works, except slower.
 
 ## 9. CS: caching and idempotency
 
-Five layers, each with its own validity rule:
+Seven layers, each with its own validity rule:
 
 | Layer | Key | Invalidated by |
 |---|---|---|
+| Words heard per clip | the clip's span, in `job.json` | trimming (a new span means new words) |
+| B-roll footage | Pexels video id | never; deleting it is safe, it is fetched again |
 | Source video | video id | never (reused across runs) |
 | Transcript `.srt` | path beside video | source mtime newer than cache |
 | Highlight chunks | fingerprint | any fingerprint input changing |
@@ -1441,6 +1546,21 @@ individually produced "works, but on CPU" with no error. Second best: score
 inflation, because it required *noticing that correct-looking output was
 meaningless* — the system reported five clips at 94–95 and looked fine.
 
+**"How do the captions work?"**
+Each finished clip is listened to again with word timestamps, and the words
+become an ASS script for libass: one event per word, with that word recoloured.
+Burned in by ffmpeg in the same encode as the cuts and zooms. Then the part
+worth telling: cutting pauses changes the timeline, so every word, zoom and the
+cold open's peak goes through one piecewise remap, and fixing a misheard name
+is a sequence alignment against the heard words, so unchanged words keep their
+exact timing.
+
+**"Why not just cut every silence?"**
+Because silence is relative. A pause is only cut if it is quiet against the
+clip's *own* speech, which keeps a laugh or a game explosion, and the quiet
+before the loudest moment is protected, because the ranker scored that build-up
+as a feature. A later stage must not delete what an earlier one valued.
+
 **"What would you do differently?"**
 See [§15](#15-what-you-would-do-next). Have a real answer; "nothing" is a bad one.
 
@@ -1506,7 +1626,20 @@ Ordered by value, with the reasoning that makes each defensible:
 
 7. **Rank titles against outcomes too.** Title options are scored by a rubric
    and a code check, both assumed. The same retention data as item 3 would say
-   which *angle* actually travels for this channel.
+   which *angle* actually travels for this channel. The scorecard's four parts
+   (Hook, Moment, Energy, Pace) are shown with equal visual weight today; the
+   same data would say which of them actually predicts retention.
+
+8. **Word timings from the source transcript.** Each clip is transcribed again
+   for its captions, which costs about the render time again on a CPU. Keeping
+   word timings from the one source transcription would make that free for
+   ranked clips. It would still need the per-clip path for trims and exact
+   spans, so it is a speed-up, not a replacement.
+
+9. **Dubbing.** The interface speaks seven languages; the clips speak one.
+   Translating the transcript and re-voicing it (ideally in the speaker's own
+   voice) is the step after captions, and a large one: a TTS model, a
+   voice-cloning model, and lip timing to keep honest.
 
 ---
 

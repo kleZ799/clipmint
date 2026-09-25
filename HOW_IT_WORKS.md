@@ -47,7 +47,7 @@ anyone.
 12. [The frontend](#12-the-frontend)
 13. [Configuration and precedence](#13-configuration-and-precedence)
 14. [Quota accounting and provider fallback](#14-quota-accounting-and-provider-fallback)
-15. [Caching: five independent layers](#15-caching-five-independent-layers)
+15. [Caching: seven independent layers](#15-caching-seven-independent-layers)
     - 15b. [Two themes out of one set of rules](#15b-two-themes-out-of-one-set-of-rules)
 16. [Packaging: a Windows .exe, a mac .app, a Linux binary](#16-packaging-a-windows-exe-a-mac-app-a-linux-binary)
     - 16a. [Subprocesses: windows, and stopping them](#16a-subprocesses-windows-and-stopping-them)
@@ -73,21 +73,28 @@ It downloads the source with **yt-dlp**, transcribes it locally with
 with a prompt tuned to find moments that travel, dedupes and scores the results,
 shows **frames from each winner to a vision model** so its title names what is
 actually on screen, then renders the winners with **ffmpeg + OpenCV** into 9:16
-video. It ships as a **FastAPI** backend behind a **vanilla-JS** single-page UI,
+video, and edits each one: word-by-word **captions** burned in with libass,
+quiet pauses cut, punch-ins on emphasis, and a scorecard saying why it ranked
+where it did. It ships as a **FastAPI** backend behind a **vanilla-JS** single-page UI,
 wrapped in a native **pywebview** window and packaged by **PyInstaller** into a
 Windows .exe, a mac .app and a Linux binary that need nothing installed.
 
-The whole thing runs on the user's own machine. The only data that leaves is the
-transcript text sent to the ranking model — and even that is skipped when the
-user names an exact timespan.
+The whole thing runs on the user's own machine. What leaves is the transcript
+text and a few still frames per clip, sent to the model the user chose, and,
+only when B-roll is switched on, a few search words sent to Pexels.
 
 ### The four stages
 
 ```
-  get the file   →   transcribe   →   rank moments   →   render clips
-    yt-dlp          faster-whisper     Gemini/OpenAI      ffmpeg + OpenCV
-   (network)          (slow, CPU)     (fast, costs $)      (medium, free)
+  get the file   →   transcribe   →   rank moments   →   render clips   →   edit
+    yt-dlp          faster-whisper     Gemini/OpenAI      ffmpeg + OpenCV   Whisper per clip
+   (network)          (slow, CPU)     (fast, costs $)      (medium, free)    + one encode
 ```
+
+The fifth step is a pass over the finished clips rather than a stage of its
+own: it listens to each one for word timings and re-encodes it with captions
+and cuts (§7.7). It scales with clip count, like rendering, and is off
+entirely when captions and the edit are switched off.
 
 They are kept strictly separate because **they fail for different reasons and
 cost different amounts.** That single observation explains most of the
@@ -326,11 +333,15 @@ _look_at_clips() → describe_clips()   ← what each clip's frames show (vision
 attach_seo()                          ← Shorts, then Reels + TikTok, from the playbook
       │
       ▼
-render_highlights(spec)               ← stage: render     (bar 0.70 → 1.00)
-  └ hook_open.apply() on each clip whose payoff lands late
+render_highlights(spec, language, kind, llm_fn)
+                                      ← stage: render     (bar 0.70 → 0.86)
+  ├ autoedit.polish(): listen, plan, one encode per clip
+  │                                   ← stage: edit       (bar 0.86 → 1.00)
+  └ hook_open.apply() on each clip whose payoff lands late,
+    at the peak moved onto the cut timeline
       │
       ▼
-_finalize() → _persist()              ← job.json written beside the clips
+_finalize() → _persist()              ← scorecards attached, job.json written
 ```
 
 **Step 0 — `reset_fallback()`.** A previous run may have fallen back from Gemini
@@ -1098,6 +1109,9 @@ recurring-face vote stays.
 
 ### 7.7 The edit — `autoedit.py`, `captions.py`, `words.py`, `broll.py`
 
+The user-facing guide is [docs/captions-and-editing.md](docs/captions-and-editing.md);
+this section is how the code does it.
+
 What the Shorts tools sell on top of the cut is editing: captions, the dead air
 taken out, a zoom on the line that matters. `render_highlights()` does all of
 it after the layout render and before the cold open, so every layout gets it
@@ -1665,7 +1679,7 @@ would mean an empty transcript forever.
 
 **This is the slowest step in the pipeline and it is paid exactly once per
 video.** Every re-rank and re-render afterwards is free. That fact drives the
-workflow in [§15](#15-caching-five-independent-layers).
+workflow in [§15](#15-caching-seven-independent-layers).
 
 ---
 
@@ -1708,6 +1722,7 @@ The pipeline already narrates itself to stdout. `_JobStdout` — a tiny
 [transcribe…]                      → transcribe
 [highlights…] [llm…] [rank…]       → rank
 [stack…] [clip/local…] [center…]   → render
+[edit…] [broll…]                   → edit
 ```
 
 Each stage owns a band of the progress bar, sized by how long it actually takes:
@@ -1716,8 +1731,13 @@ Each stage owns a band of the progress bar, sized by how long it actually takes:
 download   0.00 → 0.15
 transcribe 0.15 → 0.55      # dominates on CPU, so it gets the widest band
 rank       0.55 → 0.70
-render     0.70 → 1.00
+render     0.70 → 0.86
+edit       0.86 → 1.00      # captions and the edit; skipped when they are off
 ```
+
+The edit pass goes over the clips twice (listen to every one, then encode every
+one) and reports it as one count of `2n` steps (`[edit] 3/20: …`), so the bar
+keeps moving through both halves instead of filling once and stalling.
 
 And when a line carries an `N/M` counter — `[stack] 2/5: …` — the bar moves to
 the right position *inside* the render band:
@@ -1845,7 +1865,13 @@ time. Trimming the output could only ever remove.
 
 The new render gets a fresh `edit_NN_<timestamp>` name, replaces the old entry
 **in place** (keeping its position in the list), and the superseded file is
-deleted.
+deleted. It goes through the edit like any other render, so the new span comes
+back captioned and cut. Its old `heard_words` and `caption_words` are dropped,
+because a new span is new words.
+
+`PUT /api/jobs/{id}/clips/{file}/captions` shares the same `_rerender()`: same
+span, same edit, with the corrected words passed in, so nothing is transcribed
+again (§7.7).
 
 ### 11.8 Security posture
 
@@ -1883,8 +1909,9 @@ url = "https://www.youtube.com/upload"
 
 ### 11.9 Disk cleanup
 
-`/api/cleanup` is deliberately narrow: **downloaded source videos and
-half-finished `.part` files only.** Rendered clips live elsewhere and are the
+`/api/cleanup` is deliberately narrow: **downloaded source videos,
+half-finished `.part` files, and the B-roll cache in `output/b-roll/`** (stock
+footage, fetched again whenever a clip asks for it). Rendered clips live elsewhere and are the
 whole point of the app. Transcripts stay too — a `.srt` is a few hundred KB and
 saves re-transcribing hours of audio.
 
@@ -1929,13 +1956,18 @@ main
  ├── chip bar           clickable example phrases
  ├── 1 Source           drag-drop zone / URL / channel grid
  ├── 2 What to make     the layout prompt + aspect toggle
- ├── 3 Render           format picker + Generate button
- ├── side: Live preview the 9:16 frame, redrawn as you type
+ ├── 3 Render           format, spoken language, the Edit box
+ │                      (captions, pauses, punch-ins, emoji, B-roll, logo),
+ │                      cold open, Generate
+ ├── side: Live preview the 9:16 frame, redrawn as you type, with a
+ │                      caption sample and the logo where they will sit
  ├── progress panel     stage pills, % bar, live pipeline log
- └── results panel      search + date chips, then the clip grid
-player overlay   video + control rail + trim panel + SEO panel
+ └── results panel      search + date chips + sort, then the clip grid
+                        (each card: rank, score, four score bars, the reason)
+player overlay   video + control rail + trim panel + captions panel + SEO panel
 mini player      persists while you scroll
-drawer           settings: provider, model, budget meters, save location, cleanup
+drawer           settings: provider, model, budget meters, logo, Pexels key,
+                 save location, cleanup
 ```
 
 ### 12.3 The live preview
@@ -1971,7 +2003,18 @@ Three things to notice:
 `drawPreview()` sizes a div to the spec's real aspect ratio, sets the webcam
 panel to `height × cam_panel_fraction`, prints the resolution, lists the parser's
 `notes` so the user sees what was understood, and shows the exact-cut box when
-`time_ranges` came back.
+`time_ranges` came back. It also draws a caption sample, in the real bundled
+typeface (served by `GET /api/fonts/{name}`), at the size and height the
+burned-in captions will have on that layout, and the uploaded logo in its
+corner.
+
+**The Edit box** sends its switches with every preview and every job. The
+server applies them except where the prompt's words named the same thing
+(`edit_from_words`); the preview hands that list back and the box tags those
+controls *set by your words*. A click on a control the words decided is
+answered with a toast rather than silently undone by the next preview. The
+switches are remembered per machine in local storage, because a caption style
+is a channel's look rather than a per-run choice.
 
 ### 12.4 The chips
 
@@ -2043,11 +2086,23 @@ assumption would have made cards open the wrong clip. Each clip now carries its
 own position in `clips`, reassigned by `reindex()` whenever that array changes,
 and arrow-key navigation walks the *visible* list so it matches the screen.
 
+**Sort** reorders clips inside each run: *Ranked* (the order they were ranked
+in), or by one part of the scorecard, *Strongest hook* and *Most energy*, or
+*Shortest first*. It is remembered per machine. Each card carries the
+scorecard's four bars and the model's one-line reason (§7.8), and the score
+badge takes its grade's colour.
+
 ### 12.7 The player and trim editor
 
-The player is a `<video>` with a custom control rail (Play, Sound, Trim, Boost,
-Save, Download, Show file, Delete, Mini) and keyboard shortcuts —
-<kbd>Space</kbd>, <kbd>M</kbd>, <kbd>T</kbd>, <kbd>B</kbd>, <kbd>F</kbd>.
+The player is a `<video>` with a custom control rail (Play, Sound, Trim,
+Captions, Boost, Save, Download, Show file, Delete, Mini) and keyboard
+shortcuts — <kbd>Space</kbd>, <kbd>M</kbd>, <kbd>T</kbd>, <kbd>C</kbd>,
+<kbd>B</kbd>, <kbd>F</kbd>.
+
+The **captions panel** appears only for a clip that was captioned and kept its
+`heard_words`. It is a text box holding the captions as one line of text; **Burn
+in again** sends it to `PUT …/captions` and swaps the clip in place, the same
+way a trim does.
 
 The **trim panel** is a two-handle range control built on pointer events, plus
 `−1s`/`+1s` nudge buttons and text fields that accept clock format (`1:30`).
@@ -2058,7 +2113,10 @@ re-cut returns.
 The **mini player** persists as you scroll away, and an `IntersectionObserver`
 drives the guide rail's active-section highlight.
 
-The **SEO panel** ("Boost") leads with **What's in this clip**: the kind of
+The **SEO panel** ("Boost") opens with **why the clip ranked where it did**:
+the grade, the score, the model's reason, the four parts with their numbers,
+the scorecard's notes, and a line saying what the edit did (captions, pauses
+cut, punch-ins, emoji, B-roll). Then comes **What's in this clip**: the kind of
 video and genre from the clip's `scene`, what it was filed under and on what
 evidence, and a box to type the real name — saved as `subject_override`, and
 used by every rewrite after. Under the title box, `title_options` are listed
@@ -2097,6 +2155,8 @@ Reads `/api/settings` and `/api/usage` to render:
   to it**. The allowance differs enormously (20/day on one, 1000 on another), and
   picking wrong is the difference between a working afternoon and a paid API. The
   choice is made with the number in view.
+- **Your logo** — upload (PNG or JPEG), a thumbnail, remove, and which corner
+- **B-roll** — the Pexels key, with a button to the page that hands one out
 - **Budget meters** — requests used today vs the daily cap, and time until reset
 - Save-location picker and the disk cleanup scanner
 
@@ -2178,6 +2238,8 @@ clip — even partway through a paused run — without a restart.
 |---|---|
 | Settings + usage ledger | `%APPDATA%\ClipMint\` (`~/.config` Linux, `~/Library/Application Support` macOS) |
 | Growth playbook: your own / fetched | `playbook.md` / `playbook-cache.md`, in that same folder |
+| Your logo | `brand/logo.png` (or `.jpg`), in that same folder |
+| Stock footage fetched for B-roll | `<OUTPUT_ROOT>/output/b-roll/` |
 | Source videos, `.srt`, `.highlights.json` | `<OUTPUT_ROOT>/output/` |
 | Rendered clips + `job.json` | `<OUTPUT_ROOT>/shorts/<job-id>/` |
 | `OUTPUT_ROOT` default | cwd — which is `~/Videos/ClipMint` in the packaged build, `~/Movies/ClipMint` on a Mac |
@@ -2317,7 +2379,7 @@ Two Gemini-specific details:
 
 ---
 
-## 15. Caching: five independent layers
+## 15. Caching: seven independent layers
 
 Each guards a different expense:
 
@@ -2328,6 +2390,8 @@ Each guards a different expense:
 | Chunk rankings | `output/<stem>.highlights.json` | prompt version, duration, chunk count, clip count, clip length | API quota already spent |
 | Job manifest | `shorts/<id>/job.json` | — | Clips becoming invisible after a restart |
 | Gemini model list | in-process, 600s | — | A network round trip on every settings load |
+| Words heard per clip | `heard_words` in `job.json` | the clip's span | Listening to a clip again to fix its captions |
+| B-roll footage | `output/b-roll/<query>-<id>.mp4` | Pexels video id | Downloading the same stock clip twice |
 
 ### The workflow this enables
 
@@ -2354,14 +2418,16 @@ this workflow, scripted.
 `build_exe.py` wraps PyInstaller. `--onedir` (default) starts faster;
 `--onefile` is a single self-contained exe that unpacks itself each launch.
 
-**Bundled:** `webapp/static`, `assets/models` (the YuNet face detector), and
-`./bin` (ffmpeg + ffprobe) when present — which
+**Bundled:** `webapp/static`, `assets/models` (the YuNet face detector),
+`assets/playbook`, `assets/fonts` (the four caption typefaces, OFL) and
+`assets/emoji` (Twemoji PNGs, CC-BY 4.0), found at run time through
+`bundled.asset_dir()`, and `./bin` (ffmpeg + ffprobe) when present — which
 is what makes the published build need nothing installed. Hidden imports cover
 everything PyInstaller's static analysis can't see:
 `webview.platforms.edgechromium`, `faster_whisper`, `ctranslate2`, `cv2`,
 `google.genai`, `yt_dlp`, and the uvicorn loop/protocol/lifespan modules.
 `torch`, `matplotlib`, `tkinter` and `pytest` are excluded to keep size down
-(220 MB with ffmpeg, 153 MB without). The webview backend is the one hidden
+(about 235 MB with ffmpeg as of v1.19.0; ffmpeg is roughly 67 MB of that). The webview backend is the one hidden
 import that differs per platform, and each is unavailable on the others.
 
 **Where `./bin` comes from on a release.** Each release job downloads a static
@@ -2375,6 +2441,19 @@ growing wait. Both halves came from real failures: v1.11.0's Linux build died
 in `tar` on an error page served in place of the archive — which curl's own
 `--retry` never saw, because the response looked like success — and v1.11.1's
 sat for forty minutes on a transfer that had stalled without failing.
+
+**Every fetched ffmpeg has to burn a caption.** Captions need ffmpeg built with
+libass, and a build without it fails quietly: the edit keeps each plain clip
+and says so in a log nobody reads. So each job runs
+`.github/scripts/check_captions.py` against the ffmpeg it just fetched,
+burning a real ASS caption with a bundled font, from a working folder, the way
+`autoedit.py` does. It fails the release on Windows and Linux and warns on the
+Mac beta. v1.19.0 was the first release to run it, and all three passed.
+
+**Cutting a release from the Actions tab.** Pushing a `v*` tag is still the
+whole release. A run started by hand from `main`, with a tag that doesn't exist
+yet, now creates that tag on the commit it was started from, before building.
+It only does that from the default branch, and leaves an existing tag alone.
 
 ### What changes on a Mac
 
@@ -3065,6 +3144,24 @@ because the reasoning is worth keeping.
 `python main.py --mode local` always renders the **face-tracking** layout, never
 the stacked one. It writes no SEO metadata, keeps no chunk checkpoints, names
 its output `short_NN.mp4`, and ignores `LayoutSpec` entirely.
+It doesn't caption or edit its clips either: the edit lives in
+`render_highlights()`, which only the app calls.
+
+### Captions and the edit: known limits
+
+- **Word timings come from a second Whisper pass per clip.** That costs roughly
+  the render time again on a CPU. Timing words over the whole source instead
+  would be free per clip, but costly over a four-hour VOD, and useless for trims
+  and exact spans.
+- **Emoji words are English.** `EMOJI_WORDS` is a fixed list; on another
+  language, emoji are rare rather than wrong.
+- **B-roll needs the model to find something concrete**, and on most
+  talking-head clips it rightly finds nothing. It is never offered on streams.
+- **A cut is only as good as the loudness envelope's 0.25s windows.** A pause
+  shorter than about half a second is heard only at its middle, and kept if that
+  middle holds speech: a missed cut costs less than a clipped word.
+- **Fixing captions changes the words, not the cuts.** They still follow what
+  was heard, so typing out an "um" that was cut does not bring it back.
 
 This is a design split rather than a bug — `pipeline.py` is the original
 upstream shape, kept working — but it surprises everyone who reads the README's
@@ -3330,11 +3427,14 @@ Short answers to the questions you'll actually be asked.
 Turns a long video into ranked vertical Shorts with upload-ready titles,
 descriptions and tags. Downloads with yt-dlp, transcribes locally with
 faster-whisper, ranks moments with an LLM, looks at each winner's frames so its
-title names what is on screen, renders with ffmpeg. Runs on the user's machine
-and ships as a Windows .exe, a mac .app and a Linux binary.
+title names what is on screen, renders with ffmpeg, then edits every clip:
+burned-in word-by-word captions, quiet pauses cut, punch-ins on emphasis. Each
+clip says why it ranked where it did. Runs on the user's machine and ships as a
+Windows .exe, a mac .app and a Linux binary.
 
 **"Walk me through the architecture."**
-Four decoupled stages — download, transcribe, rank, render — behind a FastAPI
+Four decoupled stages — download, transcribe, rank, render — plus an edit pass
+over the finished clips, behind a FastAPI
 backend with a single-worker job queue. HTTP requests only enqueue; progress
 streams back over SSE. A vanilla-JS SPA drives it, wrapped in a pywebview native
 window, packaged by PyInstaller.
@@ -3389,11 +3489,29 @@ each pipeline stage retries itself too — so a run that still dies can be sent
 round again with **Try again** and resumes where it stopped.
 
 **"How do you keep it cheap?"**
-Five caches — download, transcript, chunk rankings, job manifest, model list —
+Seven caches — download, transcript, chunk rankings, job manifest, model list,
+the words heard in each clip, and B-roll footage —
 each guarding a different expense. Keyword-first prompt parsing that only
 consults the LLM when it understood nothing. A one-batch SEO call instead of one
 per clip. An exact-span path that skips transcription and ranking entirely. And a
 usage ledger so the daily budget is visible *before* it runs out.
+
+**"How do the captions know when each word is said?"**
+The clip is listened to again, on its own, with Whisper's word timestamps on:
+seconds of audio rather than the whole VOD, and on the clip's own timeline, so
+trims and exact spans need no mapping. The words become an ASS script for
+libass, one event per word with that word recoloured, burned in by ffmpeg's
+`subtitles` filter. Fixing a misheard name is sequence alignment: `difflib`
+matches the typed words to the heard ones, unchanged words keep their timing,
+and rewritten stretches share the time of what they replaced.
+
+**"How does it cut pauses without cutting the good silences?"**
+It listens before it cuts. A gap between words is dead air only if the clip's
+own loudness envelope is under 30% of its speech level all the way through, so
+a laugh or a game explosion in the gap keeps it. The three seconds before the
+loudest moment are never cut, because that quiet is the build-up the ranking
+rewarded. Every word, and the cold open's peak, is then moved onto the shorter
+timeline by a piecewise map over the kept spans.
 
 **"Why no frontend framework?"**
 The UI ships inside a PyInstaller bundle. A build step means a toolchain in the
@@ -3410,7 +3528,9 @@ driven through real typing and clicks in the browser rather than by setting
 state directly.
 
 **"What would you do next?"**
-Rank title options against real retention data rather than an assumed rubric.
+Rank title options, and weight the scorecard's four parts, against real
+retention data rather than an assumed rubric. Dub clips into the interface's
+other languages.
 Add a regression test suite around `_sanitize_highlights`,
 `chunk_transcript` and `layout_spec` parse ordering — all three encode hard-won
 ordering constraints that a refactor could silently break, and "silently" is the
