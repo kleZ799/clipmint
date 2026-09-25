@@ -13,7 +13,7 @@ No subscription, no per-clip credits, no watermark, and nothing is uploaded
 unless you press Upload — transcription and ranking both run locally. When you
 do, a clip goes straight to your YouTube channel, now or on a schedule.
 
-[![Download](https://img.shields.io/badge/⬇_Download_for_Windows-219_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
+[![Download](https://img.shields.io/badge/⬇_Download_for_Windows-235_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
 [![Download for Mac](https://img.shields.io/badge/⬇_Download_for_Mac-BETA_·_Apple_Silicon-f59e0b?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip)
@@ -135,6 +135,7 @@ Per **hour of source video**, measured here on an RTX 5060 laptop with the
 | Transcribing | **2.4 min** on an NVIDIA GPU, **8.7 min** on the CPU | GPU vs CPU, and the model |
 | Finding the moments | a few minutes, growing with the transcript | your AI provider that day |
 | Rendering | — *(scales with clip count, not length)* | about 12s per 30s clip |
+| Captions and edits | — *(scales with clip count, not length)* | one short Whisper pass and one encode per clip |
 
 So on a 100 Mbps line with GPU transcription, asking for 10 clips:
 
@@ -153,6 +154,12 @@ On the CPU, transcription becomes the whole story: that 4-hour stream goes
 from about 26 minutes to about 50, and nearly all of the difference is the
 transcribe stage. If you have an NVIDIA card, the **Processor** box is worth a
 look before you start a long one.
+
+Those totals were measured before clips were captioned and edited. That pass
+listens to each finished clip again and encodes it once more, so it adds about
+the render time again on a CPU and very little on an NVIDIA GPU. It hasn't
+been re-measured on this laptop yet. Turn captions and the edit off under
+**Render** and a run takes exactly as long as the tables say.
 
 ### Pause it when you need your machine back
 
@@ -311,6 +318,10 @@ show it. Each clip is listened to again for word timings, a Whisper pass over
 seconds rather than hours, so this adds roughly the render time again on a
 CPU and very little on an NVIDIA GPU.
 
+The full guide, covering every style, every phrase the prompt understands, and
+what to do when a caption is wrong, is in
+[docs/captions-and-editing.md](docs/captions-and-editing.md).
+
 ### The title knows what is on screen
 
 Every clip comes back with a title, a description, tags and an on-screen hook.
@@ -406,7 +417,7 @@ every stage reports itself:
   and how long that leaves — "42% of 1.2GB at 8.4MB/s, 1m21s left".
 - **Transcribing** counts through the audio — "42% — 14m21s of 34m12s" — which
   is the longest stage and used to be the most silent.
-- **Ranking** and **Rendering** count their chunks and clips.
+- **Ranking**, **Rendering** and **Captions** count their chunks and clips.
 - Each stage animates while it is the live one, and the header shows **time so
   far and about how long is left**, worked out from how long this run has
   actually taken rather than a guess baked in months ago.
@@ -485,7 +496,11 @@ which is the difference between a bug that gets fixed and one that does not.
 Click a clip and it opens in a player. Move the in and out points, mute it, save
 it, or throw it away. Trimming re-cuts straight from the downloaded source, so
 the span can **grow** as well as shrink — something you cannot do by trimming the
-rendered file.
+rendered file. The new span is captioned and edited the same way the run was.
+
+To change only the words on screen, press **Captions** in the player instead
+(or **C**): type the line as it should read and it is burned in again, on the
+same span, with the same cuts.
 
 <img src="assets/screenshots/04-player-trim.png" alt="The clip player with the trim panel open, showing in and out handles" width="880">
 
@@ -500,9 +515,9 @@ Every link fetches the newest release. Nothing else to install: no Python, no ff
 
 | Platform | Download | Size | Status |
 |---|---|---|---|
-| **Windows** | [**⬇ ClipMint.exe**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe) | 220 MB | Tested. Updates itself. |
-| **macOS**, Apple Silicon (M1 or later) | [**⬇ ClipMint-macOS-arm64.zip**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip) | 166 MB | **Beta.** Never run on a Mac. |
-| **Linux**, x86-64 | [**⬇ ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) | 279 MB | **Untested** on a desktop. Updates itself. |
+| **Windows** | [**⬇ ClipMint.exe**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe) | 235 MB | Tested. Updates itself. |
+| **macOS**, Apple Silicon (M1 or later) | [**⬇ ClipMint-macOS-arm64.zip**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-macOS-arm64.zip) | 175 MB | **Beta.** Never run on a Mac. |
+| **Linux**, x86-64 | [**⬇ ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) | 294 MB | **Untested** on a desktop. Updates itself. |
 
 Older versions and release notes are on the [releases page](https://github.com/kleZ799/clipmint/releases).
 Setup for each platform follows below.
@@ -803,7 +818,9 @@ an application, is mine:**
 **The application** — none of this existed upstream
 - A **desktop app**: a FastAPI server on a free port, run from a background thread, behind a native WebView2 window. No browser, no address bar, no terminal.
 - A **job runner** — queued work, one CPU-bound job at a time, progress streamed to the browser over SSE.
-- A **clip editor** — re-cut, mute, save or delete a finished clip without re-running the pipeline.
+- A **clip editor** — re-cut, mute, save or delete a finished clip without re-running the pipeline, and fix a misheard word in its captions.
+- **The edit after the cut** — burned-in word-by-word captions in four styles, pause and filler cuts that listen before they cut, punch-ins on emphasis, emoji, Pexels B-roll and a channel logo, in one encode per clip.
+- **A scorecard per clip** — the rank split into Hook, Moment, Energy and Pace, with the model's reason, so "why is this #1" has an answer.
 - **Stages that retry themselves**, and a Try again that resumes a failed run from its caches.
 - The **interface**, built on YouTube's own layout so the audience already knows how to use it.
 - A **single-file Windows build** with ffmpeg bundled, so a non-technical user installs nothing.
@@ -891,11 +908,12 @@ flowchart LR
     K --> V[vision: 4 frames per clip<br/>what is on screen]
     V --> S[5 ranked titles, tags<br/>filed under the real game]
     S --> H[ffmpeg vstack<br/>webcam over gameplay]
-    H --> I[hook cold open<br/>-14 LUFS]
+    H --> X[listen again: word timings<br/>captions, cuts, punch-ins]
+    X --> I[hook cold open<br/>-14 LUFS]
     I --> L[titled mp4s<br/>1080×1920]
 ```
 
-Four stages, and **every expensive one is cached.**
+Four stages and an edit pass, and **every expensive one is cached.**
 
 ### 1. Get the file
 
@@ -981,6 +999,25 @@ before the cut is chosen — so 30-second clips are still 30 seconds with it on.
 Turn it off with the switch in the Render panel, or by writing *no hook repeat*
 in the prompt.
 
+### 5. Edit
+
+Between the render and the cold open, each clip is listened to again, this
+time for the timing of every word. That is a Whisper pass over a clip rather
+than over the whole video. It drives four things, all in one more ffmpeg
+encode:
+
+- **Captions**, burned in with libass: a few words at a time, with the spoken
+  word lit up, in one of four styles whose fonts ship with the app.
+- **Pause cuts.** A gap between words is cut only if the clip's own loudness
+  says it is quiet, so a laugh or the game going off stays. So does the quiet
+  run-up to the clip's loudest moment. The cold open is moved to match.
+- **Punch-ins** on trigger phrases, exclamations and the loudest words, plus
+  emoji, B-roll and your logo when they're on.
+- **The words themselves** are kept with the clip, so a misheard name can be
+  fixed later without listening again.
+
+Every piece fails soft: a clip that can't be edited keeps its plain render.
+
 ---
 
 ## Quickstart
@@ -1063,8 +1100,10 @@ python build_exe.py --onefile --clean
 
 Put `ffmpeg.exe` and `ffprobe.exe` in a `./bin` folder first and they get bundled,
 which is how the published build needs nothing installed. That's what makes it
-220 MB; without them it's 153 MB and ffmpeg has to be on the user's PATH. The
-YuNet face model in `assets/models` and the growth playbook in `assets/playbook` are bundled either way. Drop
+about 235 MB, of which ffmpeg is roughly 67 MB; without them ffmpeg has to be
+on the user's PATH. The YuNet face model in `assets/models`, the growth playbook
+in `assets/playbook`, and the caption fonts and emoji in `assets/fonts` and
+`assets/emoji` are bundled either way. Drop
 `--onefile` for a folder build that starts faster but has to be zipped to share.
 
 On a Mac the same command without `--onefile` produces `dist/ClipMint.app`:
@@ -1110,10 +1149,18 @@ being the only moment the payload exists.
 | `3 clips` | how many to make |
 | `cut 14:45 to 15:30` | **exact span, no AI ranking** |
 | `my vlog` / `podcast` / `tutorial` | what kind of video it is: decides what counts as a good moment, and frames a vlog or podcast on the face |
+| `comic captions` / `no captions` | the caption style — bold, punch, clean or comic — or none |
+| `keep the pauses` / `cut the pauses` | whether quiet pauses and "um"s are cut |
+| `no zooms` | no punch-ins |
+| `add emoji` / `add b-roll` | turn on emoji pops or stock B-roll |
+| `no logo` | leave your logo off this run |
 
 Combine them freely — `cut 14:45 to 15:30, gameplay only, square` does all three.
 
 Under the prompt, **Shape** and **Kind of video** do the same jobs with a click, and a click beats the words.
+The **Edit** box under Render works the other way round: when the prompt names a
+caption style or an edit, the words win, and the box shows it with a *set by
+your words* tag.
 
 Parsing is keyword-first and runs in about 70ms, so the preview keeps up with typing and costs no quota. Only genuinely novel phrasing falls through to the LLM.
 
@@ -1125,7 +1172,7 @@ This is the fast path: no Whisper, no LLM, straight to ffmpeg. Seconds instead o
 
 Jobs run one at a time on a background worker, because Whisper and ffmpeg are both CPU-bound and racing them makes both slower. Progress streams live with the pipeline log.
 
-> Everything runs on your machine and binds to localhost only. Your VODs are never uploaded anywhere — the only thing that leaves is the transcript text sent to the ranking model, and even that is skipped entirely when you name an exact span.
+> Everything runs on your machine and binds to localhost only. Your VODs are never uploaded anywhere. What leaves is the transcript text and a few still frames from each clip, sent to the AI provider you chose, and, only if you turn on B-roll, a few search words sent to Pexels. See [PRIVACY.md](PRIVACY.md).
 >
 > If you serve it to your network with `python -m webapp --host 0.0.0.0`, note there's no authentication and every job spends **your** API quota and **your** CPU.
 
@@ -1163,6 +1210,12 @@ The knobs that change output quality most, in order:
 | `TRIGGER_PHRASES` | `shorts_generator/signals.py` | The reaction phrases that score as a hook, weighted. Add the ones **you** actually say |
 | `TARGET_BY_KIND` | `shorts_generator/boundaries.py` | Clip length per content type, when the prompt names no length of its own |
 | `REPLAY_SECONDS` | `shorts_generator/hook_open.py` | How long the hook cold open runs, `1.9s` by default |
+| `PRESETS` | `shorts_generator/captions.py` | The four caption styles: font, size, colours, words per line. Add a fifth by adding an entry and its font to `assets/fonts` |
+| `_GAP` / `_QUIET_SHARE` | `shorts_generator/autoedit.py` | How long a pause has to be before it is cut (`0.55s`, `0.9s` on a stream), and how quiet it has to be (under `30%` of speech level) |
+| `_PUNCH_ZOOM` | `shorts_generator/autoedit.py` | How far a punch-in zooms, `1.14×` |
+| `EMOJI_WORDS` | `shorts_generator/autoedit.py` | Which words pop which emoji. English only |
+| `SIZE` / `OPACITY` | `shorts_generator/brand.py` | Your logo's size (`16%` of the frame's shorter side) and how solid it is (`0.85`) |
+| `MAX_PER_CLIP` | `shorts_generator/broll.py` | Most B-roll cutaways per clip, `2` |
 | `CONTEXT_SECONDS` | `local/gaming_layout.py` | How far either side of a clip to look when locating your webcam overlay, `240s` by default. Lower it if your layout changes often mid-stream |
 | `DEAD_ZONE` / `EASE_SECONDS` | `local/clipper.py` | Face-follow: how far you can move before the frame follows (`12%` of it), and how gently it eases after you (`0.45s`) |
 | `FRAMES_PER_CLIP` | `shorts_generator/vision.py` | Frames shown to the vision model per clip, `4` by default |
@@ -1174,6 +1227,7 @@ The knobs that change output quality most, in order:
 | `LOCAL_WHISPER_MODEL` | `.env` | `base` is plenty for ranking. `small` reads better and hallucinates less — and on a GPU it is *faster* than `base`, so use it if you have one |
 | Spoken language | Render panel | English by default. Pinning it is the fix for whisper inventing text in another language |
 | Interface language | Settings | English, Hindi, Spanish, Portuguese, French, German, Japanese |
+| Captions and the edit | Render panel, or the prompt | Caption style, pause cuts, punch-ins, emoji, B-roll and your logo, per run. Remembered per machine |
 
 ---
 
@@ -1203,7 +1257,7 @@ flowchart TB
     Q --> P[pipeline<br/>download - transcribe - rank - render]
     P -.->|stdout parsed into stages| Q
     Q -.->|SSE, one event per change| W
-    S --> E[clip editing<br/>trim / mute / save / delete]
+    S --> E[clip editing<br/>trim / fix captions / mute / save / delete]
 ```
 
 **Requests never block on the pipeline.** Transcribing alone outlives any sensible
@@ -1237,7 +1291,9 @@ of its choosing.
 renderer over the original download with new timestamps, which is why the span
 can grow as well as shrink — trimming the rendered file could only ever remove.
 Clip filenames are resolved against the job's own directory and rejected if they
-escape it.
+escape it. Fixing captions takes the same road: the corrected text is laid back
+onto the word timings the clip was captioned from, and the clip is rendered
+again from the source with the same edit.
 
 **Uploading is OAuth plus a resumable upload.** Connect opens Google's consent
 page in the real browser (Google refuses sign-ins inside embedded webviews),
@@ -1265,6 +1321,12 @@ shorts_generator/
 ├── signals.py             # loudness envelope + trigger phrases → measured hook score
 ├── boundaries.py          # snap spans to sentences; enforce the length asked for
 ├── hook_open.py           # the cold open that puts a late payoff first
+├── words.py               # word timings for a finished clip
+├── autoedit.py            # pause cuts, punch-ins, emoji, B-roll, logo — one encode
+├── captions.py            # burned-in captions: four styles, fixable afterwards
+├── broll.py               # where stock footage fits, and fetching it from Pexels
+├── brand.py               # the channel's logo
+├── scorecard.py           # a clip's score split into Hook / Moment / Energy / Pace
 ├── content_kinds.py       # stream / vlog / podcast / tutorial / other
 ├── vision.py              # what each clip shows, from its frames
 ├── seo.py                 # Shorts, Reels and TikTok packaging, all ranked
