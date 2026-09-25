@@ -906,6 +906,7 @@ class JobStore:
                            "error": None,
                            "hook_replay_seconds": s.get("hook_replay_seconds"),
                            "edit": s.get("edit"),
+                           "heard_words": s.get("heard_words"),
                            "duration": clip_length(s)}
                 fixed += 1
             else:
@@ -1167,6 +1168,9 @@ class JobStore:
                 # What the edit did to it: captions, cuts, punch-ins, emoji,
                 # B-roll. See shorts_generator/autoedit.py.
                 "edit": s.get("edit"),
+                # What was heard, word by word, so the captions can be
+                # corrected and burned again without listening twice.
+                "heard_words": s.get("heard_words"),
                 "error": s.get("error"),
                 "job_id": job.id,
                 "file": name,

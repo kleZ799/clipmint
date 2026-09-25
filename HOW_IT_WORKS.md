@@ -246,6 +246,7 @@ shorts_generator/
 ├── words.py                word timings for a rendered clip (faster-whisper, per clip)
 ├── broll.py                where stock footage fits (the LLM) and fetching it (Pexels)
 ├── scorecard.py            a clip's score split into Hook / Moment / Energy / Pace + why
+├── brand.py                the channel's logo: stored, validated, placed in a corner
 ├── bundled.py              finds assets/ in a checkout or a PyInstaller build
 ├── vision.py               what each clip shows, from four of its frames
 ├── faces.py                face detection: YuNet, with Haar as the fallback
@@ -1169,6 +1170,28 @@ Those phrases are parsed **first** and cut out of the prompt, because "cut the
 pauses" would otherwise switch on the exact-span parser and "zoom in on
 emphasis" would tighten the webcam crop. Where the words set a field they
 win over the controls, and `edit_from_words` tells the UI which fields to tag.
+
+**Fixing captions.** Each clip keeps `heard_words`, what Whisper heard on the
+clip's own uncut timeline. `PUT …/captions` aligns the corrected text to them
+with `difflib` (`captions.retime`): unchanged words keep their exact timing and
+take the new spelling; a rewritten stretch spreads its new words over the time
+the old ones took. The clip is re-rendered from the same span with
+`heard_words` and `caption_words` passed in, so nothing is transcribed again.
+The cuts and punch-ins are still planned from what was *heard*, so deleting
+"um" from the text doesn't stop it being cut. Only `Plan.caption_words`
+changes. Trimming drops both lists, because a new span means new words.
+Trimming and the caption fix share `_rerender()` in `server.py`.
+
+**The logo** (`brand.py`) lives in the settings folder, not beside any run,
+because it belongs to the channel. It is overlaid after emoji and before the
+captions, scaled into a box 16% of the frame's shorter side, at 85% opacity.
+Bottom corners sit above the bottom fifth, where each app draws its own UI.
+A logo-only edit skips Whisper entirely (`Options.needs_words`).
+
+The release workflow runs `.github/scripts/check_captions.py` against each
+bundled ffmpeg, burning a real caption with a bundled font. A build without
+libass fails on Windows and Linux and warns on the Mac beta, because without
+libass every clip would ship with no captions and nothing would say so.
 
 Every step fails soft. No faster-whisper means no words, so no captions, cuts
 or punch-ins. An encode that fails keeps the plain render. `polish()` never
@@ -3236,6 +3259,8 @@ rather than guessing from what the button last did.
 |---|---|
 | `GET /api/options` | Aspect ratios, layouts, corners and caption styles for the UI controls |
 | `GET /api/fonts/{name}` | One of the bundled caption fonts, so the style picker and the preview show the real type. Only the files a caption preset names are served |
+| `GET /api/brand` · `GET`/`POST`/`DELETE /api/brand/logo` · `POST /api/brand/corner` | The channel's logo: whether there is one and its corner, the image itself, upload (PNG or JPEG by magic bytes, ≤ 5 MB), removal, and which corner |
+| `PUT /api/jobs/{id}/clips/{file}/captions` | Re-burn a clip's captions from corrected text: retimed onto the heard words, rendered again from the same span with the same edit |
 | `POST /api/settings/pexels` | Store (or, empty, remove) the Pexels key B-roll is fetched with. Kept apart from the model keys: it chooses no provider |
 | `GET /api/settings` | Whether a key exists, which provider, where it came from, ffmpeg presence, available Gemini models with free-tier limits. **Never returns the key itself** |
 | `POST /api/settings` | Save a key / switch provider / pick a model / set a self-imposed daily cap. Gemini models are probe-tested before storing |

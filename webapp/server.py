@@ -332,6 +332,58 @@ async def set_pexels(req: PexelsRequest) -> dict:
     return {"saved": True, "pexels": bool(key)}
 
 
+# --- the channel's logo ---------------------------------------------------
+
+@app.get("/api/brand")
+async def get_brand() -> dict:
+    from shorts_generator import brand
+    return {"logo": brand.logo_path() is not None, "corner": brand.corner(),
+            "corners": list(brand.CORNERS)}
+
+
+@app.get("/api/brand/logo")
+async def brand_logo() -> FileResponse:
+    """The stored logo, for the Settings thumbnail and the live preview."""
+    from shorts_generator import brand
+    path = brand.logo_path()
+    if path is None:
+        raise HTTPException(404, "No logo")
+    media = "image/png" if path.suffix == ".png" else "image/jpeg"
+    return FileResponse(path, media_type=media, headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/api/brand/logo")
+async def upload_brand_logo(file: UploadFile = File(...)) -> dict:
+    from shorts_generator import brand
+    data = await file.read(brand.MAX_BYTES + 1)
+    try:
+        await asyncio.to_thread(brand.save_logo, data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"logo": True, "corner": brand.corner()}
+
+
+@app.delete("/api/brand/logo")
+async def delete_brand_logo() -> dict:
+    from shorts_generator import brand
+    await asyncio.to_thread(brand.remove_logo)
+    return {"logo": False, "corner": brand.corner()}
+
+
+class BrandCornerRequest(BaseModel):
+    corner: str
+
+
+@app.post("/api/brand/corner")
+async def set_brand_corner(req: BrandCornerRequest) -> dict:
+    from shorts_generator import brand
+    try:
+        corner = brand.set_corner(req.corner)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"logo": brand.logo_path() is not None, "corner": corner}
+
+
 class ProcessorRequest(BaseModel):
     mode: str = "auto"
 
@@ -1205,6 +1257,113 @@ def _strip_audio(path: Path) -> None:
     os.replace(tmp, path)
 
 
+async def _rerender(job, clip: dict, highlight: dict, mute: bool, what: str):
+    """Render one clip again from the source and put it where the old one was.
+
+    Returns (render result, new filename). Shared by trimming and by caption
+    fixes: both re-render rather than patch the file, so the layout and the
+    edit stay exactly what the run was made with.
+    """
+    from shorts_generator.local.llm import call_local_llm
+    from shorts_generator.render import render_highlights
+
+    old_path = _clip_path(job, clip["file"])
+    prefix = f"edit_{clip.get('index', 1):02d}_{int(time.time())}"
+
+    def _render():
+        out = render_highlights(job.source_path, [highlight], job.spec,
+                                out_dir=job.out_dir, name_prefix=prefix,
+                                language=job.language, kind=job_kind(job),
+                                llm_fn=call_local_llm)
+        return out[0] if out else {}
+
+    try:
+        result = await asyncio.to_thread(_render)
+    except Exception as e:
+        raise HTTPException(500, f"Could not {what} that clip: {e}")
+
+    new_path = result.get("clip_url")
+    if not new_path or not os.path.exists(new_path):
+        raise HTTPException(500, result.get("error") or f"The {what} produced no file.")
+
+    if mute:
+        try:
+            await asyncio.to_thread(_strip_audio, Path(new_path))
+        except Exception as e:
+            raise HTTPException(500, f"Could not mute that clip: {e}")
+
+    # The old render is dead weight once the new one exists, and clearing it
+    # first frees its name: a re-cut of "My Title.mp4" should be called
+    # "My Title.mp4" again, not pushed to "My Title_2.mp4" by its own predecessor.
+    if old_path.name != os.path.basename(new_path):
+        with contextlib.suppress(OSError):
+            old_path.unlink()
+
+    seo = clip.get("seo") or {}
+    new_name = rename_to_title(Path(job.out_dir), os.path.basename(new_path),
+                               seo.get("title") or clip.get("title") or "")
+    return result, new_name
+
+
+class CaptionFixRequest(BaseModel):
+    # The whole caption text as it should read.
+    text: str
+
+
+@app.put("/api/jobs/{job_id}/clips/{filename}/captions")
+async def fix_captions(job_id: str, filename: str, req: CaptionFixRequest) -> dict:
+    """Burn a clip's captions again with the words corrected.
+
+    The corrected text is laid back onto the timings Whisper heard
+    (captions.retime), and the clip is rendered again from the same span with
+    the same edit. The cuts and punch-ins still follow what was actually said;
+    only the words on screen change.
+    """
+    from shorts_generator import captions as caps
+
+    job = _job_or_404(job_id)
+    clip = STORE.clip(job, os.path.basename(filename))
+    if clip is None:
+        raise HTTPException(404, "No such clip")
+    heard = clip.get("heard_words")
+    if not heard or clip.get("start_time") is None:
+        raise HTTPException(409, "This clip has no captions to fix. It was made before "
+                                 "captions existed, or with them off.")
+    if not job.source_path or not os.path.exists(job.source_path):
+        raise HTTPException(409, "The source video for this job is gone — re-run it to edit.")
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(400, "The captions can't be empty. Turn captions off for "
+                                 "the run instead.")
+    if len(text) > 5000:
+        raise HTTPException(400, "That is far longer than the clip.")
+
+    words = caps.retime(heard, text)
+    highlight = {
+        "title": clip.get("title") or "Clip",
+        "start_time": float(clip["start_time"]),
+        "end_time": float(clip["end_time"]),
+        "score": clip.get("score"),
+        "heard_words": heard,
+        "caption_words": words,
+    }
+    # Only a clip that opened on a replay the first time gets one again.
+    if clip.get("hook_replay_seconds") and clip.get("hook_peak") is not None:
+        highlight["hook_peak"] = clip["hook_peak"]
+    result, new_name = await _rerender(job, clip, highlight, bool(clip.get("muted")),
+                                       "re-caption")
+    updated = STORE.replace_clip(job, clip["file"], {
+        "file": new_name,
+        "url": f"/api/jobs/{job.id}/clips/{new_name}",
+        "duration": clip_length({**result, "start_time": clip["start_time"],
+                                 "end_time": clip["end_time"]}),
+        "hook_replay_seconds": result.get("hook_replay_seconds"),
+        "edit": result.get("edit"),
+        "caption_words": words,
+    })
+    return updated or {}
+
+
 @app.post("/api/jobs/{job_id}/clips/{filename}/trim")
 async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
     """Re-cut one clip at new timestamps, straight from the downloaded source.
@@ -1213,8 +1372,6 @@ async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
     grow as well as shrink, and the layout stays exactly what the user asked
     for the first time round.
     """
-    from shorts_generator.render import render_highlights
-
     job = _job_or_404(job_id)
     clip = STORE.clip(job, os.path.basename(filename))
     if clip is None:
@@ -1230,7 +1387,6 @@ async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
     if end - start > MAX_TRIM_SECONDS:
         raise HTTPException(400, f"Keep clips under {MAX_TRIM_SECONDS // 60} minutes.")
 
-    old_path = _clip_path(job, clip["file"])
     highlight = {
         "title": clip.get("title") or "Clip",
         "start_time": start,
@@ -1239,41 +1395,7 @@ async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
         "hook_sentence": clip.get("hook_sentence") or "",
         "virality_reason": clip.get("virality_reason") or "",
     }
-    prefix = f"edit_{clip.get('index', 1):02d}_{int(time.time())}"
-
-    def _render():
-        from shorts_generator.local.llm import call_local_llm
-        out = render_highlights(job.source_path, [highlight], job.spec,
-                                out_dir=job.out_dir, name_prefix=prefix,
-                                language=job.language, kind=job_kind(job),
-                                llm_fn=call_local_llm)
-        return out[0] if out else {}
-
-    try:
-        result = await asyncio.to_thread(_render)
-    except Exception as e:
-        raise HTTPException(500, f"Could not re-cut that clip: {e}")
-
-    new_path = result.get("clip_url")
-    if not new_path or not os.path.exists(new_path):
-        raise HTTPException(500, result.get("error") or "The re-cut produced no file.")
-
-    if req.mute:
-        try:
-            await asyncio.to_thread(_strip_audio, Path(new_path))
-        except Exception as e:
-            raise HTTPException(500, f"Could not mute that clip: {e}")
-
-    # The old render is dead weight once the re-cut exists, and clearing it
-    # first frees its name: a re-cut of "My Title.mp4" should be called
-    # "My Title.mp4" again, not pushed to "My Title_2.mp4" by its own predecessor.
-    if old_path.name != os.path.basename(new_path):
-        with contextlib.suppress(OSError):
-            old_path.unlink()
-
-    seo = clip.get("seo") or {}
-    new_name = rename_to_title(Path(job.out_dir), os.path.basename(new_path),
-                               seo.get("title") or clip.get("title") or "")
+    result, new_name = await _rerender(job, clip, highlight, req.mute, "re-cut")
 
     updated = STORE.replace_clip(job, clip["file"], {
         "file": new_name,
@@ -1283,6 +1405,10 @@ async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
         "duration": clip_length({**result, "start_time": start, "end_time": end}),
         "hook_replay_seconds": result.get("hook_replay_seconds"),
         "edit": result.get("edit"),
+        # A new span is new words: whatever was heard and corrected before
+        # belongs to the old one.
+        "heard_words": result.get("heard_words"),
+        "caption_words": None,
         "muted": bool(req.mute),
         "edited": True,
     })

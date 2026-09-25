@@ -128,18 +128,28 @@ class Options:
     aspect_ratio: str = "9:16"
     cam_panel_fraction: float = 0.42
     kind: str = "other"
+    # The channel's logo (brand.py), and the corner it goes in. None for none.
+    logo: Optional[str] = None
+    logo_corner: str = "top-right"
+
+    @property
+    def needs_words(self) -> bool:
+        """Whether anything asked for depends on what is said."""
+        return (self.captions != captions.OFF or self.cut_pauses or self.punch_ins
+                or self.emoji or self.broll)
 
     @property
     def anything(self) -> bool:
-        return (self.captions != captions.OFF or self.cut_pauses or self.punch_ins
-                or self.emoji or self.broll)
+        return self.needs_words or bool(self.logo)
 
 
 def options_from_spec(spec, kind: Optional[str] = None) -> Options:
     """The edit a LayoutSpec asks for, for a video of `kind`."""
+    from . import brand
     from . import broll as broll_mod
 
     k = (kind or getattr(spec, "content_kind", "") or "other").lower()
+    logo = brand.logo_path() if getattr(spec, "logo", False) else None
     wants_broll = bool(getattr(spec, "broll", False))
     if wants_broll and not broll_mod.available():
         # Said once, here, rather than after every clip has been listened to
@@ -158,6 +168,8 @@ def options_from_spec(spec, kind: Optional[str] = None) -> Options:
         aspect_ratio=getattr(spec, "aspect_ratio", "9:16"),
         cam_panel_fraction=float(getattr(spec, "cam_panel_fraction", 0.42)),
         kind=k,
+        logo=str(logo) if logo else None,
+        logo_corner=brand.corner(),
     )
 
 
@@ -170,6 +182,13 @@ class Plan:
     height: int
     has_audio: bool
     words: List[Dict] = field(default_factory=list)          # on the new timeline
+    # What the captions say, on the new timeline. The same as `words` unless
+    # someone corrected the text (captions.retime), in which case the cuts
+    # and punch-ins still follow what was heard and only the captions change.
+    caption_words: List[Dict] = field(default_factory=list)
+    # What Whisper heard, on the clip's own uncut timeline -- kept on the clip
+    # so a caption fix re-renders from the same words without listening again.
+    heard: List[Dict] = field(default_factory=list)
     keeps: List[Span] = field(default_factory=list)
     zooms: List[Tuple[float, float, float]] = field(default_factory=list)
     emoji: List[Tuple[float, float, str]] = field(default_factory=list)
@@ -462,7 +481,16 @@ def analyse(path: str, highlight: Dict, opts: Options,
     plan = Plan(path=path, duration=duration, width=width, height=height,
                 has_audio=has_audio, keeps=[(0.0, duration)])
 
-    spoken = words_mod.transcribe_words(path, language) if has_audio else []
+    given = highlight.get("heard_words")
+    if not opts.needs_words:
+        spoken = []
+    elif isinstance(given, list) and given:
+        spoken = [dict(w) for w in given]
+    else:
+        spoken = words_mod.transcribe_words(path, language) if has_audio else []
+    plan.heard = [{"start": w["start"], "end": w["end"], "word": w["word"]} for w in spoken]
+    fixed = highlight.get("caption_words")
+    shown = [dict(w) for w in fixed] if isinstance(fixed, list) and fixed else spoken
     track = analyse_audio(path, duration) if has_audio and (
         opts.cut_pauses or opts.punch_ins) else None
     if track:
@@ -480,6 +508,7 @@ def analyse(path: str, highlight: Dict, opts: Options,
         plan.keeps = plan_cuts(spoken, duration, track, opts.kind, protect)
 
     plan.words = remap_words(spoken, plan.keeps) if plan.cut else spoken
+    plan.caption_words = remap_words(shown, plan.keeps) if plan.cut else shown
     new_duration = plan.new_duration
     if opts.punch_ins and plan.words:
         plan.zooms = plan_punch_ins(plan.words, new_duration, plan.keeps, opts.layout)
@@ -606,6 +635,27 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
             cur = out
             idx += 1
 
+    if opts.logo and os.path.exists(opts.logo):
+        # Under the captions, over everything else, in the corner asked for.
+        # Scaled to a box so a wide wordmark and a square icon both fit.
+        box = int(min(W, H) * brand_size()) // 2 * 2
+        margin = int(min(W, H) * 0.04)
+        right = opts.logo_corner.endswith("right")
+        bottom = opts.logo_corner.startswith("bottom")
+        x = f"W-w-{margin}" if right else str(margin)
+        # Bottom corners sit above the band every app covers with its own UI.
+        y = f"H-h-{int(H * 0.2)}" if bottom else str(margin)
+        inputs.append(["-loop", "1", "-framerate", "30",
+                       "-t", f"{plan.new_duration:.3f}",
+                       "-i", os.path.abspath(opts.logo)])
+        pic, out = label(), label()
+        chains.append(
+            f"[{idx}:v]scale={box}:{box}:force_original_aspect_ratio=decrease,"
+            f"format=rgba,colorchannelmixer=aa={brand_opacity()}[{pic}]")
+        chains.append(f"[{cur}][{pic}]overlay=x={x}:y={y}:eof_action=pass[{out}]")
+        cur = out
+        idx += 1
+
     if ass_name:
         out = label()
         opt = f"subtitles={ass_name}" + (f":fontsdir={fonts_dir}" if fonts_dir else "")
@@ -615,6 +665,16 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
     if cur == "0:v":
         return "", inputs, audio_cut, cur
     return ";".join(chains), inputs, audio_cut, cur
+
+
+def brand_size() -> float:
+    from . import brand
+    return brand.SIZE
+
+
+def brand_opacity() -> float:
+    from . import brand
+    return brand.OPACITY
 
 
 def render(plan: Plan, opts: Options) -> Dict:
@@ -627,9 +687,9 @@ def render(plan: Plan, opts: Options) -> Dict:
     try:
         ass_name = fonts = None
         style = opts.captions
-        if style != captions.OFF and plan.words:
+        if style != captions.OFF and plan.caption_words:
             y = captions.caption_y(opts.layout, opts.aspect_ratio, opts.cam_panel_fraction)
-            script = captions.build_ass(plan.words, style, plan.width, plan.height, y)
+            script = captions.build_ass(plan.caption_words, style, plan.width, plan.height, y)
             if script:
                 with open(os.path.join(work, "captions.ass"), "w", encoding="utf-8") as f:
                     f.write(script)
@@ -681,6 +741,7 @@ def render(plan: Plan, opts: Options) -> Dict:
         "emoji": [name for _, _, name in plan.emoji],
         "broll": [b["query"] for b in plan.broll],
         "keeps": [[a, b] for a, b in plan.keeps] if plan.cut else None,
+        "logo": bool(opts.logo),
     }
 
 
@@ -731,6 +792,10 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
         if not info:
             continue
         r["edit"] = info
+        # Kept with the clip, so its captions can be corrected later and
+        # burned again without listening to it a second time.
+        if plan.heard:
+            r["heard_words"] = plan.heard
         bits = []
         if info["captions"] != captions.OFF:
             bits.append(f"{info['captions']} captions")
@@ -742,6 +807,8 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
             bits.append("emoji " + " ".join(info["emoji"]))
         if info["broll"]:
             bits.append("B-roll: " + ", ".join(info["broll"]))
+        if info["logo"]:
+            bits.append("logo")
         print(f"[edit] {name}: " + ("; ".join(bits) or "nothing to change"), flush=True)
         if plan.cut:
             peak, start = r.get("hook_peak"), r.get("start_time")

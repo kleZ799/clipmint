@@ -77,7 +77,15 @@ def pick_output_size(src_w: int, src_h: int, aspect_ratio: str,
 
 LAYOUTS = ("stacked", "facetrack", "center")
 # The LayoutSpec fields that describe the edit rather than the framing.
-EDIT_FIELDS = ("captions", "cut_pauses", "punch_ins", "emoji", "broll")
+EDIT_FIELDS = ("captions", "cut_pauses", "punch_ins", "emoji", "broll", "logo")
+
+
+def _has_logo() -> bool:
+    try:
+        from .brand import logo_path
+        return logo_path() is not None
+    except Exception:
+        return False
 CORNERS = ("bottom-left", "bottom-right", "top-left", "top-right")
 
 
@@ -134,6 +142,9 @@ class LayoutSpec:
     # Stock footage over lines that name something filmable. Needs a Pexels
     # key, and never runs on a stream.
     broll: bool = False
+    # Put the channel's logo (Settings, brand.py) in a corner. Does nothing
+    # until a logo has been uploaded.
+    logo: bool = True
     # Which of the edit settings above the prompt's own words decided, so the
     # interface can show the words won rather than silently ignoring them.
     edit_from_words: List[str] = field(default_factory=list)
@@ -165,7 +176,7 @@ class LayoutSpec:
         self.content_kind = content_kinds.normalise(self.content_kind)
         self.layout_set = bool(self.layout_set)
         self.captions = caption_styles.normalise(self.captions)
-        for name in ("cut_pauses", "punch_ins", "emoji", "broll"):
+        for name in ("cut_pauses", "punch_ins", "emoji", "broll", "logo"):
             setattr(self, name, bool(getattr(self, name)))
         self.edit_from_words = [f for f in (self.edit_from_words or [])
                                 if f in EDIT_FIELDS]
@@ -207,6 +218,7 @@ class LayoutSpec:
         if "captions" not in data:
             spec.captions = caption_styles.OFF
             spec.cut_pauses = spec.punch_ins = spec.emoji = spec.broll = False
+            spec.logo = False
         fields = {f.name for f in dataclass_fields(cls)}
         for key, value in data.items():
             if key in fields and value is not None:
@@ -269,6 +281,8 @@ class LayoutSpec:
             bits.append("emoji")
         if self.broll:
             bits.append("B-roll")
+        if self.logo and _has_logo():
+            bits.append("your logo")
         return ", ".join(bits)
 
     def _describe_layout(self) -> str:
@@ -467,6 +481,8 @@ _EDIT_PHRASES = [
     (r"\bemojis?\b", "emoji", True),
     (r"\b(?:no|without) (?:b[\s-]?roll|stock footage)\b", "broll", False),
     (r"\bb[\s-]?roll\b|\bstock footage\b", "broll", True),
+    (r"\b(?:no|without|hide) (?:my |the )?(?:logo|watermark)\b", "logo", False),
+    (r"\b(?:add|with|put|show) (?:my |the )?(?:logo|watermark)\b", "logo", True),
 ]
 
 
@@ -491,7 +507,7 @@ def _parse_edit(p: str, spec: LayoutSpec) -> tuple:
         else:
             setattr(spec, name, value)
             label = {"cut_pauses": "cut pauses and fillers", "punch_ins": "punch-ins",
-                     "emoji": "emoji", "broll": "B-roll"}[name]
+                     "emoji": "emoji", "broll": "B-roll", "logo": "your logo"}[name]
             spec.notes.append(f"{label} → {'on' if value else 'off'}")
         found.add(name)
         p = p[:m.start()] + " " + p[m.end():]
