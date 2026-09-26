@@ -49,6 +49,16 @@ Lines break where you pause or finish a clause, not only at the word limit.
 Japanese, Chinese and Thai are joined without spaces. The fonts ship with the
 app, so captions look the same on every PC.
 
+### The hook line
+
+Since v1.20.0, the clip's **on-screen hook**, the short line written for it
+alongside its title (you can edit it in Boost), goes across the top of the
+clip for its first 2.6 seconds, on a dark box in the caption style's
+typeface. It tells a stranger what they are about to see before the moment
+arrives, and it never repeats the title. When the clip opens on a replay of its
+loudest moment, the line goes over the replay too, so it is on screen from the
+first frame. Turning captions **Off** turns the hook line off with them.
+
 ---
 
 ## 2. Pause cuts and punch-ins
@@ -160,7 +170,7 @@ later.
 
 ## 6. Why a clip ranked where it did
 
-Every clip card shows four bars under its title, and the model's own sentence
+Every clip card shows up to five bars under its title, and the model's own sentence
 on why the moment works:
 
 <img src="../assets/screenshots/03-clips.png" alt="Clips in a grid with burned-in captions, each card showing its score, the four bars and the reason it ranked" width="880">
@@ -169,6 +179,7 @@ on why the moment works:
 |---|---|---|
 | **Hook** | How hard the first line stops a scroll | the model |
 | **Moment** | How strong the moment is as a whole | the model |
+| **Look** | How the frames came across to a stranger: the first second, whether the payoff is visible, whether it stands alone | the vision judge |
 | **Energy** | How loud its peak is against the rest of the video | the audio |
 | **Pace** | How quickly the talking starts | the words |
 
