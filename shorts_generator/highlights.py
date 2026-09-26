@@ -663,8 +663,16 @@ def call_highlight_api(
     )
 
 
+# Two clips sharing this much footage are the same Short twice. Half a clip
+# was the old bar, and it let through a pair that shared 14 of their 33
+# seconds -- same moment, same title, posted a day apart to a feed that had
+# already swiped past it once.
+MAX_SHARED_FRACTION = 0.25
+MAX_SHARED_SECONDS = 6.0
+
+
 def dedupe_highlights(highlights: List[Dict]) -> List[Dict]:
-    """Drop a highlight if it overlaps >50% with a higher-scoring one already kept."""
+    """Drop a highlight that shares real footage with a higher-scoring one kept."""
     highlights = sorted(highlights, key=lambda x: int(x.get("score", 0)), reverse=True)
     kept: List[Dict] = []
     for h in highlights:
@@ -676,7 +684,9 @@ def dedupe_highlights(highlights: List[Dict]) -> List[Dict]:
             latest_start = max(h_start, float(k["start_time"]))
             earliest_end = min(h_end, float(k["end_time"]))
             overlap = earliest_end - latest_start
-            if overlap > 0 and overlap > 0.5 * h_dur:
+            shorter = min(h_dur, float(k["end_time"]) - float(k["start_time"]))
+            if overlap > 0 and (overlap > MAX_SHARED_FRACTION * shorter
+                                or overlap > MAX_SHARED_SECONDS):
                 overlapping = True
                 break
         if not overlapping:
