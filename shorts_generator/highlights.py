@@ -23,7 +23,7 @@ import re
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from . import boundaries, content_kinds, muapi, signals
+from . import boundaries, content_kinds, muapi, signals, visual
 from .signals import AudioTrack
 
 
@@ -785,6 +785,7 @@ def finalize(
     audio: Optional[AudioTrack] = None,
     content_type: str = "",
     reserve_seconds: float = 0.0,
+    source_path: Optional[str] = None,
 ) -> List[Dict]:
     """Turn the model's proposals into the spans that actually get cut.
 
@@ -794,7 +795,8 @@ def finalize(
        a clip is re-opened on its own hook line -- so measuring signals before
        this would be measuring audio that is no longer in the clip.
     2. Signals second, on the final spans, blending what the footage did into
-       what the model thought.
+       what the model thought -- what it sounded like, and when there is a
+       source to read, what it looked like.
     3. Dedupe last. Two candidates the model kept apart can land on top of
        each other once both are snapped to the same sentence boundaries, and
        shipping the same moment twice is worse than shipping one fewer clip.
@@ -804,6 +806,7 @@ def finalize(
         clip_seconds=clip_seconds, audio=audio,
         content_type=content_type, reserve_seconds=reserve_seconds,
     )
+    visual.measure_all(highlights, source_path)
     signals.rescore(highlights, transcript, audio)
     highlights = dedupe_highlights(highlights)
     highlights.sort(key=lambda h: int(h.get("score", 0) or 0), reverse=True)
@@ -821,6 +824,7 @@ def get_highlights(
     reserve_seconds: float = 0.0,
     kind: str = content_kinds.AUTO,
     video_meta: Optional[Dict] = None,
+    source_path: Optional[str] = None,
 ) -> Dict:
     """Main entry point — returns {highlights: [...], content: {...}}, best first.
 
@@ -840,7 +844,8 @@ def get_highlights(
 
     `audio` is the source's loudness envelope, when one could be measured. It
     is what lets the ranking hear the clip rather than only read it, and what
-    tells the renderer where a hook replay should open.
+    tells the renderer where a hook replay should open. `source_path` lets it
+    look as well: brightness and motion of every candidate, see visual.py.
     """
     llm_fn = llm_fn or call_muapi_llm
     duration = transcript.get("duration", 0)
@@ -900,6 +905,7 @@ def get_highlights(
         clip_seconds=clip_seconds, audio=audio,
         content_type=str(content_info.get("content_type") or ""),
         reserve_seconds=reserve_seconds,
+        source_path=source_path,
     )
     print(f"[rank] {len(highlights)} candidate(s) after snapping · "
           f"{signals.summarise(highlights)}", flush=True)

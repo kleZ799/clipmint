@@ -1052,7 +1052,8 @@ class JobStore:
                                     audio=audio,
                                     reserve_seconds=reserve,
                                     kind=job.spec.content_kind,
-                                    video_meta=job.video_meta)
+                                    video_meta=job.video_meta,
+                                    source_path=source_path)
             all_highlights = result.get("highlights", [])
             content = result.get("content") or {}
             if not all_highlights:
@@ -1156,6 +1157,9 @@ class JobStore:
                 "signals": s.get("signals"),
                 "opening_density": s.get("opening_density"),
                 "opening_penalty": s.get("opening_penalty"),
+                "visual": s.get("visual"),
+                "visual_penalty": s.get("visual_penalty"),
+                "on_screen": s.get("on_screen"),
                 "boundary_notes": s.get("boundary_notes"),
                 "hook_replay_seconds": s.get("hook_replay_seconds"),
                 # Where its loudest moment is, so a clip rendered again later

@@ -51,6 +51,10 @@ BASE_WEIGHTS = {
     "keyword": 0.25,
     "chat_velocity": 0.20,
     "face_reaction": 0.15,
+    # How much the picture moves, ranked against the other candidates from the
+    # same video -- see visual.py. A reaction a stranger can see something
+    # behind beats the same reaction over a still frame.
+    "motion": 0.15,
     "silence_to_peak": 0.10,
 }
 
@@ -338,6 +342,10 @@ def measure(highlight: Dict, transcript: Optional[Dict],
         out["density"] = dialogue_density(transcript, start,
                                           min(end, start + OPENING_WINDOW))
 
+    seen = highlight.get("visual") or {}
+    if "motion_rank" in seen:
+        out["motion"] = float(seen["motion_rank"])
+
     if audio:
         out["audio_spike"] = audio.spike(start, end)
         peak = audio.peak_time(start, end)
@@ -375,7 +383,7 @@ def signal_score(measured: Dict[str, float]) -> Optional[int]:
 # not obtainable in this app, so their weight is not a shortfall to apologise
 # for. This is the denominator coverage is measured against.
 _OBTAINABLE = sum(w for k, w in BASE_WEIGHTS.items()
-                  if k in ("audio_spike", "keyword", "silence_to_peak"))
+                  if k in ("audio_spike", "keyword", "motion", "silence_to_peak"))
 
 
 def coverage(measured: Dict[str, float]) -> float:
@@ -432,6 +440,14 @@ def rescore(highlights: List[Dict], transcript: Optional[Dict],
             shortfall = 1.0 - (density / MIN_OPENING_DENSITY)
             blended *= 1.0 - 0.35 * _clamp01(shortfall)
             h["opening_penalty"] = round(0.35 * _clamp01(shortfall), 3)
+
+        # The same for the picture: a black or frozen opening loses the test
+        # audience before the first line has landed, whatever follows it.
+        from .visual import opening_penalty
+        dark = opening_penalty(h.get("visual") or {})
+        if dark:
+            blended *= 1.0 - dark
+            h["visual_penalty"] = dark
 
         h["model_score"] = model_score
         h["score"] = int(round(max(0.0, min(100.0, blended))))
