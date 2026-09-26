@@ -542,6 +542,26 @@ def _parse_json_loose(raw: str) -> Dict:
         raise
 
 
+def _index_items(items: object, n: int) -> Dict[int, Dict]:
+    """The model's per-clip answers, keyed 1..n.
+
+    Trusted by the "index" each one carries only when those indices are
+    distinct and in range. A model that numbers every answer 1, or counts
+    from 0, would otherwise pile ten answers into one slot and leave nine
+    clips with nothing -- so then the order they came back in decides.
+    """
+    items = [i for i in (items if isinstance(items, list) else []) if isinstance(i, dict)]
+    said = []
+    for item in items:
+        try:
+            said.append(int(item.get("index")))
+        except (TypeError, ValueError):
+            said.append(None)
+    if all(k is not None and 1 <= k <= n for k in said) and len(set(said)) == len(said):
+        return dict(zip(said, items))
+    return {k: item for k, item in enumerate(items[:n], 1)}
+
+
 def _clean_tag(tag: object) -> str:
     tag = re.sub(r"[#,\n]", " ", str(tag or "")).strip().lower()
     return re.sub(r"\s+", " ", tag)[:TAG_LIMIT].strip()
@@ -1309,36 +1329,49 @@ def generate_seo(
     _, where = playbook.load()
     print(f"[seo] writing for YouTube Shorts, Instagram Reels and TikTok from the {where}",
           flush=True)
-    prompt = SEO_PROMPT.format(
-        playbook=guide or "(no playbook available - rely on what you know)",
-        n=len(highlights),
-        options=TITLE_OPTIONS,
-        description_options=DESCRIPTION_OPTIONS,
-        title_limit=TITLE_LIMIT,
-        video_context=describe_video(video_meta, source),
-        subject_block=subject_block(subject),
-        clips_block=_build_clips_block(highlights, transcript, subject),
-        avoid_block=avoid_block,
-    )
 
+    def ask(which: List[int]) -> Dict[int, Dict]:
+        """Metadata for the clips at these 1-based positions, keyed the same way."""
+        subset = [highlights[i - 1] for i in which]
+        prompt = SEO_PROMPT.format(
+            playbook=guide or "(no playbook available - rely on what you know)",
+            n=len(subset),
+            options=TITLE_OPTIONS,
+            description_options=DESCRIPTION_OPTIONS,
+            title_limit=TITLE_LIMIT,
+            video_context=describe_video(video_meta, source),
+            subject_block=subject_block(subject),
+            clips_block=_build_clips_block(subset, transcript, subject),
+            avoid_block=avoid_block,
+        )
+        got = _index_items(_parse_json_loose(llm_fn(prompt)).get("clips"), len(subset))
+        return {which[k - 1]: item for k, item in got.items()}
+
+    # One request for the whole batch, then the clips it left out asked for
+    # again in small groups. Two Dying Light runs came back with 1 of 10 clips
+    # written and nine hook-line fallbacks -- "Holy shit | Dying Light" among
+    # them -- and those went to YouTube. A clip the model skipped is worth
+    # another question before it is worth a fallback.
     by_index: Dict[int, Dict] = {}
-    try:
-        parsed = _parse_json_loose(llm_fn(prompt))
-        for item in parsed.get("clips") or []:
-            if not isinstance(item, dict):
-                continue
+    todo = list(range(1, len(highlights) + 1))
+    for attempt, size in enumerate((len(todo), 3, 1)):
+        if not todo:
+            break
+        if attempt:
+            print(f"[seo] {len(todo)} clip(s) came back without metadata - asking again "
+                  f"{size} at a time", flush=True)
+        for lo in range(0, len(todo), size):
+            group = todo[lo:lo + size]
             try:
-                idx = int(item.get("index"))
-            except (TypeError, ValueError):
-                idx = len(by_index) + 1
-            by_index[idx] = item
-        print(f"[seo] wrote metadata for {len(by_index)}/{len(highlights)} clip(s)",
-              flush=True)
-    except Exception as e:
-        print(f"[seo] could not generate metadata ({e}); falling back to hook-line titles",
-              flush=True)
-        if errors is not None:
-            errors.append(str(e))
+                by_index.update(ask(group))
+            except Exception as e:
+                print(f"[seo] could not generate metadata for clip(s) {group} ({e})",
+                      flush=True)
+                if errors is not None and attempt == 2:
+                    errors.append(str(e))
+        todo = [i for i in todo if i not in by_index]
+    print(f"[seo] wrote metadata for {len(by_index)}/{len(highlights)} clip(s)"
+          + (" - the rest fall back to their hook lines" if todo else ""), flush=True)
 
     out = []
     for i, h in enumerate(highlights, 1):
