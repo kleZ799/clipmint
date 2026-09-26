@@ -934,6 +934,9 @@ class JobStore:
         from shorts_generator.boundaries import report as report_cuts
         from shorts_generator.highlights import get_highlights
         from shorts_generator.hook_open import budget as hook_budget
+        from shorts_generator.judge import judge as judge_clips, pool_size as judge_pool
+        from shorts_generator.local.llm import call_vision_llm, vision_images_per_request
+        from shorts_generator.seo import clip_words
         from shorts_generator.local.downloader import (
             download_youtube_local, fetch_video_meta,
         )
@@ -1059,6 +1062,21 @@ class JobStore:
             if not all_highlights:
                 raise RuntimeError("The ranker found no usable moments in this video.")
 
+            # Then look before cutting. The ranker chose from words and
+            # measurements; the best of its candidates are shown to a model
+            # that can see, as a stranger scrolling past would meet them, and
+            # re-ranked on that -- see shorts_generator/judge.py.
+            self._update(job, frac=0.5, message="Watching the best moments like a stranger would")
+            pool = sorted(all_highlights, key=lambda h: int(h.get("score", 0)),
+                          reverse=True)[:judge_pool(job.spec.num_clips)]
+            try:
+                judge_clips(pool, source_path, call_vision_llm,
+                            lambda h: clip_words(h, transcript),
+                            kind=content.get("kind") or "",
+                            images_per_request=vision_images_per_request())
+            except Exception as e:  # noqa: BLE001 - a second opinion is never worth the run
+                print(f"[judge] skipped ({e})", flush=True)
+
             # Best first, and it stays that way all the way to the grid: the
             # order the user sees is the order worth posting in.
             top = sorted(all_highlights, key=lambda h: int(h.get("score", 0)),
@@ -1159,6 +1177,8 @@ class JobStore:
                 "opening_penalty": s.get("opening_penalty"),
                 "visual": s.get("visual"),
                 "visual_penalty": s.get("visual_penalty"),
+                "judge": s.get("judge"),
+                "pre_judge_score": s.get("pre_judge_score"),
                 "on_screen": s.get("on_screen"),
                 "boundary_notes": s.get("boundary_notes"),
                 "hook_replay_seconds": s.get("hook_replay_seconds"),
