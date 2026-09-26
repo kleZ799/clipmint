@@ -75,25 +75,53 @@ Telling them apart:
   swearing, questions, addressing chat, commenting on what just happened.
 
 HARD REQUIREMENT: every highlight MUST contain the streamer's own speech.
-A clip of pure game narration is worthless — the audience follows the streamer,
-and that footage belongs to the game, not the channel. A story beat is only
-clippable when the streamer reacts to it, talks over it, or responds after it.
+A clip of pure game narration is worthless — that footage belongs to the game,
+not the channel, and a clip with nothing of the creator in it is exactly the
+reused content platforms hold back. A story beat is only clippable when the
+streamer reacts to it, talks over it, or responds after it.
+
+THE PAYOFF MUST BE ON SCREEN. This is the difference between a gaming Short
+that reaches strangers and one that dies at ten views. The people a new Short
+is tested on have never heard of this streamer, so the streamer's reaction is
+worth nothing to them on its own — "what the hell was that?" is only
+interesting when the viewer SEES what "that" was. Measured on a real channel:
+clutches, physics chaos, a famous story twist and a game's scripted joke with
+the streamer's response each reached ~1,000 viewers; reactions to things the
+clip never showed, rage with no visible cause and chat talk averaged 8 views.
 
 Virality signals to prioritize (ranked by impact):
-1. REACTION TO A STORY BEAT — the game lands an emotional hit and the streamer
-   audibly responds: shock, silence broken by a swear, laughter, genuine sadness
-2. RAW REACTION MOMENTS — unscripted spikes of any kind: confusion, rage, delight
-3. FAILS & DISASTERS — something goes wrong live and the streamer responds
-4. HOT TAKES & RANTS — unfiltered opinions about the game, the story, anything
-5. CHAT INTERACTION — answering a question, reacting to a donation or troll
-6. PERSONAL TANGENTS — an off-topic story from the streamer's own life
-7. QUOTABLE ONE-LINERS — a streamer line that works as a caption or meme
-8. SINCERITY — an unguarded, genuinely felt moment of reflection
+1. VISIBLE PAYOFF + REACTION — something happens in the game that a stranger
+   can see and understand with the sound off (a clutch, a multi-kill, a
+   last-second death, a physics disaster, a jump scare that lands, a boss going
+   down, a plan collapsing) and the streamer reacts to it in the same clip
+2. FAMOUS STORY BEATS — the twist, death or ending that everyone who played
+   the game remembers, with the streamer's live response to it. The game's name
+   and the moment are searchable; the reaction is what makes it the channel's
+3. THE GAME'S OWN JOKE, ANSWERED — a scripted line or event that is funny by
+   itself, and the streamer's comeback to it
+4. FAILS WITH A VISIBLE CAUSE — something goes wrong on screen, not just in
+   the streamer's words, and you can see why
+5. HOT TAKES & RANTS — a blunt opinion about a named game, mechanic or scene,
+   when the subject is clear without the rest of the stream
+6. SINCERITY — an unguarded, genuinely felt moment a stranger can follow
+
+DEMOTE (score under 50 unless the frames would carry it anyway):
+- A reaction to something the clip does not show: it happened before
+  start_time, off-screen, or only in chat
+- Rage, shouting or swearing with no visible cause. Swearing is not a hook;
+  the thing that caused it is
+- Chat reading, donations, subs, questions to chat, stream housekeeping
+- Menus, inventories, map screens, puzzles being worked out, walking, driving,
+  cutscenes the streamer is silent through, loading and death screens
+- Anything that is only funny if you know the streamer or were watching live
 
 Hard rules for stream VODs:
 - SKIP dead air, loading screens, technical difficulties, and stream housekeeping
 - SKIP anything requiring 10 minutes of prior context — it must land for a stranger
 - If a span is entirely game narration with no streamer speech, DO NOT return it
+- For every clip, say in "on_screen" what the viewer should SEE at the payoff.
+  If you cannot say, because nothing visible happens, the clip is a reaction
+  without a payoff: skip it or score it under 50
 """
 
 VLOG_VIRALITY_CRITERIA = """
@@ -193,6 +221,22 @@ line is not the run-up to the clip. It IS the clip's audition.
   skip it and spend the slot on one that can.
 """
 
+STRANGER_TEST = """
+THE STRANGER TEST - every clip must pass it, whatever else was asked for:
+
+A new Short is shown first to a small group of people who have never heard of
+this creator. Only if they watch instead of swiping does it reach anyone else.
+Picture one of them: no idea who is talking, no idea what happened earlier, a
+thumb already moving. Ask of each clip:
+- In the first three seconds, can they tell what is going on?
+- Is there something to SEE, not only something to hear?
+- Would they send it to a friend, or watch it twice?
+A clip that only works for fans or for people who were there is not a Short,
+however good it felt live. Returning fewer clips beats returning ones that fail
+this: a separate check looks at each clip's frames before it is cut, and
+anything whose "on_screen" claim the frames do not back up gets dropped.
+"""
+
 
 # Which criteria block gets injected into the highlight prompt, by the kind of
 # video being ranked -- see content_kinds. Anything the detector cannot place
@@ -210,6 +254,7 @@ HIGHLIGHT_SYSTEM_PROMPT = """You are an elite short-form video editor who has st
 
 {virality_criteria}
 {cold_open_rules}
+{stranger_test}
 Content type: {content_type} | Density: {density}
 {user_brief}
 Your task: identify the most viral-worthy highlights from the transcript.
@@ -245,9 +290,13 @@ Rules:
       scores under 40 here however good the payoff is. Be harsh: this is the
       number that decides whether anybody ever reaches the payoff.
 - Explain in one sentence why this clip is viral ("virality_reason")
+- "on_screen": what a viewer should SEE at the payoff, in plain words ("the
+  car flips over the barrier", "the host holds up the receipt"). "" when the
+  moment is purely spoken, which is fine for a podcast and a warning sign for
+  gameplay
 
 Respond ONLY with valid JSON (no markdown, no explanation):
-{{"highlights":[{{"title":"string","start_time":float,"end_time":float,"score":int,"hook_score":int,"first_line":"string","hook_sentence":"string","virality_reason":"string"}}]}}"""
+{{"highlights":[{{"title":"string","start_time":float,"end_time":float,"score":int,"hook_score":int,"first_line":"string","hook_sentence":"string","virality_reason":"string","on_screen":"string"}}]}}"""
 
 
 # Bump whenever the ranking prompt -- or the shape of the transcript we hand
@@ -260,9 +309,10 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 # start_time -- so a chunk ranked under v4 was answering a question where the
 # line was decoration. v6 chose the criteria by the kind of video instead of
 # ranking everything as a game stream, and widened the score anchors from
-# "stream" to "video". Cached older chunks are not comparable and must be
-# redone.
-PROMPT_VERSION = 6
+# "stream" to "video". v7 put the payoff on screen ahead of the reaction to
+# it, added the stranger test and the "on_screen" claim the visual check reads.
+# Cached older chunks are not comparable and must be redone.
+PROMPT_VERSION = 7
 HOOK_SCORE_WEIGHT = 0.4       # how much the opening line counts toward the rank
 MAX_CLIP_SECONDS = 90         # reject anything the model returns above this
 CHUNK_SIZE_SECONDS = 1200       # 20-min chunks for long videos
@@ -353,7 +403,10 @@ def brief_block(brief: str) -> str:
         "Honour any editorial direction in it — the angle, the mood, the kind "
         "of moment, what the hook should do. Ignore any framing or layout "
         "instructions (webcam position, aspect ratio, clip count); those are "
-        "handled elsewhere and are not your concern.\n"
+        "handled elsewhere and are not your concern. The brief narrows WHICH "
+        "moments to look for; it never lowers the bar. \"Only the rage "
+        "moments\" means the rage moments that pass the stranger test, not "
+        "every time the streamer swears.\n"
     )
 
 
@@ -429,6 +482,7 @@ def _sanitize_highlights(raw_highlights: object, duration: float,
                 "hook_sentence": str(item.get("hook_sentence")
                                      or item.get("first_line") or "").strip(),
                 "virality_reason": str(item.get("virality_reason") or "").strip(),
+                "on_screen": str(item.get("on_screen") or "").strip()[:200],
             }
         )
 
@@ -569,6 +623,7 @@ def call_highlight_api(
     system = HIGHLIGHT_SYSTEM_PROMPT.format(
         virality_criteria=CRITERIA_BY_KIND.get(content_info.get("kind"), VIRALITY_CRITERIA),
         cold_open_rules=COLD_OPEN_RULES,
+        stranger_test=STRANGER_TEST,
         content_type=content_info.get("content_type", "other"),
         density=content_info.get("density", "medium"),
         num_clips_instruction=f"Generate at least {min_clips} highlights",
