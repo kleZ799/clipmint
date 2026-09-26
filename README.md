@@ -69,11 +69,11 @@ browser rather than in a window of its own.
 
 | | |
 |---|---|
-| **Finds the moments** | Ranks every moment by the rules for its kind of video: stream, vlog, podcast, tutorial |
+| **Finds the moments** | Ranks every moment by the rules for its kind of video, then looks at the best ones the way a stranger scrolling past would |
 | **Frames them** | Webcam over gameplay, a crop that follows your face, or plain centre crop, at the source's real quality |
 | **Captions them** | Burned in, a few words at a time, the spoken word lit up. Four styles; fix a misheard word afterwards |
 | **Edits them** | Cuts quiet pauses and "um"s, punches in on emphasis, adds emoji, stock B-roll and your logo if you want |
-| **Explains them** | A score split into Hook, Moment, Energy and Pace, with the reason each clip ranked where it did |
+| **Explains them** | A score split into Hook, Moment, Look, Energy and Pace, with the reason each clip ranked where it did |
 | **Packages them** | Ranked titles, descriptions and tags for Shorts, captions for Reels and TikTok, all editable |
 | **Posts them** | Straight to your YouTube channel, one clip or a whole run, now or on a schedule |
 | **Stays on your PC** | Free, no account, no watermark; it runs on your GPU if you have one |
@@ -280,13 +280,36 @@ answer.
 
 Failed runs say so too, and name what went wrong.
 
+### It picks what a stranger would watch
+
+A new Short is shown first to a handful of people who have never heard of you.
+If they swipe, it stops there. So the ranking asks one question of every
+moment: would a stranger, with no idea who you are or what happened earlier,
+stay for it?
+
+- **The payoff has to be on screen.** On a stream, a clutch, a physics
+  disaster, a famous story twist or a game's own joke with your comeback ranks
+  above a reaction to something the clip never shows. Rage with no visible
+  cause, swearing on its own and chat talk are pushed down. Measured on a real
+  channel, the first kind reached about a thousand viewers each and the second
+  kind about eight.
+- **It looks before it cuts.** Every candidate's opening is checked straight
+  from the video for black screens, dark rooms and frozen frames, and how much
+  the picture moves is weighed in. Then the best ~20 candidates are shown to a
+  vision model as a stranger would meet them: the first instant, a second and
+  a half in, the payoff and the end. Menus, loading screens and stream
+  dashboards drop to the bottom before anything is rendered.
+- **No near-duplicates.** Two clips that share more than a quarter of their
+  footage are one clip.
+
 ### Clips come back ranked — and say why
 
 Each card carries its score, the exact span it was cut from, and the reason
-behind the score. The score is split into four bars: **Hook** (how hard the
+behind the score. The score is split into five bars: **Hook** (how hard the
 first line stops a scroll), **Moment** (how strong the moment is overall),
-**Energy** (how loud its peak is against the rest of the video) and **Pace**
-(how quickly the talking starts). Under the bars is the model's own sentence
+**Look** (how the frames came across to the vision check), **Energy** (how
+loud its peak is against the rest of the video) and **Pace** (how quickly the
+talking starts). Under the bars is the model's own sentence
 on why the moment works. "Strong moment, weak hook" means post it with a
 better cover line, not skip it. Open **Boost** on any clip to see the numbers
 and a grade: Top pick, Strong, Worth a look or Long shot. The library can sort
@@ -302,6 +325,12 @@ said. There are four looks: **Bold**, **Punch**, **Clean** and **Comic**. Each
 uses its own typeface, shipped with the app so it looks the same on every PC.
 On the webcam-over-gameplay layout the captions sit on the seam between the
 two panels, where they cover neither your face nor the game.
+
+Each clip's **hook line** goes across the top for its first couple of
+seconds, on a dark box in the same typeface: one short line that tells a
+stranger what they are about to see before the moment arrives. When the clip
+opens on a replay of its loudest moment, the line is on that too, so it is up
+from the very first frame.
 
 The same pass does the edit an editor would do next:
 
@@ -394,6 +423,14 @@ clip with the title, description and tags it will go up with. Edit any of them,
 untick the ones to skip, and pick a first publish time and a gap (every 3 hours
 up to every 2 days). Each clip shows its own publish time before anything is
 sent, and then they upload one after another while you carry on.
+
+A title the model never wrote does not go up. When the AI provider runs out
+of quota or doesn't answer, a clip falls back to its own first spoken line,
+which on a stream can be *"Holy shit | Dying Light"*. Those clips start
+unticked with a note, and neither upload button sends one until you use
+**Rewrite titles** or type your own. Titles are the last thing a run asks the
+AI for, so on a long stream they are the step most likely to meet a free
+tier's daily limit. A second provider's key in Settings covers that.
 
 <img src="assets/screenshots/11-upload-all.png" alt="Upload all on a run: scheduled, the first at 9 AM and then one a day, and each clip listed with its publish time and title, ready to edit" width="880">
 
@@ -841,7 +878,7 @@ an application, is mine:**
 - A **job runner** — queued work, one CPU-bound job at a time, progress streamed to the browser over SSE.
 - A **clip editor** — re-cut, mute, save or delete a finished clip without re-running the pipeline, and fix a misheard word in its captions.
 - **The edit after the cut** — burned-in word-by-word captions in four styles, pause and filler cuts that listen before they cut, punch-ins on emphasis, emoji, Pexels B-roll and a channel logo, in one encode per clip.
-- **A scorecard per clip** — the rank split into Hook, Moment, Energy and Pace, with the model's reason, so "why is this #1" has an answer.
+- **A scorecard per clip** — the rank split into Hook, Moment, Look, Energy and Pace, with the model's reason, so "why is this #1" has an answer.
 - **Stages that retry themselves**, and a Try again that resumes a failed run from its caches.
 - The **interface**, built on YouTube's own layout so the audience already knows how to use it.
 - A **single-file Windows build** with ffmpeg bundled, so a non-technical user installs nothing.
@@ -925,8 +962,10 @@ flowchart LR
     B --> J[loudness envelope<br/>spikes, silences, peaks]
     J --> F
     F --> G[snap to sentences<br/>hook first, length enforced]
-    G --> K[dedupe<br/>drop >50% overlap]
-    K --> V[vision: 4 frames per clip<br/>what is on screen]
+    G --> M[picture: dark, still<br/>or moving openings]
+    M --> K[dedupe<br/>drop >25% overlap]
+    K --> Q[vision judge<br/>the stranger test]
+    Q --> V[vision: 4 frames per clip<br/>what is on screen]
     V --> S[5 ranked titles, tags<br/>filed under the real game]
     S --> H[ffmpeg vstack<br/>webcam over gameplay]
     H --> X[listen again: word timings<br/>captions, cuts, punch-ins]
@@ -966,7 +1005,7 @@ The model is told, explicitly, that it's reading a single mixed audio track with
 
 And then the hard rule: **every highlight must contain the streamer's own speech.** A story beat only counts when you react to it, talk over it, or respond after it.
 
-Ranking prioritises, in order: reactions to story beats → raw unscripted spikes → fails and disasters → hot takes → chat interaction → personal tangents → quotable one-liners → sincerity. Dead air, loading screens, and stream housekeeping are explicitly skipped, and clips start *on* the hook rather than the run-up — a Short is judged in its first second, so the opening line has to earn the watch by itself.
+Ranking prioritises, in order: a visible payoff with your reaction on top → famous story beats → the game's own joke, answered → fails with a visible cause → hot takes → sincerity. Reactions to something the clip never shows, rage with no visible cause, chat talk, menus and loading screens are demoted, and every clip has to say what a viewer should *see* at its payoff. Clips start *on* the hook rather than the run-up — a Short is judged in its first second, so the opening line has to earn the watch by itself. Every kind of video also gets the **stranger test**: would someone who has never heard of you, with no idea what happened earlier, stay for it? A brief like *"only the rage moments"* narrows which moments are looked for, never that bar.
 
 **But a transcript cannot hear anything.** The model reads words on a page; it
 never meets the scream, the laugh, or the half-second of silence before the
@@ -981,6 +1020,16 @@ are folded into the rank alongside the model's opinion:
 | **Trigger phrases** | A short fixed list — *no way*, *wait for it*, *I can't believe* — weighted by how hard each lands, and counted double in the opening line |
 | **Silence-to-peak** | A quiet beat right before the spike. Build-up → payoff reads as a moment; a flat loud run-up reads as noise |
 | **Dialogue density** | Words per second in the first two seconds. Below the floor is dead air, which is the single most reliable way to lose a viewer |
+
+**Nor can it see.** So the picture is measured as well, straight from the
+source with ffmpeg as 48×27 grey frames: the opening second and a half
+properly, the rest from keyframes only, which costs about half a second per
+candidate even on a 1440p60 VOD. A black, dark or frozen opening is a penalty
+like dead air, and how much the picture moves joins the signals above, ranked
+against the other candidates from the same video. Brightness is judged by the
+share of lit pixels rather than the average, because a dark room with a bright
+webcam box and a black death screen with white text both average about the
+same.
 
 How much those move a rank is scaled by how much of them was actually
 measurable, so a video with no readable audio leans on the model rather than on
@@ -999,7 +1048,19 @@ same way: by finding the model's quoted hook line in the transcript rather than
 trusting the timestamp it paired with it, which routinely lands seconds early on
 the throat-clear before it.
 
-Long VODs get chunked into 20-minute windows with 60s of overlap, each rebased to zero and offset back afterward. Anything overlapping >50% with a higher-scoring pick is dropped, so you never get two near-identical clips.
+Long VODs get chunked into 20-minute windows with 60s of overlap, each rebased to zero and offset back afterward. Anything sharing more than a quarter of its footage (or six seconds) with a higher-scoring pick is dropped, so you never get two near-identical clips.
+
+**Then it looks before it cuts.** The best candidates — twice as many as you
+asked for, at most 24 — are shown to a vision model as four frames each: the
+first instant, 1.5 seconds in, the payoff and the end, with the ranker's own
+claim about what should be on screen. It scores the first second, whether the
+payoff is visible, and whether the clip stands alone, and it can mark a clip
+as one a stranger would swipe past — but only for something the frames show:
+a black or loading screen, a menu, a dashboard, nothing happening. That look is
+35% of the final rank, less on a podcast, where what is said carries the clip.
+Tuned on a real stream: a first version that judged more freely cut the story
+twist that had reached 1,500 viewers when posted by hand, because four stills
+cannot show a scene landing.
 
 Every clip comes back with a score, a title, and a one-line reason it should work.
 
