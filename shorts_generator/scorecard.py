@@ -8,10 +8,11 @@ behind it is a number to argue with; a score split into what it is made of,
 with a sentence saying why, is one you can act on -- "strong moment, weak
 hook" tells you to post it with a better cover line, not to skip it.
 
-Four parts, each 0-100, each only shown when it was actually measured:
+Five parts, each 0-100, each only shown when it was actually measured:
 
   Hook    how hard the first line stops a scroll        (the model)
   Moment  how strong the moment is as a whole           (the model)
+  Look    how a stranger scrolling past would see it    (the vision judge)
   Energy  how loud its peak is against the whole video  (the audio)
   Pace    how quickly the talking starts                (the words)
 """
@@ -70,6 +71,16 @@ def build(clip: Dict) -> Optional[Dict]:
         parts.append({"key": "moment", "label": "Moment", "value": moment,
                       "why": "How strong the moment is as a whole"})
 
+    # The vision judge's three answers, as one number: what the frames said
+    # about the opening, the visible payoff and whether it stands alone.
+    seen = clip.get("judge") or {}
+    looked = [_int(seen.get(k)) for k in ("first_second", "payoff_visible", "standalone")]
+    looked = [v for v in looked if v is not None]
+    if looked:
+        parts.append({"key": "look", "label": "Look",
+                      "value": _int(sum(looked) / len(looked)),
+                      "why": "How a stranger scrolling past would see it"})
+
     spike = signals.get("audio_spike")
     if spike is not None:
         parts.append({"key": "energy", "label": "Energy", "value": _int(100 * float(spike)),
@@ -92,6 +103,10 @@ def build(clip: Dict) -> Optional[Dict]:
         notes.append("A quiet beat before the payoff")
     if spike is not None and float(spike) >= 0.9:
         notes.append("One of the loudest moments in the video")
+    if seen.get("verdict") == "cut":
+        notes.append("A stranger would likely swipe past it")
+    if clip.get("visual_penalty"):
+        notes.append("Opens dark or still, which cost it points")
     if clip.get("opening_penalty"):
         notes.append("Slow first seconds cost it points")
 
