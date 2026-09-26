@@ -464,6 +464,62 @@ confirming kind to a guess. That turns a probability the system cannot trust
 into a category it can check — the same move as asking a witness what they saw
 rather than how sure they are.
 
+### Choosing features that survive a nuisance variable
+
+`visual.py` measures whether a clip opens black, and the obvious feature —
+mean brightness — failed on the first real footage. A dark room with a bright
+webcam box and a black death screen with white text both average about 10 out
+of 255: a small very bright region and a large very dark one cancel out in a
+mean. The webcam overlay is a *nuisance variable*: present in every frame of a
+stream, unrelated to the question, and big enough to move the statistic.
+
+The fix is a different statistic, not a tuned threshold: the **share of pixels
+above a level** ("how much of the frame is lit at all"). That is robust to a
+small bright region by construction. The readings separate cleanly — 0.02–0.03
+for a room where only the webcam shows, 0.08–0.13 for a dim but readable scene,
+0.35 and up for a lit one. The general move: when a feature is fooled, ask
+which *property of the distribution* the question is about (its mean, its
+spread, a quantile, a mass above a level) before reaching for a better cut-off.
+
+A second trap sat underneath: video stored in TV range has black at 16, not 0,
+and the grey conversion silently rescales it. Know what range your numbers are
+in before you threshold them.
+
+Motion is handled the other way round: it is **ranked within the video**, not
+compared to a constant, because a walking sim and a shooter move by very
+different amounts. The same idea as normalising audio against the video's own
+distribution ([§5a](#normalising-against-the-signals-own-distribution)): compare
+like with like.
+
+### A model as a judge, and why it is kept on a short leash
+
+`judge.py` shows the best candidates to a vision-language model and asks it to
+play the first audience a new Short meets: would a stranger stop, can they see
+the payoff, does it stand alone. This is **LLM-as-a-judge**, the same pattern
+used to grade model outputs, applied to a ranking.
+
+A judge with a narrow view is a noisy judge. It sees four stills; the ranker
+read the whole transcript around the moment. The first version gave it a free
+verdict and 45% of the rank, and on a real stream it cut the one clip that had
+already reached 1,500 viewers — a story twist, which four stills cannot show
+landing. Two changes fixed that, and they generalise:
+
+- **Constrain the verdict to what the evidence can prove.** `cut` is only
+  allowed for a disqualifier visible in the frames (black, a loading screen, a
+  menu, nothing happening). "I did not find it exciting" is not something four
+  frames can establish, so it is not a reason the judge may give.
+- **Blend, don't gate, and weight by how much the judge can see.** Its answer is
+  35% of the rank, and how its three scores combine depends on the kind of video
+  — on a podcast, where the picture barely matters, "is the payoff visible"
+  counts for almost nothing.
+
+This is the same principle as ensembling in ML: a second model with *different
+information* (pixels instead of words) adds signal even when it is individually
+weaker, as long as its vote is sized to its reliability. And the ranker was made
+to state a checkable claim for it — `on_screen`, what should be visible at the
+payoff — which turns "does this look good?" into "is this claim true?", a much
+easier question.
+
 ---
 
 ## 5a. AI/ML: audio signal processing and feature fusion
@@ -751,7 +807,11 @@ databases use surrogate primary keys rather than natural ones.
 ### Greedy interval scheduling (dedupe)
 
 `dedupe_highlights()` — sort candidates by score descending, then walk the list
-keeping a clip only if it overlaps ≤50% with everything already kept.
+keeping a clip only if it shares at most a quarter of the shorter clip's length
+(and at most six seconds) with everything already kept. The bar was half until
+two clips that shared 14 of their 33 seconds both shipped: a threshold is a
+product decision about what counts as "the same clip", and it is measured
+against the shorter of the pair so a short clip inside a long one counts.
 
 - **Paradigm:** greedy. Locally optimal choice (take the best remaining), never
   reconsidered.
