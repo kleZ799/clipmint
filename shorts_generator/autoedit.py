@@ -131,6 +131,9 @@ class Options:
     # The channel's logo (brand.py), and the corner it goes in. None for none.
     logo: Optional[str] = None
     logo_corner: str = "top-right"
+    # Whether a cold open goes on the front afterwards (hook_open), so the
+    # hook line can be put where the replayed slice will carry it.
+    hook_replay: bool = False
 
     @property
     def needs_words(self) -> bool:
@@ -170,6 +173,7 @@ def options_from_spec(spec, kind: Optional[str] = None) -> Options:
         kind=k,
         logo=str(logo) if logo else None,
         logo_corner=brand.corner(),
+        hook_replay=bool(getattr(spec, "hook_replay", False)),
     )
 
 
@@ -193,6 +197,10 @@ class Plan:
     zooms: List[Tuple[float, float, float]] = field(default_factory=list)
     emoji: List[Tuple[float, float, str]] = field(default_factory=list)
     broll: List[Dict] = field(default_factory=list)
+    # The clip's on-screen hook line, and where its loudest moment lands on
+    # the new timeline -- which is where a cold open will replay from.
+    hook: str = ""
+    peak: Optional[float] = None
 
     @property
     def new_duration(self) -> float:
@@ -509,6 +517,13 @@ def analyse(path: str, highlight: Dict, opts: Options,
 
     plan.words = remap_words(spoken, plan.keeps) if plan.cut else spoken
     plan.caption_words = remap_words(shown, plan.keeps) if plan.cut else shown
+    if opts.captions != captions.OFF:
+        plan.hook = str((highlight.get("seo") or {}).get("hook_text") or "").strip()
+        peak, start = highlight.get("hook_peak"), highlight.get("start_time")
+        if peak is not None and start is not None:
+            at = float(peak) - float(start)
+            if 0 <= at <= duration:
+                plan.peak = remap(at, plan.keeps) if plan.cut else at
     new_duration = plan.new_duration
     if opts.punch_ins and plan.words:
         plan.zooms = plan_punch_ins(plan.words, new_duration, plan.keeps, opts.layout)
@@ -677,6 +692,27 @@ def brand_opacity() -> float:
     return brand.OPACITY
 
 
+def hook_windows(plan: Plan, opts: Options) -> List[Tuple[float, float]]:
+    """When the hook line is on screen, in this clip's seconds.
+
+    Always the opening. And when a cold open will be put on the front
+    afterwards, also the slice it will replay -- hook_open's own window --
+    so the line is up in the viewer's first second, not two seconds in.
+    """
+    if not plan.hook:
+        return []
+    from . import hook_open
+
+    length = plan.new_duration
+    windows = [(0.0, min(captions.HOOK_SECONDS, length))]
+    if opts.hook_replay and plan.peak is not None and plan.peak >= hook_open.ALREADY_UP_FRONT:
+        a = max(0.0, plan.peak - hook_open.REPLAY_LEAD)
+        b = min(length, a + hook_open.REPLAY_SECONDS)
+        if b - a >= 0.8 and a > windows[0][1]:
+            windows.append((a, b))
+    return windows
+
+
 def render(plan: Plan, opts: Options) -> Dict:
     """Encode the plan over the clip, in place. Returns what was done.
 
@@ -687,9 +723,10 @@ def render(plan: Plan, opts: Options) -> Dict:
     try:
         ass_name = fonts = None
         style = opts.captions
-        if style != captions.OFF and plan.caption_words:
+        if style != captions.OFF and (plan.caption_words or plan.hook):
             y = captions.caption_y(opts.layout, opts.aspect_ratio, opts.cam_panel_fraction)
-            script = captions.build_ass(plan.caption_words, style, plan.width, plan.height, y)
+            script = captions.build_ass(plan.caption_words, style, plan.width, plan.height, y,
+                                        hook=plan.hook, hook_windows=hook_windows(plan, opts))
             if script:
                 with open(os.path.join(work, "captions.ass"), "w", encoding="utf-8") as f:
                     f.write(script)

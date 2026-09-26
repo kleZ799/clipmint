@@ -20,6 +20,12 @@ Where the words sit depends on the layout. On the stacked layout they go on
 the seam between the webcam and the gameplay -- the one place that covers
 neither the face nor the action. Everywhere else they sit in the lower middle,
 above the band the apps cover with their own buttons and captions.
+
+The clip's hook line goes across the top for its first couple of seconds, in
+the same face on a dark box. The packaging step has always written one per
+clip (`hook_text`) and until this nothing put it on screen: a line that tells
+a stranger what they are about to see, before the moment has arrived, is the
+on-screen text every growth playbook asks for in the first two seconds.
 """
 from __future__ import annotations
 
@@ -27,7 +33,11 @@ import difflib
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
+
+# How long the hook line stays up, and how long it may run before it is cut.
+HOOK_SECONDS = 2.6
+HOOK_CHARS = 60
 
 from .bundled import asset_dir
 
@@ -200,16 +210,26 @@ def _ass_colour(hex_rgb: str, alpha: int = 0) -> str:
 
 
 def build_ass(words: List[Dict], style: str, width: int, height: int,
-              y_frac: float) -> str:
+              y_frac: float, hook: str = "",
+              hook_windows: Sequence[Tuple[float, float]] = ()) -> str:
     """An ASS script that captions `words` in `style`. "" when there is nothing
-    to say."""
+    to say.
+
+    `hook` is the clip's on-screen hook line, shown across the top during each
+    of `hook_windows` (clip seconds). More than one window when a cold open
+    will be put on the front afterwards: the replayed slice has to carry the
+    line too, or the viewer's first second would be the one without it.
+    """
     preset = PRESETS.get(style)
-    if not preset or not words:
+    if not preset:
         return ""
 
-    words = [dict(w, text=_clean(w.get("word", ""), preset)) for w in words]
+    words = [dict(w, text=_clean(w.get("word", ""), preset)) for w in words or []]
     words = [w for w in words if w["text"]]
-    if not words:
+    hook = re.sub(r"\s+", " ", (hook or "").replace("{", "(").replace("}", ")")
+                  .replace("\\", "/")).strip()[:HOOK_CHARS]
+    windows = [(a, b) for a, b in hook_windows if b - a > 0.2] if hook else []
+    if not words and not windows:
         return ""
 
     base = min(width, height)
@@ -261,6 +281,15 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
                 f"{lead}{joiner.join(parts)}"
             )
 
+    # The hook line: the preset's face, sentence case, on a dark box across
+    # the top. Its own layer, so it never trades places with a caption.
+    hook_size = max(12, int(round(base * 0.06)))
+    for a, b in windows:
+        events.append(
+            f"Dialogue: 1,{_ass_time(a)},{_ass_time(b)},Hook,,0,0,0,,"
+            f"{{\\fad(80,200)}}{hook}"
+        )
+
     if not events:
         return ""
 
@@ -281,6 +310,10 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
         f"Style: Cap,{preset['font']},{size},{primary},{primary},"
         f"{edge if not preset['box'] else back},{back},0,0,0,0,100,100,"
         f"{preset['spacing']},0,{border_style},{outline},{shadow},5,{margin},{margin},0,1\n"
+        f"Style: Hook,{preset['font']},{hook_size},{_ass_colour('FFFFFF')},"
+        f"{_ass_colour('FFFFFF')},{_ass_colour('141414', 0x30)},{_ass_colour('141414', 0x30)},"
+        f"0,0,0,0,100,100,0,0,3,{round(hook_size * 0.32, 1)},0,8,{margin},{margin},"
+        f"{int(round(height * 0.06))},1\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
