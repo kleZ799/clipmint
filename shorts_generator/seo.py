@@ -542,6 +542,12 @@ def _parse_json_loose(raw: str) -> Dict:
         raise
 
 
+def _is_quota(e: BaseException) -> bool:
+    """Whether a model call failed because the day's allowance is spent."""
+    said = str(e).lower()
+    return "quota" in said or "resource_exhausted" in said or "rate limit" in said
+
+
 def _index_items(items: object, n: int) -> Dict[int, Dict]:
     """The model's per-clip answers, keyed 1..n.
 
@@ -1352,10 +1358,16 @@ def generate_seo(
     # written and nine hook-line fallbacks -- "Holy shit | Dying Light" among
     # them -- and those went to YouTube. A clip the model skipped is worth
     # another question before it is worth a fallback.
+    #
+    # Except when the day's quota is gone. Titles are the last thing a run
+    # asks for, after ranking and looking have spent their share, so on a
+    # long stream this is the step that meets the limit -- and asking again
+    # one clip at a time only hears the same answer ten times.
     by_index: Dict[int, Dict] = {}
     todo = list(range(1, len(highlights) + 1))
+    out_of_quota = ""
     for attempt, size in enumerate((len(todo), 3, 1)):
-        if not todo:
+        if not todo or out_of_quota:
             break
         if attempt:
             print(f"[seo] {len(todo)} clip(s) came back without metadata - asking again "
@@ -1367,11 +1379,19 @@ def generate_seo(
             except Exception as e:
                 print(f"[seo] could not generate metadata for clip(s) {group} ({e})",
                       flush=True)
-                if errors is not None and attempt == 2:
+                if errors is not None and (attempt == 2 or _is_quota(e)):
                     errors.append(str(e))
+                if _is_quota(e):
+                    out_of_quota = str(e)
+                    break
         todo = [i for i in todo if i not in by_index]
     print(f"[seo] wrote metadata for {len(by_index)}/{len(highlights)} clip(s)"
           + (" - the rest fall back to their hook lines" if todo else ""), flush=True)
+    if todo and out_of_quota:
+        print(f"[seo] {len(todo)} title(s) could not be written because the model's "
+              f"quota ran out. They will not be uploaded as they are: use Rewrite "
+              f"titles once it resets, or add a second provider's key in Settings.",
+              flush=True)
 
     out = []
     for i, h in enumerate(highlights, 1):
