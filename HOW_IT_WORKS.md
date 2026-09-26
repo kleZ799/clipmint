@@ -244,6 +244,8 @@ shorts_generator/
 ├── highlights.py           THE BRAIN — prompts, chunking, scoring, dedupe
 ├── content_kinds.py        stream / vlog / podcast / tutorial / other
 ├── signals.py              loudness envelope, trigger phrases, hook score
+├── visual.py               what the picture does: black, dim or still openings, motion
+├── judge.py                the stranger test, from four frames per candidate (vision)
 ├── boundaries.py           snap spans to sentences; enforce clip length
 ├── hook_open.py            prepend a late payoff to the front of a clip
 ├── layout_spec.py          natural language → LayoutSpec; quality ladder
@@ -252,7 +254,7 @@ shorts_generator/
 ├── captions.py             burned-in word-by-word captions: four presets, ASS for libass
 ├── words.py                word timings for a rendered clip (faster-whisper, per clip)
 ├── broll.py                where stock footage fits (the LLM) and fetching it (Pexels)
-├── scorecard.py            a clip's score split into Hook / Moment / Energy / Pace + why
+├── scorecard.py            a clip's score split into Hook / Moment / Look / Energy / Pace + why
 ├── brand.py                the channel's logo: stored, validated, placed in a corner
 ├── bundled.py              finds assets/ in a checkout or a PyInstaller build
 ├── vision.py               what each clip shows, from four of its frames
@@ -324,7 +326,8 @@ analyse_audio()                       ← one loudness envelope for the whole VO
       ▼
 get_highlights(audio=…, kind=…)       ← stage: rank       (bar 0.55 → 0.70)
   ├ resolve_content(): what kind of video this is
-  └ finalize(): snap boundaries → rescore → dedupe
+  └ finalize(): snap boundaries → measure the picture → rescore → dedupe
+judge.judge() on the best 2N                ← the stranger test, with eyes (§6.14)
 sort by score, take top N
       │
       ▼
@@ -582,6 +585,7 @@ into `<source>.highlights.json` and reused ([§6.6](#66-resumable-checkpoints)).
 HIGHLIGHT_SYSTEM_PROMPT
   ├── {virality_criteria}   ← CRITERIA_BY_KIND[kind]
   ├── {cold_open_rules}     ← COLD_OPEN_RULES
+  ├── {stranger_test}       ← STRANGER_TEST
   ├── {user_brief}          ← the user's own words, if any
   └── {duration_rule}       ← house default, or what the user asked for
 ```
@@ -603,10 +607,24 @@ Then the hard rule: **every highlight must contain the streamer's own speech.** 
 story beat only counts when the streamer reacts to it, talks over it, or responds
 after it.
 
-Its ranked priorities: reaction to a story beat → raw unscripted reactions →
-fails and disasters → hot takes → chat interaction → personal tangents →
-quotable one-liners → sincerity. Dead air, loading screens and stream
-housekeeping are explicitly skipped.
+Then the rule that decides whether a gaming Short reaches anyone: **the payoff
+must be on screen.** A new Short is tested on people who have never heard of
+the streamer, so a reaction is worth nothing to them unless they can *see* what
+caused it. This came from a real channel's numbers: clutches, physics chaos, a
+famous story twist and a game's scripted joke with the streamer's comeback each
+reached about a thousand viewers, while reactions to things the clip never
+showed, rage with no visible cause and chat talk averaged eight. Prompt v6 had
+ranked those backwards, with the reaction first.
+
+Its ranked priorities: a visible payoff with the reaction on top → famous story
+beats → the game's own joke, answered → fails with a visible cause → hot takes
+→ sincerity. A **demote** list pushes under 50: reactions to something outside
+the clip, rage or swearing with no visible cause, chat and donations, menus,
+puzzles, walking, silent cutscenes, and anything only funny to someone who was
+watching live. Every clip must also fill **`on_screen`**, what a viewer should
+see at the payoff; a gaming clip that cannot is a reaction without a payoff.
+That field is what the vision judge ([§6.14](#614-the-stranger-test-with-eyes--judgepy))
+later holds the clip to.
 
 The other kinds each get their own block:
 
@@ -629,9 +647,19 @@ verdict on the entire clip. So:
 - **a moment that needs a preamble is not a highlight** — skip it and spend the
   slot on one that can open cold
 
+**`STRANGER_TEST`** goes to every kind of video: picture someone with no idea
+who is talking and no idea what happened earlier, thumb already moving — can
+they tell what is going on in three seconds, is there something to *see*, would
+they send it on? It also tells the model that a visual check will drop any clip
+whose `on_screen` claim the frames do not back up, which makes returning fewer
+clips an acceptable answer.
+
 **`brief_block()`** injects the user's own prompt verbatim, marked as outranking
 the generic criteria where they disagree. Someone who types *"only the funny rage
-moments"* has told the ranker something the house list cannot know. It explicitly
+moments"* has told the ranker something the house list cannot know — but only
+about *which* moments to look for. Since v7 it says outright that a brief never
+lowers the stranger-test bar: "only the rage moments" means the rage moments a
+stranger could follow, not every time the streamer swears. It explicitly
 instructs the model to ignore framing instructions (webcam position, aspect
 ratio, clip count) — those belong to the renderer.
 
@@ -737,13 +765,19 @@ v{PROMPT_VERSION}|{duration, to the minute}|{chunk_count}|{num_clips}|{clip_leng
 ### 6.7 Dedupe
 
 ```python
-overlap > 0.5 * candidate_duration  →  drop
+overlap > 0.25 * shorter_duration  or  overlap > 6s  →  drop
 ```
 
 Sorted by score descending, so when two candidates overlap the higher-scoring one
 is already kept and the weaker one is dropped. Overlap is measured against the
-*candidate's own* duration, so a short clip buried inside a long one is correctly
+*shorter* of the two, so a short clip buried inside a long one is correctly
 recognised as redundant.
+
+The bar was half the candidate's length until a real run shipped two Shorts
+that shared 14 of their 33 seconds, under the same title, posted a day apart.
+At 42% overlap they passed. A viewer who swiped the first will swipe the second,
+and a feed that sees the same footage twice from one channel has no reason to
+show it a third time.
 
 ### 6.8 Retry on malformed output
 
@@ -763,14 +797,17 @@ that actually get cut, in three passes whose order is load-bearing:
 
 ```python
 highlights = boundaries.refine(...)   # 1. move the span
-signals.rescore(...)                  # 2. re-rank it on what the audio did
+visual.measure_all(...)               # 2a. what the picture does
+signals.rescore(...)                  # 2b. re-rank it on what it sounded and looked like
 highlights = dedupe_highlights(...)   # 3. drop what now collides
 ```
 
 1. **Boundaries first.** Snapping moves every span, often by seconds, because a
    clip is re-opened on its own hook line. Measuring signals before this would
    be measuring audio that is no longer inside the clip.
-2. **Signals second**, on the final spans.
+2. **Signals second**, on the final spans — audio, words, and since v1.20.0
+   the picture ([§6.13](#613-what-the-picture-does--visualpy)), when the source
+   is on disk to read.
 3. **Dedupe last.** Two candidates the model kept apart can land on top of each
    other once both are snapped to the same sentence boundaries.
 
@@ -797,6 +834,7 @@ BASE_WEIGHTS = {
     "keyword":         0.25,   # trigger phrases, weighted by strength
     "chat_velocity":   0.20,   # not obtainable — no chat log
     "face_reaction":   0.15,   # not obtainable — too expensive per frame
+    "motion":          0.15,   # how much the picture moves, see §6.13
     "silence_to_peak": 0.10,   # quiet run-up before the spike
 }
 ```
@@ -886,6 +924,87 @@ anything at all goes wrong. A garnish must never cost a render.
 
 Exports are also normalised to **-14 LUFS** (`render.LOUDNESS_FILTER`), the
 target all three platforms mix toward.
+
+### 6.13 What the picture does — `visual.py`
+
+The ranker reads, `signals.py` hears, and until v1.20.0 nothing saw. Clips that
+opened on two seconds of a black death screen, or a dim corridor with nothing
+moving, ranked like any other — and those are exactly the openings a feed swipes
+past before a word lands.
+
+`measure()` reads each candidate straight from the source through ffmpeg as
+**48×27 grey frames**: the opening 1.5s at 6 fps, decoded properly, and the rest
+of the span with `-skip_frame nokey`, keyframes only. Sixteen candidates from a
+34-minute 1440p source take about eight seconds. Four numbers come back:
+
+| Field | What it is |
+|---|---|
+| `opening_black` | share of opening frames that are black for a viewer's purposes |
+| `opening_lit` | average share of lit pixels across the opening |
+| `opening_motion` | mean change between consecutive opening frames — a menu or paused frame is near 0 |
+| `motion` → `motion_rank` | mean change between keyframes over the whole clip, then ranked 0–1 against the other candidates *from the same video* |
+
+**Brightness is the share of lit pixels, not the mean.** The first version
+averaged luma and was fooled on real footage: a dark room with a bright
+webcam box and a black death screen with white text both average about 10 out
+of 255. What separates them is how much of the frame is lit at all (pixels over
+40): a room where only the webcam shows read 0.02–0.03, a dim but readable
+scene 0.08–0.13, an ordinary lit one 0.35 and up. So a frame under **0.06** is
+black, and an opening averaging under **0.15** is dim. (The mean was off for a
+second reason too: TV-range video has black at 16, and the grey conversion
+rescales it to 0.)
+
+**Motion is ranked, not absolute**, because a narrative walking sim and a
+shooter move by very different amounts, and only the comparison between
+candidates from the same video means anything.
+
+`opening_penalty()` turns the opening into a penalty the way dead air already
+was: a black opening costs 25–60% of the blended score, a dim one 15%, a still
+one 12%. Motion joins `BASE_WEIGHTS` at 0.15 and counts toward coverage.
+
+### 6.14 The stranger test, with eyes — `judge.py`
+
+Everything so far chooses from words and measurements. The commercial clippers
+that work on gameplay — OpusClip's ClipAnything, Eklipse, Powder — also judge
+the picture, because on a gaming channel most of what decides whether a
+stranger stays is on screen.
+
+So after ranking, in `webapp/jobs.py`, the top `pool_size(num_clips)` candidates
+(twice the clips asked for, at least four more, at most 24) go to the vision
+model as **four frames each** — `start+0.2`, `start+1.5`, the audio peak (or 60%
+through when the peak is too near an edge) and `end-1.5`, at 512px — with the
+opening line, everything said and the ranker's `on_screen` claim. It answers
+three 0–100 scores and a verdict:
+
+| | Asks |
+|---|---|
+| `first_second` | would a stranger stop on these opening frames and this opening line? |
+| `payoff_visible` | can they *see* what the clip is about — does the `on_screen` claim match the frames? |
+| `standalone` | does it make sense with no context from the rest of the video? |
+| `verdict` | `cut` **only** for a disqualifier the frames show; otherwise `keep` |
+
+The three combine by kind of video (`PART_WEIGHTS`): a stream leans on
+`payoff_visible` (0.40), a podcast barely uses it (0.10), because a podcast clip
+is carried by what is said. Then:
+
+```python
+score = 0.65 * ranked_score + 0.35 * looked
+if verdict == "cut": score *= 0.7
+```
+
+**Why so conservative.** The first version let the judge cut freely at 0.45
+weight. On a real Edith Finch stream it cut the Lewis twist — the one clip from
+that stream that had reached 1,500 viewers when posted by hand — because four
+stills cannot show a story beat landing. So `cut` is now reserved for what the
+frames prove (a black, loading, death or pause screen, a menu, a browser or
+dashboard, nothing happening in any frame), the prompt says outright not to mark
+a quiet narrative game down for being quiet, and the look is 35% of the rank.
+Re-run on the same candidates, it dropped a game menu, a static start screen
+and a stream dashboard to the bottom and kept the ending and the twist on top.
+
+Each judged clip keeps `judge` and `pre_judge_score`, and the scorecard shows
+the average of the three as **Look**. No vision provider, or a failed call, and
+every candidate keeps the rank it had.
 
 ---
 
@@ -1175,6 +1294,19 @@ covers with its own buttons. Lines break at the word limit, on punctuation, and
 before a pause. Scripts written without spaces (Japanese, Chinese, Thai) are
 joined without them.
 
+**The hook line.** The packaging step has always written a `hook_text` per
+clip, the on-screen line for the first two seconds, and until v1.20.0 nothing
+put it on screen. `build_ass()` now takes `hook` and `hook_windows` and adds a
+`Hook` style: the preset's own face on a dark box (`BorderStyle 3`), top centre,
+on its own layer so it never trades places with a caption. The timing has a
+catch: captions are burned **before** the cold open is put on the front, so a
+line shown only at 0–2.6s would appear after the replay, two seconds into what
+the viewer sees. `autoedit.hook_windows()` therefore adds a second window over
+the exact slice `hook_open` will replay (its own `REPLAY_LEAD` and
+`REPLAY_SECONDS` around the peak, moved onto the cut timeline) whenever the
+spec has the cold open on. Checked on a real clip with a 1.9s cold open: the
+line is up from 0 to 4.5s and gone at 4.8. Captions off means no hook line.
+
 **Settings** live on `LayoutSpec` (`captions`, `cut_pauses`, `punch_ins`,
 `emoji`, `broll`), so a trim or a retry re-renders with the edit the run was
 made with. A manifest from before these fields existed reads back with all of
@@ -1215,9 +1347,12 @@ raises into the run. What was done is recorded on the clip as `edit`.
 
 Every clip already carried the numbers it was ranked on: `hook_score` and
 `viral_score` from the model, and `signals` from the audio and the words.
-`scorecard.build()` turns them into four 0–100 parts: **Hook**, **Moment**,
+`scorecard.build()` turns them into five 0–100 parts: **Hook**, **Moment**,
+**Look** (the average of the vision judge's three scores, [§6.14](#614-the-stranger-test-with-eyes--judgepy)),
 **Energy** (`audio_spike`) and **Pace** (opening words per second against
-2.5), each drawn only when it was actually measured. It adds a grade (Top pick
+2.5), each drawn only when it was actually measured. Two notes come from the
+picture: a clip the judge would cut says a stranger would likely swipe past it,
+and one with a `visual_penalty` says its dark or still opening cost it points. It adds a grade (Top pick
 ≥ 85, Strong ≥ 70, Worth a look ≥ 55, Long shot), the model's own
 `virality_reason`, and up to three plain notes ("A quiet beat before the
 payoff"). It is attached in `_finalize` and again when a run is restored from
@@ -1550,6 +1685,21 @@ what's there — would quietly downgrade a good title into a filename.**
 And if *nothing* was generated, `regenerate_seo()` raises. Returning a count of
 fallbacks read as success all the way to the UI, which then reported titles were
 "ready" when nothing had changed.
+
+**Asking again before falling back.** Two real Dying Light runs came back with
+1 of 10 clips written, and the other nine went to YouTube under their first
+spoken line: *"Holy shit | Dying Light"*. So `generate_seo()` now asks for the
+whole batch, then for whatever is missing three at a time, then one at a time.
+Answers are matched to clips by their `index` only when those are distinct and
+in range (`_index_items()`): a model that numbers every answer 1 would
+otherwise pile them all into one slot, which leaves exactly one clip written.
+
+The retries stop at once on a quota error (`_is_quota()`). Titles are the last
+thing a run asks the model for, after ranking and looking have spent their
+share, so on a long stream they are the step that meets a free tier's daily
+limit — a test run on v1.20.0 got 0 of 3 that way. Asking again clip by clip
+only hears the same answer, so the log says instead that the fallback titles
+will not be uploaded as they are, and what to do.
 
 ### The title is also the filename
 
@@ -3081,6 +3231,12 @@ clips, not a background job:
 - one privacy, category and made-for-kids choice for the batch
 - for a schedule, a first time and a gap; each ticked clip's publish time is
   computed in order and shown on its row before anything is sent
+
+A clip whose title is still an untouched fallback (`seo.generated === false`,
+title unchanged) starts unticked with a note, and `unwrittenTitle()` stops both
+this dialog and the single-clip upload from sending it until the title is
+rewritten or edited. A raw first line is the one title guaranteed to tell a
+stranger nothing.
 
 Nothing is sent until the button is pressed. That's deliberate: YouTube's API
 policies want uploads to be the person's specific choice, with their say over
