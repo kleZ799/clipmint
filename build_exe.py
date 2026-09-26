@@ -334,6 +334,11 @@ def main() -> int:
         "--hidden-import", "cv2",
         "--hidden-import", "yt_dlp",
         "--hidden-import", "webapp.youtube_upload",
+        # Imported inside functions, only once a run reaches them. The
+        # analysis finds those today; naming them keeps a refactor from
+        # quietly shipping an app that ranks without looking.
+        "--hidden-import", "shorts_generator.visual",
+        "--hidden-import", "shorts_generator.judge",
         "--hidden-import", "uvicorn.logging",
         "--hidden-import", "uvicorn.loops.auto",
         "--hidden-import", "uvicorn.protocols.http.auto",
