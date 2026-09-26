@@ -1,0 +1,47 @@
+# Rewrite a published release's text from docs/release-notes/<tag>.md.
+#
+# The release workflow writes a release's notes once, when it publishes it.
+# Anything corrected in the notes file after that -- a wrong download size,
+# a typo -- stays wrong on the release page unless someone edits it by hand.
+# This puts the file's current text back on the page, and touches nothing
+# else: the files attached to the release are left exactly as they are.
+#
+#     Actions -> Release notes -> Run workflow, with the tag (e.g. v1.19.1)
+name: Release notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to update (e.g. v1.19.1)"
+        required: true
+
+permissions:
+  contents: write        # needed to edit a release
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Put the notes file's text on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          notes="docs/release-notes/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::There is no $notes to take the text from."
+            exit 1
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::There is no published release called $TAG."
+            exit 1
+          fi
+          gh release edit "$TAG" --notes-file "$notes"
+          echo "### Updated the notes on $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "From \`$notes\`: <https://github.com/${{ github.repository }}/releases/tag/$TAG>" >> "$GITHUB_STEP_SUMMARY"
