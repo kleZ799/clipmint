@@ -161,6 +161,12 @@ window.I18N = (function () {
       "Paste a new key": "नई की पेस्ट करें",
       "Paste your key here": "अपनी की यहाँ पेस्ट करें",
       "Menu": "मेन्यू",
+      "Scroll left": "बाईं ओर स्क्रॉल करें",
+      "Scroll right": "दाईं ओर स्क्रॉल करें",
+      "This title is just the clip's first spoken line - the model never wrote one. Hit Rewrite, or write your own, then upload.":
+        "यह शीर्षक बस क्लिप की पहली बोली गई लाइन है - मॉडल ने इसे कभी लिखा ही नहीं। Rewrite दबाएँ, या अपना खुद का लिखें, फिर अपलोड करें।",
+      "This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own.":
+        "यह शीर्षक बस क्लिप की पहली बोली गई लाइन है - मॉडल ने इसे कभी लिखा ही नहीं। पहले शीर्षक दोबारा लिखवाएँ, या अपना खुद का लिखें।",
       "Clear": "साफ़ करें",
       "Load this link": "यह लिंक लोड करें",
       "Choose a video file": "वीडियो फ़ाइल चुनें",
@@ -396,6 +402,12 @@ window.I18N = (function () {
       "Paste a new key": "Pega una clave nueva",
       "Paste your key here": "Pega aquí tu clave",
       "Menu": "Menú",
+      "Scroll left": "Desplazar a la izquierda",
+      "Scroll right": "Desplazar a la derecha",
+      "This title is just the clip's first spoken line - the model never wrote one. Hit Rewrite, or write your own, then upload.":
+        "Este título es solo la primera frase de la clip: el modelo nunca escribió uno. Pulsa Rewrite o escribe el tuyo y luego súbelo.",
+      "This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own.":
+        "Este título es solo la primera frase de la clip: el modelo nunca escribió uno. Reescribe los títulos primero o escribe el tuyo.",
       "Clear": "Borrar",
       "Load this link": "Cargar este enlace",
       "Choose a video file": "Elegir un archivo de vídeo",
@@ -631,6 +643,12 @@ window.I18N = (function () {
       "Paste a new key": "Cole uma chave nova",
       "Paste your key here": "Cole sua chave aqui",
       "Menu": "Menu",
+      "Scroll left": "Rolar para a esquerda",
+      "Scroll right": "Rolar para a direita",
+      "This title is just the clip's first spoken line - the model never wrote one. Hit Rewrite, or write your own, then upload.":
+        "Este título é só a primeira fala do clipe: o modelo nunca escreveu um. Clique em Rewrite ou escreva o seu e depois envie.",
+      "This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own.":
+        "Este título é só a primeira fala do clipe: o modelo nunca escreveu um. Reescreva os títulos antes ou escreva o seu.",
       "Clear": "Limpar",
       "Load this link": "Carregar este link",
       "Choose a video file": "Escolher um arquivo de vídeo",
@@ -866,6 +884,12 @@ window.I18N = (function () {
       "Paste a new key": "Collez une nouvelle clé",
       "Paste your key here": "Collez votre clé ici",
       "Menu": "Menu",
+      "Scroll left": "Faire défiler vers la gauche",
+      "Scroll right": "Faire défiler vers la droite",
+      "This title is just the clip's first spoken line - the model never wrote one. Hit Rewrite, or write your own, then upload.":
+        "Ce titre n'est que la première phrase du clip : le modèle n'en a jamais écrit. Cliquez sur Rewrite ou écrivez le vôtre, puis mettez en ligne.",
+      "This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own.":
+        "Ce titre n'est que la première phrase du clip : le modèle n'en a jamais écrit. Réécrivez d'abord les titres ou écrivez le vôtre.",
       "Clear": "Effacer",
       "Load this link": "Charger ce lien",
       "Choose a video file": "Choisir un fichier vidéo",
@@ -1101,6 +1125,12 @@ window.I18N = (function () {
       "Paste a new key": "Neuen Schlüssel einfügen",
       "Paste your key here": "Schlüssel hier einfügen",
       "Menu": "Menü",
+      "Scroll left": "Nach links scrollen",
+      "Scroll right": "Nach rechts scrollen",
+      "This title is just the clip's first spoken line - the model never wrote one. Hit Rewrite, or write your own, then upload.":
+        "Dieser Titel ist nur der erste gesprochene Satz des Clips - das Modell hat nie einen geschrieben. Klicke auf Rewrite oder schreib deinen eigenen, dann lade hoch.",
+      "This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own.":
+        "Dieser Titel ist nur der erste gesprochene Satz des Clips - das Modell hat nie einen geschrieben. Lass zuerst die Titel neu schreiben oder schreib deinen eigenen.",
       "Clear": "Leeren",
       "Load this link": "Diesen Link laden",
       "Choose a video file": "Videodatei wählen",
@@ -1336,6 +1366,12 @@ window.I18N = (function () {
       "Paste a new key": "新しいキーを貼り付け",
       "Paste your key here": "ここにキーを貼り付け",
       "Menu": "メニュー",
+      "Scroll left": "左にスクロール",
+      "Scroll right": "右にスクロール",
+      "This title is just the clip's first spoken line - the model never wrote one. Hit Rewrite, or write your own, then upload.":
+        "このタイトルはクリップの最初のセリフそのままで、モデルが書いたものではありません。Rewrite を押すか自分で書いてからアップロードしてください。",
+      "This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own.":
+        "このタイトルはクリップの最初のセリフそのままで、モデルが書いたものではありません。先にタイトルを書き直すか、自分で書いてください。",
       "Clear": "クリア",
       "Load this link": "このリンクを読み込む",
       "Choose a video file": "動画ファイルを選択",
