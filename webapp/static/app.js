@@ -934,7 +934,21 @@ function renderUploadBox() {
   if (ytUploads[key]) followUpload(key, ytUploads[key]);
 }
 
+// True when the title in the box is still the one written from the clip's own
+// first spoken line because the model never wrote one. Those went to YouTube
+// as "Holy shit | Dying Light" and reached nobody, so they are not uploaded
+// without a person having changed them.
+function unwrittenTitle(c, title) {
+  return !!(c && c.seo && c.seo.generated === false
+            && (title || "").trim() === (c.seo.title || "").trim());
+}
+
 async function startYouTubeUpload(c) {
+  if (unwrittenTitle(c, $("sfTitle").value)) {
+    $("yuMsg").innerHTML = `<div class="err">${esc(I18N.t(
+      "This title is just the clip's first spoken line - the model never wrote one. Hit Rewrite, or write your own, then upload."))}</div>`;
+    return;
+  }
   const privacy = $("yuPrivacy").value;
   let publishAt = null;
   if (privacy === "schedule") {
@@ -1108,6 +1122,7 @@ async function openBulk(runId) {
       description: (c.seo && c.seo.description) || "",
       tags: ((c.seo && c.seo.tags) || []).join(", "),
       hasSeo: !!c.seo, done: c.youtube || null, rank: c.rank || c.index || idx + 1,
+      unwritten: !!(c.seo && c.seo.generated === false), clip: c,
       url: c.url,
     })),
   };
@@ -1129,7 +1144,7 @@ async function openBulk(runId) {
 
   $("bkList").innerHTML = bulk.rows.map((r) => `
     <div class="bk-row" data-bk="${r.idx}">
-      <input type="checkbox" ${r.done ? "" : "checked"} aria-label="Include this clip">
+      <input type="checkbox" ${r.done || r.unwritten ? "" : "checked"} aria-label="Include this clip">
       <video class="bk-thumb" src="${esc(r.url)}#t=0.5" preload="metadata" muted playsinline></video>
       <div class="bk-fields">
         <div class="bk-top"><b>#${esc(r.rank)}</b><span class="bk-when"></span>
@@ -1142,6 +1157,7 @@ async function openBulk(runId) {
         </details>
         ${r.done ? `<p class="bk-note">Already on YouTube — ticking it uploads it again.</p>` : ""}
         ${!r.hasSeo ? `<p class="bk-note">No title written for this one yet. Check it, or use Rewrite titles first.</p>` : ""}
+        ${r.unwritten ? `<p class="bk-note">${esc(I18N.t("This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own."))}</p>` : ""}
         <div class="bar bk-bar" hidden><i></i></div>
       </div>
     </div>`).join("");
@@ -1208,6 +1224,12 @@ $("bkGo").onclick = async () => {
     const title = row.querySelector(".bk-title").value.trim();
     if (!title || title.length > 100) {
       $("bkMsg").innerHTML = `<div class="err">Clip #${esc(r.rank)} needs a title of 1 to 100 characters.</div>`;
+      row.querySelector(".bk-title").focus();
+      return;
+    }
+    if (r.unwritten && unwrittenTitle(r.clip, title)) {
+      $("bkMsg").innerHTML = `<div class="err">${esc(I18N.t("Clip"))} #${esc(r.rank)}: ${esc(I18N.t(
+        "This title is just the clip's first spoken line - the model never wrote one. Rewrite titles first, or write your own."))}</div>`;
       row.querySelector(".bk-title").focus();
       return;
     }
