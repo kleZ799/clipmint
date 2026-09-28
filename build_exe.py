@@ -340,6 +340,7 @@ def main() -> int:
         "--hidden-import", "shorts_generator.visual",
         "--hidden-import", "shorts_generator.judge",
         "--hidden-import", "shorts_generator.chat",
+        "--hidden-import", "shorts_generator.local.speaker",
         "--hidden-import", "uvicorn.logging",
         "--hidden-import", "uvicorn.loops.auto",
         "--hidden-import", "uvicorn.protocols.http.auto",
