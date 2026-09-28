@@ -86,6 +86,14 @@ def build(clip: Dict) -> Optional[Dict]:
         parts.append({"key": "energy", "label": "Energy", "value": _int(100 * float(spike)),
                       "why": "How loud its peak is against the rest of the video"})
 
+    # Only on a stream whose chat could be read -- see chat.py. Everywhere
+    # else there is no bar, rather than a bar at zero that would read as
+    # "nobody cared".
+    crowd = signals.get("chat_velocity")
+    if crowd is not None:
+        parts.append({"key": "chat", "label": "Chat", "value": _int(100 * float(crowd)),
+                      "why": "How hard the stream's chat reacted, against its usual pace"})
+
     density = signals.get("density", clip.get("opening_density"))
     if density is not None:
         parts.append({"key": "pace", "label": "Pace",
@@ -93,6 +101,10 @@ def build(clip: Dict) -> Optional[Dict]:
                       "why": "How quickly the talking starts"})
 
     notes: List[str] = []
+    # First, because it is the one note that is not an inference: people
+    # watching live reacted to this.
+    if crowd is not None and float(crowd) >= 0.6:
+        notes.append("Chat went off: the live audience reacted to this")
     if hook is not None and hook >= 80:
         notes.append("Opens on a line that stops the scroll")
     elif hook is not None and hook < 45:
