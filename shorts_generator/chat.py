@@ -59,6 +59,32 @@ MIN_PER_MINUTE = 3.0
 SPIKE_RATIO = 2.0
 SPIKE_GAP = 60.0
 
+# The first minute and a half of a stream is people arriving: "LETS GOOO",
+# "HYPE", "yes", which read as a reaction and are about the stream starting.
+# On a real 22-minute stream the opening wave was the first two "spikes"
+# found. Nothing before this counts.
+START_GRACE = 90
+
+# A streamer asking chat to type something gets a flood of exactly that --
+# "everybody say hi", "type P in the chat", "can we get a W". On the same
+# stream, three of its six biggest bursts were answers to a request, and none
+# of them was a moment. So the chat for a while after a request is set aside:
+# the length of the line, plus this long for the answers to arrive.
+REQUEST_WINDOW = 15.0
+_REQUEST = re.compile(
+    r"\b(every(body|one)|y'?all|you guys|chat)\b[^.?!]{0,40}\b(say|type|spam|drop|put)\b"
+    r"|\b(say|type|spam|drop|put)\b[^.?!]{0,40}\b(in|into|of) (the |my |your )?"
+    r"(youtube |twitch )?chat\b"
+    r"|\bcan (we|i) get (a|an|some)\b[^.?!]{0,20}\b(w|ws|l|f|gg|in the chat)\b"
+    # "type one", "type P": the answer asked for, on its own. Needed because
+    # Whisper mishears "chat" often enough ("Chaps ... type one if you don't
+    # want to be banned") that the addressee cannot be relied on. Only a
+    # single letter or digit, or a one-word vote: "type it in" and "you type
+    # so fast" are ordinary speech, and so is "type a game", which is how
+    # Whisper often hears "type of game".
+    r"|\btype (the letter )?(one|two|yes|no|[b-z0-9])\b",
+    re.IGNORECASE)
+
 # Bumped when the parsing or the weighting changes, so a cached summary from
 # an older build is re-read from the replay rather than trusted.
 CACHE_VERSION = 1
@@ -208,11 +234,47 @@ class ChatTrack:
                   for c in centres]
         self.baseline = [coarse[min(len(coarse) - 1, i // 5)] for i in range(n)]
         self.ratio = [r / b for r, b in zip(rate, self.baseline)]
+        # Arrivals, not reactions -- see START_GRACE. Held at the usual pace
+        # rather than zeroed, so nothing here reads as a lull either.
+        self._mute(0, START_GRACE)
+        self._requests_heard = False
 
         # What counts as a big reaction for this stream. A top-1% second, and
         # never less than the spike threshold, so a chat that never really
         # erupts cannot make its best murmur read as a full-scale reaction.
         self._top = max(SPIKE_RATIO, _percentile(self.ratio, 0.99))
+
+    def _mute(self, start: float, end: float) -> None:
+        """Hold chat at its usual pace over a stretch: it is not evidence there."""
+        a = max(0, int(start))
+        b = min(len(self.ratio), int(end) + 1)
+        for i in range(a, b):
+            self.ratio[i] = min(self.ratio[i], 1.0)
+
+    def ignore_requests(self, transcript: Optional[Dict]) -> int:
+        """Set aside the chat that answered the streamer asking it to type.
+
+        Needs the transcript, which the chat does not have, so it is called
+        once the two meet. Returns how many requests were heard. Safe to call
+        twice: a resumed ranking does, and muting is idempotent anyway.
+        """
+        if self._requests_heard or not transcript:
+            return 0
+        self._requests_heard = True
+        heard = 0
+        for seg in transcript.get("segments") or []:
+            if _REQUEST.search(str(seg.get("text") or "")):
+                try:
+                    self._mute(float(seg["start"]), float(seg["end"]) + REQUEST_WINDOW)
+                except (KeyError, TypeError, ValueError):
+                    continue
+                heard += 1
+        if heard:
+            # The scale was set with those answers in it; one prompted flood
+            # would otherwise stay the stream's top reaction, so every real one
+            # would score as a fraction of something that never happened.
+            self._top = max(SPIKE_RATIO, _percentile(self.ratio, 0.99))
+        return heard
 
     def __bool__(self) -> bool:
         return bool(self.per_second)
@@ -266,7 +328,12 @@ class ChatTrack:
                 break
             if all(abs(i - j) >= SPIKE_GAP for j in picked):
                 picked.append(i)
-        return [(float(i), round(self.ratio[i], 1)) for i in sorted(picked)]
+        # Each rate is the burst that *ends* at its second, so the burst
+        # itself sits half a window earlier. Reported there: a marker at the
+        # tail of the burst points the model further past the moment than the
+        # reaction lag already does.
+        half = RATE_WINDOW / 2.0
+        return [(max(0.0, i - half), round(self.ratio[i], 1)) for i in sorted(picked)]
 
     def to_json(self) -> Dict:
         return {"version": CACHE_VERSION, "messages": self.messages,

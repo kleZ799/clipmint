@@ -895,6 +895,13 @@ def get_highlights(
     llm_fn = llm_fn or call_muapi_llm
     duration = transcript.get("duration", 0)
     chat_note = CHAT_NOTE if chat else ""
+    if chat:
+        # The first place the chat meets the transcript: a burst answering
+        # "everybody type W" is the streamer's request, not a moment.
+        asked = chat.ignore_requests(transcript)
+        if asked:
+            print(f"[chat] set aside the answers to {asked} request(s) to type "
+                  f"in chat", flush=True)
     content_info = resolve_content(
         transcript, llm_fn, kind=kind, video_meta=video_meta,
         saved=_load_saved_content(checkpoint_path, duration),
