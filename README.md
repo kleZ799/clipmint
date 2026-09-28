@@ -299,6 +299,19 @@ stay for it?
   vision model as a stranger would meet them: the first instant, a second and
   a half in, the payoff and the end. Menus, loading screens and stream
   dashboards drop to the bottom before anything is rendered.
+- **It reads the chat.** A YouTube stream keeps a replay of its live chat, and
+  that is the one test audience a stream ever gets: a few hundred people
+  typing "WHAT" at the same second. The app fetches it while the video
+  transcribes and finds the bursts, measured against how busy that chat
+  usually is at that point in the stream, so a packed finale doesn't drown out
+  a big moment in a quiet first half. Hellos, goodbyes and "just subbed"
+  floods don't count, and neither does chat answering you: when you say
+  *"everybody type W"*, the flood that follows is set aside, because it's your
+  request, not a moment. The bursts are marked in the transcript the AI ranks,
+  so it finds moments the words never mention, like a clutch played in
+  silence or a jump scare answered with a gasp. Every candidate is also
+  scored on how hard chat reacted to it. A stream with no chat replay, or a
+  chat too quiet to mean anything, is ranked exactly as before.
 - **No near-duplicates.** Two clips that share more than a quarter of their
   footage are one clip.
 
@@ -309,7 +322,9 @@ behind the score. The score is split into five bars: **Hook** (how hard the
 first line stops a scroll), **Moment** (how strong the moment is overall),
 **Look** (how the frames came across to the vision check), **Energy** (how
 loud its peak is against the rest of the video) and **Pace** (how quickly the
-talking starts). Under the bars is the model's own sentence
+talking starts). A stream whose chat could be read gets a sixth, **Chat**:
+how hard the live audience reacted, against its usual pace, and a note saying
+so when chat went off. Under the bars is the model's own sentence
 on why the moment works. "Strong moment, weak hook" means post it with a
 better cover line, not skip it. Open **Boost** on any clip to see the numbers
 and a grade: Top pick, Strong, Worth a look or Long shot. The library can sort
@@ -1020,6 +1035,12 @@ are folded into the rank alongside the model's opinion:
 | **Trigger phrases** | A short fixed list — *no way*, *wait for it*, *I can't believe* — weighted by how hard each lands, and counted double in the opening line |
 | **Silence-to-peak** | A quiet beat right before the spike. Build-up → payoff reads as a moment; a flat loud run-up reads as noise |
 | **Dialogue density** | Words per second in the first two seconds. Below the floor is dead air, which is the single most reliable way to lose a viewer |
+| **Chat velocity** | On a stream with a chat replay: the biggest burst of messages during the clip or up to 12 seconds after it, against how busy chat was in the ten minutes around it. Shouting, stretched letters, *"no way"* and 💀 count in full, plain conversation for less, and hellos, goodbyes and sub-talk not at all |
+
+The chat does a second job before any of that. Its biggest bursts go into the
+transcript the model reads as marker lines, *"CHAT SPIKE: 5.5x its usual
+pace"*, with a note that chat reacts a few seconds *after* the thing that
+caused it. That is how the ranker finds a moment the words never mention.
 
 **Nor can it see.** So the picture is measured as well, straight from the
 source with ffmpeg as 48×27 grey frames: the opening second and a half
@@ -1290,6 +1311,8 @@ The knobs that change output quality most, in order:
 | `MAX_CLIP_SECONDS` | `shorts_generator/highlights.py` | Hard reject above 90s. The prompt separately targets 18–35s, because the completion bar gets stricter the longer a clip runs |
 | `MODEL_WEIGHT` | `shorts_generator/signals.py` | How much of the rank is the model's opinion versus the measured audio. `0.62` by default — lower it if the ranking keeps picking moments that read well and land flat |
 | `TRIGGER_PHRASES` | `shorts_generator/signals.py` | The reaction phrases that score as a hook, weighted. Add the ones **you** actually say |
+| `SPIKE_RATIO` / `REACTION_LAG` | `shorts_generator/chat.py` | How far over its usual pace chat has to jump to count as a reaction (`2×`), and how long after a moment its reaction is still counted (`12s`) |
+| `MIN_MESSAGES` / `MIN_PER_MINUTE` | `shorts_generator/chat.py` | How busy a chat has to be before it is used at all: `150` messages and `3` a minute. Below that, a burst is three people saying hello at once |
 | `TARGET_BY_KIND` | `shorts_generator/boundaries.py` | Clip length per content type, when the prompt names no length of its own |
 | `REPLAY_SECONDS` | `shorts_generator/hook_open.py` | How long the hook cold open runs, `1.9s` by default |
 | `PRESETS` | `shorts_generator/captions.py` | The four caption styles: font, size, colours, words per line. Add a fifth by adding an entry and its font to `assets/fonts` |
@@ -1401,6 +1424,7 @@ shorts_generator/
 ├── pipeline.py            # orchestrator — picks local vs api
 ├── highlights.py          # the brain: prompts, chunking, dedupe
 ├── signals.py             # loudness envelope + trigger phrases → measured hook score
+├── chat.py                # a stream's chat replay → when the audience reacted
 ├── boundaries.py          # snap spans to sentences; enforce the length asked for
 ├── hook_open.py           # the cold open that puts a late payoff first
 ├── words.py               # word timings for a finished clip
