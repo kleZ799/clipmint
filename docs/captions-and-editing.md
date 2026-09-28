@@ -170,7 +170,7 @@ later.
 
 ## 6. Why a clip ranked where it did
 
-Every clip card shows up to five bars under its title, and the model's own sentence
+Every clip card shows up to six bars under its title, and the model's own sentence
 on why the moment works:
 
 <img src="../assets/screenshots/03-clips.png" alt="Clips in a grid with burned-in captions, each card showing its score, the four bars and the reason it ranked" width="880">
@@ -182,9 +182,11 @@ on why the moment works:
 | **Look** | How the frames came across to a stranger: the first second, whether the payoff is visible, whether it stands alone | the vision judge |
 | **Energy** | How loud its peak is against the rest of the video | the audio |
 | **Pace** | How quickly the talking starts | the words |
+| **Chat** | How hard the stream's chat reacted, against its usual pace. Only on a YouTube stream whose chat replay was busy enough to read | the chat replay |
 
 A bar is only drawn when it was actually measured. A video with no usable
-audio has no Energy bar rather than an empty one.
+audio has no Energy bar rather than an empty one, and a video with no chat has
+no Chat bar.
 
 <img src="../assets/screenshots/05-boost.png" alt="Boost on the top clip: the scorecard with its reason, four numbered bars, notes and what the edit did" width="880">
 
