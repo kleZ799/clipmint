@@ -70,7 +70,7 @@ browser rather than in a window of its own.
 | | |
 |---|---|
 | **Finds the moments** | Ranks every moment by the rules for its kind of video, then looks at the best ones the way a stranger scrolling past would |
-| **Frames them** | Webcam over gameplay, a crop that follows your face, or plain centre crop, at the source's real quality |
+| **Frames them** | Webcam over gameplay, a crop that follows your face (or whoever is talking, when two people share the shot), or plain centre crop, at the source's real quality |
 | **Captions them** | Burned in, a few words at a time, the spoken word lit up. Four styles; fix a misheard word afterwards |
 | **Edits them** | Cuts quiet pauses and "um"s, punches in on emphasis, adds emoji, stock B-roll and your logo if you want |
 | **Explains them** | A score split into Hook, Moment, Look, Energy and Pace, with the reason each clip ranked where it did |
@@ -962,6 +962,8 @@ Then the whole thing renders in **one ffmpeg pass** — crop, crop, scale, `vsta
 
 If the face fills the frame, there is no overlay — it's a podcast or a just-chatting segment — and that clip gets the face-following crop instead, which holds still until you actually move and then eases after you. If no face turns up anywhere, it falls back to a centre crop and says so in the log rather than silently shipping garbage.
 
+**Two people in one shot, and a vertical crop only fits one.** The crop used to take the biggest face, which on a podcast is whoever sits nearer the camera — so it stayed on them through every line the other person said. Now it watches each person's mouth, frame against frame, and frames whoever is talking, cutting to the other person when they take over the way an editor would. No shot is shorter than two seconds, so a laugh or a nod doesn't flick the frame across the table. Tested on two episodes of a two-person podcast, cut into 30-second clips the way the app cuts them: it framed the speaker **86%** and **96%** of the time, against **73%** and **10%** for the biggest face. On one person, or a show that cuts between separate cameras, nothing changes.
+
 ---
 
 ## How a VOD becomes Shorts
@@ -1323,6 +1325,7 @@ The knobs that change output quality most, in order:
 | `MAX_PER_CLIP` | `shorts_generator/broll.py` | Most B-roll cutaways per clip, `2` |
 | `CONTEXT_SECONDS` | `local/gaming_layout.py` | How far either side of a clip to look when locating your webcam overlay, `240s` by default. Lower it if your layout changes often mid-stream |
 | `DEAD_ZONE` / `EASE_SECONDS` | `local/clipper.py` | Face-follow: how far you can move before the frame follows (`12%` of it), and how gently it eases after you (`0.45s`) |
+| `SWITCH_MARGIN` / `MIN_SHOT_SECONDS` | `local/speaker.py` | Two people in shot: how much more one has to be talking before the frame cuts to them (`1.15×`), and the shortest a shot may be (`2s`). Raise either for fewer cuts |
 | `FRAMES_PER_CLIP` | `shorts_generator/vision.py` | Frames shown to the vision model per clip, `4` by default |
 | `TITLE_OPTIONS` | `shorts_generator/seo.py` | Titles written per clip for you to choose from, `5` by default |
 | `STAGE_ATTEMPTS` / `CLIP_ATTEMPTS` | `webapp/jobs.py` | How many times a stage, or one clip's render, is tried before a run gives up, `3` each |
@@ -1442,6 +1445,7 @@ shorts_generator/
     ├── transcriber.py     # faster-whisper + .srt cache
     ├── llm.py             # Gemini / Groq / OpenAI, text and vision, with backoff
     ├── clipper.py         # face-following crop on a planned camera path
+    ├── speaker.py         # with two people in shot, which one is talking
     └── gaming_layout.py   # webcam-over-gameplay stack (streams)
 ```
 
