@@ -133,6 +133,34 @@ def detect(img, min_fraction: float = 0.02) -> List[Face]:
     return out
 
 
+def detect_with_mouths(img, min_fraction: float = 0.02
+                       ) -> List[Tuple[Face, Optional[Tuple[float, float]]]]:
+    """Every face, each with the midpoint of its mouth, or None.
+
+    The mouth is what says who is talking: see local/speaker.py. YuNet reports
+    the two mouth corners along with the face (landmarks 10-13), so the point
+    follows the lips through a turned head. Haar reports only a square, and
+    gets None: the caller then places the mouth where it usually sits.
+    """
+    if img is None or img.size == 0:
+        return []
+    h, w = img.shape[:2]
+    min_side = max(12, int(w * min_fraction))
+    detector = _get_yunet(w, h) if img.ndim == 3 else None
+    if detector is None:
+        return [(f, None) for f in _haar_faces(img, max(20, min_side))]
+    _, found = detector.detect(img)
+    out: List[Tuple[Face, Optional[Tuple[float, float]]]] = []
+    for f in (found if found is not None else []):
+        x, y, fw, fh = (float(v) for v in f[:4])
+        if fw < min_side:
+            continue
+        rx, ry, lx, ly = (float(v) for v in f[10:14])
+        out.append(((x + fw / 2, y + fh / 2, fw, float(f[14])),
+                    ((rx + lx) / 2, (ry + ly) / 2)))
+    return out
+
+
 def backend() -> str:
     """"yunet" or "haar" -- which detector the next call will use."""
     if _yunet is not None:
