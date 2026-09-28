@@ -244,6 +244,7 @@ shorts_generator/
 ├── highlights.py           THE BRAIN — prompts, chunking, scoring, dedupe
 ├── content_kinds.py        stream / vlog / podcast / tutorial / other
 ├── signals.py              loudness envelope, trigger phrases, hook score
+├── chat.py                 a stream's chat replay: when the audience reacted
 ├── visual.py               what the picture does: black, dim or still openings, motion
 ├── judge.py                the stranger test, from four frames per candidate (vision)
 ├── boundaries.py           snap spans to sentences; enforce clip length
@@ -588,6 +589,7 @@ HIGHLIGHT_SYSTEM_PROMPT
   ├── {stranger_test}       ← STRANGER_TEST
   ├── {user_brief}          ← the user's own words, if any
   └── {duration_rule}       ← house default, or what the user asked for
++ CHAT_NOTE                 ← only when the stream's chat could be read, §6.15
 ```
 
 **`CRITERIA_BY_KIND` is the single biggest lever in the codebase.** It maps each
@@ -832,16 +834,18 @@ real moment would score within a few points of every other.
 BASE_WEIGHTS = {
     "audio_spike":     0.30,   # peak vs the video's own p95
     "keyword":         0.25,   # trigger phrases, weighted by strength
-    "chat_velocity":   0.20,   # not obtainable — no chat log
+    "chat_velocity":   0.20,   # a stream's chat replay, when it has one — §6.15
     "face_reaction":   0.15,   # not obtainable — too expensive per frame
     "motion":          0.15,   # how much the picture moves, see §6.13
     "silence_to_peak": 0.10,   # quiet run-up before the spike
 }
 ```
 
-The two unobtainable signals are **redistributed, not zeroed**. Scoring them 0
+Missing signals are **redistributed, not zeroed**. Face reaction is never
+measured, and chat is only there on a stream with a busy enough replay. Scoring them 0
 would shrink every clip's ceiling and make an 80 from a video with no chat log
-mean something different from an 80 with one.
+mean something different from an 80 with one. Coverage is measured against
+everything but those two, so a clip with chat on top simply tops it out.
 
 **Coverage caps how far measurement can move a rank.** Redistribution keeps the
 scale honest but cannot manufacture confidence: with no audio the whole score
@@ -1007,6 +1011,106 @@ the average of the three as **Look**. No vision provider, or a failed call, and
 every candidate keeps the rank it had.
 
 ---
+
+### 6.15 The audience's own vote — `chat.py`
+
+Everything else the ranker knows about a moment is an inference: the model
+guesses from the words, `signals.py` guesses from the loudness, the judge
+guesses from four frames. A live chat is not a guess. It is the people who were
+watching, typing at the second it happened — the one test audience a stream
+ever gets. It also sees what the transcript cannot: a clutch played in silence,
+a jump scare answered with a gasp. Those were invisible to a ranker that reads
+a transcript, because nothing was said.
+
+**Getting it.** YouTube keeps a stream's chat as a replay, and yt-dlp fetches
+it as the `live_chat` subtitle track: one JSON action per line, each stamped
+with `videoOffsetTimeMsec`. `chat.load()` asks for it through `yt_access.run`,
+the same ladder the video came down, so a bot gate is handled the same way.
+The job runner starts it on a thread **the moment the download finishes** and
+joins it after transcription. It is network work and Whisper is GPU or CPU
+work, so they overlap for free. A four-hour stream's chat is minutes of
+fetching on its own, and waiting for it in line would add those minutes to
+every run. A local file with a `<name>.live_chat.json` beside it, which is what
+`yt-dlp --write-subs --sub-langs live_chat` leaves, is read the same way.
+
+**Reducing it.** `parse_live_chat()` streams the file a line at a time. A
+90-minute replay was 14.8 MB and 9,712 messages, parsed in 0.14s, and all that
+survives is a weight per second:
+
+| Message | Weight | Why |
+|---|---|---|
+| Shouting, `!!`, `?!`, stretched letters, *omg / no way / lmao / W / clip it*, 💀 😂 | 1.0 | a reaction |
+| An emote with no text | 1.0 | emote spam is about the most reliable reaction there is |
+| A plain sentence | 0.4 | conversation — the baseline a spike is measured against |
+| A Super Chat | 2.0 | money on this exact second, but not enough to outvote a room |
+| Hellos, goodbyes, "first", "just subbed", birthdays | 0 | floods that look exactly like a reaction on a rate chart and are about the stream, not the moment |
+
+That last row came from the data. Unfiltered, the biggest "spike" in the test
+stream was 1:21 — the opening wave of *hi*, *hellooo*, *hi hi hi*.
+
+**A spike against what?** Chat on a stream drifts: a trickle for the first half
+hour, packed for the reveal, dregs at the end. Against the whole stream's rate,
+every busy stretch reads as a spike and every quiet one as nothing. So each
+second's 10-second rate is divided by the **median rate over the ten minutes
+around it**. That is a local baseline, the same robust-statistics move as the
+audio's percentile anchors. It is floored at half the stream's own median, so
+three messages after the stream ends against a baseline of one cannot pass for
+the moment of the night.
+
+**Two uses.**
+
+1. **In the prompt.** `build_transcript_text()` threads the six biggest bursts
+   of each chunk into the transcript as lines of their own —
+   `[812.0s] >>> CHAT SPIKE: 5.5x its usual pace <<<` — and `CHAT_NOTE` tells
+   the model how to read one: chat lands 2–12s *after* its cause, a spike with
+   nothing said before it is something on screen, and a clip still has to open
+   on a line that hooks. Chunk segments are rebased to zero, so the markers are
+   rebased by the chunk's offset. The checkpoint fingerprint gains `|chat` only
+   when there is a chat, so a video that never had one keeps every chunk it was
+   ranked on, while a stream whose chat has just become readable is re-ranked
+   with it.
+2. **In the rank.** `ChatTrack.velocity(start, end)` takes the biggest ratio in
+   the span **or up to `REACTION_LAG` = 12s after it**, and maps it to 0–1
+   between the usual pace (1×, scoring nothing) and the stream's own top 1%.
+   That becomes `chat_velocity`, weighted 0.20 by the rule book like every
+   other signal.
+
+**The streamer asking for it.** The first real stream this ran on — a
+22-minute rage game, 4,495 messages — had six bursts over 2×. Only two were
+moments: a jump that went wrong and a fall. The first was viewers arriving.
+Three were **answers to the streamer**: *"everybody say hi"*, *"type P in the
+YouTube chat"*, *"if everyone is in favour… say I"*. A request gets a flood of
+exactly what was asked for, and on a rate chart that flood is indistinguishable
+from a reaction. So:
+
+- `START_GRACE` = 90s: the opening minute and a half is held at the usual pace.
+  Arrivals, not reactions.
+- `ChatTrack.ignore_requests(transcript)` scans the transcript for the streamer
+  addressing chat with an instruction (`_REQUEST`: *everybody / y'all / chat …
+  say / type / spam*, *say … in the chat*, *can we get a W*, *type one*,
+  *type P*). It mutes the chat from the start of that line to 15 seconds past
+  its end, then recomputes the stream's top-1% scale, which that flood had
+  set. It runs in `get_highlights()`, the first place the chat and the
+  transcript meet. On that stream it heard 8 requests and cut the list to four.
+- *"type one"* is there because Whisper heard *"Chat, you don't want to be
+  banned, type one"* as *"Chaps…"*. The addressee cannot be relied on, so a bare
+  instruction to type a single letter, digit or vote counts on its own. Tested
+  against the ordinary uses of *type*: *"this type of game"*, *"type it in"*,
+  *"you type so fast"*, and *"type a game"*, which is how Whisper often hears
+  *"type of game"*.
+
+Marker times are also moved to the **middle** of a burst rather than its end,
+since each rate is the 10 seconds ending at that second. A marker at the tail
+pointed the model further past the moment than the reaction lag already did.
+
+**When not to pretend.** Under `MIN_MESSAGES` = 150 messages, or 3 a minute,
+there is no chat as far as the ranker is concerned. On a small channel a
+"spike" is three people saying hello at once. The first real test of this
+was the author's own 34-minute stream, which had kept a chat replay containing
+zero messages. Measured and cached as nothing, it is ranked exactly as before.
+Every failure — no replay, chat turned off by the channel (Minecraft LIVE's
+official VODs have none), YouTube refusing — prints one line and returns
+`None`. No chat can never cost a run.
 
 ## 7. The three renderers
 
@@ -1350,7 +1454,10 @@ Every clip already carried the numbers it was ranked on: `hook_score` and
 `scorecard.build()` turns them into five 0–100 parts: **Hook**, **Moment**,
 **Look** (the average of the vision judge's three scores, [§6.14](#614-the-stranger-test-with-eyes--judgepy)),
 **Energy** (`audio_spike`) and **Pace** (opening words per second against
-2.5), each drawn only when it was actually measured. Two notes come from the
+2.5), each drawn only when it was actually measured. A stream whose chat could
+be read adds **Chat** (`chat_velocity`, [§6.15](#615-the-audiences-own-vote--chatpy)),
+and the note *"Chat went off"* above every other note once it reaches 60: it is
+the only note that is not an inference. Two notes come from the
 picture: a clip the judge would cut says a stranger would likely swipe past it,
 and one with a `visual_penalty` says its dark or still opening cost it points. It adds a grade (Top pick
 ≥ 85, Strong ≥ 70, Worth a look ≥ 55, Long shot), the model's own
@@ -2529,7 +2636,7 @@ Two Gemini-specific details:
 
 ---
 
-## 15. Caching: seven independent layers
+## 15. Caching: eight independent layers
 
 Each guards a different expense:
 
@@ -2542,6 +2649,7 @@ Each guards a different expense:
 | Gemini model list | in-process, 600s | — | A network round trip on every settings load |
 | Words heard per clip | `heard_words` in `job.json` | the clip's span | Listening to a clip again to fix its captions |
 | B-roll footage | `output/b-roll/<query>-<id>.mp4` | Pexels video id | Downloading the same stock clip twice |
+| Chat replay | `output/<stem>.chat.json` | the source file, and `CACHE_VERSION` | Fetching a big stream's chat again — minutes and hundreds of MB, kept as one number per second. A video with no chat is cached as such |
 
 ### The workflow this enables
 
@@ -3477,6 +3585,13 @@ are written into `job.json`, which is the record the rule book's Part 6 needs �
 but nothing reads YouTube Analytics back in, so the weights in `signals.py` are
 still hand-set seeds rather than anything derived from this channel's own
 retention. That is an OAuth flow and a correlation pass away.
+
+**Chat is YouTube's only.** `chat.py` reads YouTube's live-chat replay. A
+Twitch or Kick VOD has its chat somewhere else and is ranked without it, as is
+a local recording with no `.live_chat.json` beside it. And chat is only as good
+as the audience: a stream with a few dozen viewers is under the floor and gets
+no chat signal at all, which is correct, but means the channels that most need
+help picking moments are the ones this helps least.
 
 ---
 
