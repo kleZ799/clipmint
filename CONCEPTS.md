@@ -354,7 +354,7 @@ output will propagate the degradation.
 
 ## 5. AI/ML: computer vision
 
-**Files:** `shorts_generator/local/gaming_layout.py`, `clipper.py`, `shorts_generator/faces.py`, `shorts_generator/accel.py`, `shorts_generator/vision.py`
+**Files:** `shorts_generator/local/gaming_layout.py`, `clipper.py`, `speaker.py`, `shorts_generator/faces.py`, `shorts_generator/accel.py`, `shorts_generator/vision.py`
 
 **Haar cascade classifiers** (`cv2.CascadeClassifier` with
 `haarcascade_frontalface_default.xml`). This is *classical* CV, not deep
@@ -451,6 +451,45 @@ operator does:
   through it. Each stretch between cuts is smoothed on its own.
 
 Measured on the same clip: direction reversals fell from 50 to 4.
+
+### Active speaker detection, and evaluating without labels
+
+With two people in a wide shot, *which* face to follow is a classification
+problem: who is speaking, per moment. The research version of this is
+audio-visual — networks like SyncNet and TalkNet learn whether a mouth matches
+the sound. `local/speaker.py` does a cheap visual-only version: the speaker's
+mouth moves frame to frame and the listener's mostly does not. Three ideas do
+the work:
+
+- **Registration before differencing.** Subtracting two frames measures every
+  kind of motion, and a nodding listener moves more than a still talker's lips.
+  Aligning the two mouth patches by **phase correlation** (the shift that
+  maximises their cross-power spectrum) cancels translation, so what remains
+  is the mouth changing shape.
+- **Normalisation can destroy the signal.** Dividing each person's activity by
+  their own median looks like good hygiene — faces differ in size, beard,
+  lighting. Inside a 30-second clip where one person talks throughout, it
+  makes both people's normalised activity hover around 1, and the classifier
+  guesses. The patches are already z-scored per frame, which handles lighting;
+  the per-person step was pure harm. **Test a normalisation in the regime it
+  will run in**, not on the longest file you have.
+- **Decisions are not measurements.** A per-sample argmax flickers. A centred
+  window, a switching margin (hysteresis) and a minimum run length turn a
+  noisy score into an edit — the same shape as the camera path above.
+
+The harder problem was **knowing whether it worked**. There were no labels,
+so they were manufactured, and each source failed differently:
+
+| Ground truth | What went wrong |
+|---|---|
+| Pitch (man low, woman high) | Her voice sat at 130–160 Hz, overlapping his; autocorrelation also made octave errors |
+| Two-cluster MFCC k-means | Clean on one episode (checked against the editor's singles: 88%), wrong on the other — it called long stretches of him "her" |
+| Hand labels from frames | Slow, but the only one that survived inspection |
+
+Every automatic label was checked against something independent before it
+was trusted, and one failed that check. Had the algorithm been tuned against
+it, it would have been tuned towards a worse answer: the voice labels scored
+it at 65% on that episode, the hand labels at 96%.
 
 ### Vision-language models, and why confidence is not evidence
 
@@ -1602,6 +1641,14 @@ importantly, chat goes into the *prompt*, not only the score, so it changes
 which moments are proposed at all, not just how they are ordered. See
 [§5a](#5a-aiml-audio-signal-processing-and-feature-fusion), *A crowd as a noisy
 label*.
+
+**"How do you know the speaker-following works?"**
+Scored against ground truth inside 30-second clips, the length the app cuts:
+86% and 96% on two podcast episodes, against 73% and 10% for following the
+biggest face. The interesting part is the ground truth: pitch failed, voice
+clustering worked on one episode and silently failed on the other, and the
+second episode was labelled by hand. See
+[§5](#5-aiml-computer-vision), *Active speaker detection*.
 
 **"Why is it slow?"**
 Transcription dominates — it is the only stage proportional to *video length*
