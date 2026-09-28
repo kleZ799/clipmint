@@ -15,11 +15,14 @@ rule book:
   * silence-to-peak      — a quiet beat right before the spike (build-up)
   * dialogue density     — words per second, which is how dead air is caught
 
-Two signals from the rule book are deliberately absent. Chat velocity would be
-the strongest ground truth there is, and it needs a chat log this app never
-receives; face reaction needs a face model per frame, which costs more than the
-whole render. Rather than scoring them zero and quietly shrinking every clip's
-ceiling, their weight is redistributed across the signals that ARE available —
+  * chat velocity        — how hard a stream's chat reacted, when it had one
+                           (see chat.py)
+
+Face reaction, the last signal in the rule book, is deliberately absent: it
+needs a face model per frame, which costs more than the whole render. Chat is
+only there when a stream kept a replay busy enough to mean something. Rather
+than scoring what is missing as zero and quietly shrinking every clip's
+ceiling, its weight is redistributed across the signals that ARE available —
 so a score of 80 means the same thing whatever was measurable.
 
 Everything here is best-effort. No audio track, no numpy, no ffmpeg: the text
@@ -43,9 +46,8 @@ ENVELOPE_RATE = 4000
 # consonant does not read as a spike.
 WINDOW_SECONDS = 0.25
 
-# The rule book's starting weights. Chat and face are listed so the
-# redistribution below has something to redistribute -- and so the day a chat
-# log becomes available, adding it is one line rather than a rewrite.
+# The rule book's starting weights. Face is listed so the redistribution below
+# has something to redistribute; chat is measured only when there is a chat.
 BASE_WEIGHTS = {
     "audio_spike": 0.30,
     "keyword": 0.25,
@@ -311,7 +313,7 @@ def keyword_hit(text: str) -> float:
 # --- composite scoring ----------------------------------------------------
 
 def measure(highlight: Dict, transcript: Optional[Dict],
-            audio: Optional[AudioTrack]) -> Dict[str, float]:
+            audio: Optional[AudioTrack], chat=None) -> Dict[str, float]:
     """Every sub-signal for one candidate, each normalised to 0-1.
 
     Measured on the OPENING of the clip as much as on the clip as a whole.
@@ -352,6 +354,11 @@ def measure(highlight: Dict, transcript: Optional[Dict],
         out["silence_to_peak"] = audio.silence_to_peak(peak if peak is not None else start)
         if peak is not None:
             out["peak_time"] = peak
+
+    # The audience's own verdict, measured against how busy this stream's
+    # chat usually is at that point -- see chat.py.
+    if chat:
+        out["chat_velocity"] = chat.velocity(start, end)
     return out
 
 
@@ -379,9 +386,10 @@ def signal_score(measured: Dict[str, float]) -> Optional[int]:
     return int(round(100 * _clamp01(score)))
 
 
-# The most that can ever be measured here: chat velocity and face reaction are
-# not obtainable in this app, so their weight is not a shortfall to apologise
-# for. This is the denominator coverage is measured against.
+# The most that can be measured on any video: face reaction is not obtainable
+# in this app, and chat only exists on a stream that kept one, so neither
+# weight is a shortfall to apologise for. This is the denominator coverage is
+# measured against -- a clip with chat on top of the rest simply tops it out.
 _OBTAINABLE = sum(w for k, w in BASE_WEIGHTS.items()
                   if k in ("audio_spike", "keyword", "motion", "silence_to_peak"))
 
@@ -400,7 +408,7 @@ def coverage(measured: Dict[str, float]) -> float:
 
 
 def rescore(highlights: List[Dict], transcript: Optional[Dict],
-            audio: Optional[AudioTrack]) -> List[Dict]:
+            audio: Optional[AudioTrack], chat=None) -> List[Dict]:
     """Fold measured signals into each highlight's rank, in place.
 
     `score` stays the field everything downstream sorts on, so nothing else in
@@ -413,7 +421,7 @@ def rescore(highlights: List[Dict], transcript: Optional[Dict],
     retention numbers exist there is something to correlate them against.
     """
     for h in highlights:
-        measured = measure(h, transcript, audio)
+        measured = measure(h, transcript, audio, chat)
         h["signals"] = {k: round(v, 4) for k, v in measured.items()}
 
         peak = measured.pop("peak_time", None)
@@ -422,6 +430,12 @@ def rescore(highlights: List[Dict], transcript: Optional[Dict],
         density = measured.pop("density", None)
         if density is not None:
             h["opening_density"] = round(density, 2)
+        if chat:
+            # In the unit a person reads -- "chat ran 5x its usual pace" --
+            # for the scorecard, which the 0-1 velocity is not.
+            ratio, _ = chat.peak(float(h.get("start_time", 0) or 0),
+                                 float(h.get("end_time", 0) or 0))
+            h["chat_ratio"] = round(ratio, 1)
 
         measured_score = signal_score(measured)
         h["signal_score"] = measured_score
