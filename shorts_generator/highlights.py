@@ -318,6 +318,9 @@ MAX_CLIP_SECONDS = 90         # reject anything the model returns above this
 CHUNK_SIZE_SECONDS = 1200       # 20-min chunks for long videos
 LONG_VIDEO_THRESHOLD = 1800     # chunk videos longer than 30 min
 CHUNK_OVERLAP_SECONDS = 60
+# Chat bursts shown per chunk. A handful points at the moments that mattered;
+# dozens would turn the markers into background the model learns to ignore.
+CHAT_SPIKES_PER_CHUNK = 6
 GPT_CALL_TIMEOUT_SECONDS = 300  # cap LLM polls at 5 min — a wedged call should fail fast
 MAX_HIGHLIGHT_API_ATTEMPTS = 3
 
@@ -564,9 +567,40 @@ def resolve_content(transcript: Dict, llm_fn: LLMFn, kind: str = content_kinds.A
     return info
 
 
-def build_transcript_text(transcript: Dict) -> str:
+# Said once, above the transcript, when chat markers are in it. The markers
+# point at what the audience reacted to; this tells the model how to read one,
+# because the burst always lands after the thing that caused it.
+CHAT_NOTE = """
+Live chat: this was a stream, and its chat replay is in the transcript as
+lines like "[812.0s] >>> CHAT SPIKE: 5.5x its usual pace <<<". Each marks a
+burst of viewers reacting at once -- the moment the audience actually cared
+about. Chat reacts 2-12 seconds AFTER what caused it, so the moment itself is
+just before the marker. A spike with little or nothing said before it is a
+moment the words do not carry: something happened on screen, and the reaction
+you can read around it is the clue. Weigh these heavily: a real audience
+voted for them. Your clip must still open on a line that hooks and end once
+the moment lands -- never on the marker itself, which is not speech.
+"""
+
+
+def build_transcript_text(transcript: Dict, chat=None, offset: float = 0.0) -> str:
+    """The transcript as the model reads it: one timestamped line per segment.
+
+    With a chat, its biggest bursts are threaded in as marker lines at their
+    own times. `offset` is where a chunk starts in the source, because chunk
+    segments are rebased to zero and the chat is not.
+    """
     segments = transcript.get("segments", [])
-    return "\n".join(f"[{s['start']:.1f}s] {s['text'].strip()}" for s in segments)
+    lines = [(float(s["start"]), f"[{s['start']:.1f}s] {s['text'].strip()}")
+             for s in segments]
+    if chat and segments:
+        span = float(transcript.get("duration") or segments[-1]["end"])
+        for t, ratio in chat.spikes(offset, offset + span, limit=CHAT_SPIKES_PER_CHUNK):
+            local = t - offset
+            lines.append((local, f"[{local:.1f}s] >>> CHAT SPIKE: {ratio}x its usual pace <<<"))
+        # Stable, so a marker lands after the line spoken in the same second.
+        lines.sort(key=lambda pair: pair[0])
+    return "\n".join(line for _, line in lines)
 
 
 def chunk_transcript(transcript: Dict) -> List[Dict]:
@@ -614,6 +648,7 @@ def call_highlight_api(
     llm_fn: LLMFn = call_muapi_llm,
     clip_seconds: Optional[List[float]] = None,
     brief: str = "",
+    chat_note: str = "",
 ) -> Dict:
     # Ask for ~2× the user's target so dedupe has headroom, but cap so the model
     # doesn't have to generate a huge JSON payload (which times out gpt-5-mini).
@@ -630,7 +665,7 @@ def call_highlight_api(
         duration_rule=duration_rule(clip_seconds),
         user_brief=brief_block(brief),
     )
-    base_prompt = f"{system}\n\nTranscript:\n{transcript_text}"
+    base_prompt = f"{system}\n{chat_note}\nTranscript:\n{transcript_text}"
     prompt = base_prompt
     last_error = "unknown"
 
@@ -696,7 +731,8 @@ def dedupe_highlights(highlights: List[Dict]) -> List[Dict]:
 
 def _checkpoint_fingerprint(duration: float, chunk_count: int, num_clips: int,
                             clip_seconds: Optional[List[float]] = None,
-                            kind: str = content_kinds.OTHER) -> str:
+                            kind: str = content_kinds.OTHER,
+                            chat: bool = False) -> str:
     """Identifies the run a saved checkpoint belongs to.
 
     Includes the requested clip length: asking for 30s clips after a run that
@@ -721,8 +757,11 @@ def _checkpoint_fingerprint(duration: float, chunk_count: int, num_clips: int,
     # A minute is coarse enough to absorb that and far finer than any real
     # change of file, and it is not the only guard: the checkpoint is written
     # beside one specific video, and chunk_count moves with the length too.
+    # Chat is marked only when there is one, so a video that never had a chat
+    # keeps every chunk it was ranked on before chat was read at all -- while
+    # a stream whose chat has just become readable is ranked again with it.
     return (f"v{PROMPT_VERSION}|{duration / 60:.0f}|{chunk_count}|{num_clips}"
-            f"|{length}|{kind}")
+            f"|{length}|{kind}" + ("|chat" if chat else ""))
 
 
 def _load_saved_content(path: Optional[Path], duration: float) -> Optional[Dict]:
@@ -786,6 +825,7 @@ def finalize(
     content_type: str = "",
     reserve_seconds: float = 0.0,
     source_path: Optional[str] = None,
+    chat=None,
 ) -> List[Dict]:
     """Turn the model's proposals into the spans that actually get cut.
 
@@ -807,7 +847,7 @@ def finalize(
         content_type=content_type, reserve_seconds=reserve_seconds,
     )
     visual.measure_all(highlights, source_path)
-    signals.rescore(highlights, transcript, audio)
+    signals.rescore(highlights, transcript, audio, chat)
     highlights = dedupe_highlights(highlights)
     highlights.sort(key=lambda h: int(h.get("score", 0) or 0), reverse=True)
     return highlights
@@ -825,6 +865,7 @@ def get_highlights(
     kind: str = content_kinds.AUTO,
     video_meta: Optional[Dict] = None,
     source_path: Optional[str] = None,
+    chat=None,
 ) -> Dict:
     """Main entry point — returns {highlights: [...], content: {...}}, best first.
 
@@ -846,9 +887,14 @@ def get_highlights(
     is what lets the ranking hear the clip rather than only read it, and what
     tells the renderer where a hook replay should open. `source_path` lets it
     look as well: brightness and motion of every candidate, see visual.py.
+
+    `chat` is a stream's chat replay (chat.ChatTrack), when it had one busy
+    enough to read. Its bursts are marked in the transcript the model ranks,
+    and each candidate is scored on how hard chat answered it.
     """
     llm_fn = llm_fn or call_muapi_llm
     duration = transcript.get("duration", 0)
+    chat_note = CHAT_NOTE if chat else ""
     content_info = resolve_content(
         transcript, llm_fn, kind=kind, video_meta=video_meta,
         saved=_load_saved_content(checkpoint_path, duration),
@@ -864,7 +910,7 @@ def get_highlights(
         print(f"[highlights] long video — splitting into {len(chunks)} chunks", flush=True)
 
         fingerprint = _checkpoint_fingerprint(duration, len(chunks), num_clips, clip_seconds,
-                                              kind=content_info["kind"])
+                                              kind=content_info["kind"], chat=bool(chat))
         done = _load_checkpoint(checkpoint_path, fingerprint)
         if done:
             print(f"[highlights] resuming — {len(done)}/{len(chunks)} chunk(s) "
@@ -878,9 +924,9 @@ def get_highlights(
                 all_highlights.extend(done[key])
                 continue
 
-            text = build_transcript_text(chunk)
+            text = build_transcript_text(chunk, chat=chat, offset=offset)
             print(f"[highlights] chunk {i + 1}/{len(chunks)} (offset {offset:.0f}s)", flush=True)
-            result = call_highlight_api(text, content_info, chunk["duration"], num_clips=num_clips, is_chunk=True, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief)
+            result = call_highlight_api(text, content_info, chunk["duration"], num_clips=num_clips, is_chunk=True, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note)
             ranked = []
             for h in result.get("highlights", []):
                 h["start_time"] = float(h["start_time"]) + offset
@@ -896,8 +942,8 @@ def get_highlights(
 
         candidates = dedupe_highlights(all_highlights)
     else:
-        text = build_transcript_text(transcript)
-        result = call_highlight_api(text, content_info, duration, num_clips=num_clips, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief)
+        text = build_transcript_text(transcript, chat=chat)
+        result = call_highlight_api(text, content_info, duration, num_clips=num_clips, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note)
         candidates = dedupe_highlights(result.get("highlights", []))
 
     highlights = finalize(
@@ -906,6 +952,7 @@ def get_highlights(
         content_type=str(content_info.get("content_type") or ""),
         reserve_seconds=reserve_seconds,
         source_path=source_path,
+        chat=chat,
     )
     print(f"[rank] {len(highlights)} candidate(s) after snapping · "
           f"{signals.summarise(highlights)}", flush=True)
