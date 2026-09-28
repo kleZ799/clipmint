@@ -524,7 +524,7 @@ easier question.
 
 ## 5a. AI/ML: audio signal processing and feature fusion
 
-**Files:** `shorts_generator/signals.py`, `boundaries.py`
+**Files:** `shorts_generator/signals.py`, `chat.py`, `boundaries.py`
 
 The ranking model reads a transcript. A transcript is a lossy projection of the
 thing you actually care about: it keeps the words and throws away the volume,
@@ -563,9 +563,10 @@ bad frame cannot drag the framing off.
 
 ### Weighted feature fusion, and the missing-feature problem
 
-Five signals, each normalised to 0–1, combined by fixed weights into one score.
-Two of them (live-chat velocity, facial reaction) are not obtainable in this
-system. The interesting question is what to do about that.
+Signals, each normalised to 0–1, combined by fixed weights into one score.
+One of them (facial reaction) is never measured here, and another (live-chat
+velocity) exists only on a stream that kept a busy chat replay. The interesting
+question is what to do about a feature that is sometimes missing.
 
 - **Scoring them zero is wrong.** It silently lowers the ceiling: the best clip
   in a video with no chat log could never score above 80, so scores stop being
@@ -599,6 +600,50 @@ conditions are not tradeable, and modelling them as weights says the opposite.
 The mirror of that: zero words counted when there is *no transcript* means "we
 did not look", not "there is silence". A missing measurement and a measurement
 of zero must never share a representation.
+
+### A crowd as a noisy label
+
+Every other signal is a proxy for *"would people react to this?"*. A stream's
+live chat is not a proxy. It is people reacting, timestamped. In ML terms it is
+**weak supervision**: a label that is noisy, delayed and biased, but real, and
+much cheaper than anything you could collect yourself. `chat.py` is mostly
+about the three ways it is wrong:
+
+- **Noisy.** A flood of *hi* when the stream starts, *bye* at the end and
+  *just subbed* after a shout-out looks exactly like a reaction on a rate
+  chart. So messages are **weighted by content** before they are counted:
+  shouting and *no way* count 1, conversation 0.4, greetings 0. On the test
+  stream, without that filter the biggest "moment" was the opening hello wave.
+  Content filtering has a limit, though. On a real rage-game stream, three of
+  the six biggest bursts were **answers to the streamer**: *"everybody say
+  hi"*, *"type P in the chat"*. A requested flood is a real reaction, just not
+  to anything on screen: the label is confounded by the thing being measured.
+  The fix uses the *other* modality: the transcript says when the streamer
+  asked, and the chat for the next 15 seconds is set aside. That is the same
+  move as removing a known confounder before reading a correlation.
+- **Non-stationary.** A chat's rate drifts across a stream, so a global
+  threshold would call every busy stretch a spike. The rate is divided by a
+  **rolling median over the surrounding ten minutes**. That is a local
+  baseline, the same idea as detrending a time series before looking for
+  anomalies, and the median makes it robust to the very spikes it is looking
+  for.
+- **Delayed.** The stream reaches viewers late and typing takes time, so the
+  label lands 2–12 seconds *after* the event. A span is scored on the chat
+  during it *and* the 12 seconds after. The model is told the same thing in
+  plain words, so it knows the moment is just before the marker.
+
+The label is used twice, and the two uses are different kinds of thing. As a
+**feature**, it is one more weighted signal in the blend. As a **retrieval
+hint**, its peaks are written into the transcript the model reads, and that
+changes *which candidates exist at all*. A reaction to something nobody said
+out loud was invisible to a ranker that reads text. No reweighting of the
+candidates afterwards could recover a moment that was never proposed. Adding
+the crowd to the prompt is what fixes recall; adding it to the score only
+changes precision.
+
+And there is a floor. Under 150 messages, or 3 a minute, the "label" is three
+people, and the honest move is to treat it as missing: redistribute, as above,
+rather than score a spike made of noise.
 
 ### Post-hoc enforcement over prompt compliance
 
@@ -1549,6 +1594,14 @@ being able to distinguish those is itself a signal.
 
 **"Walk me through what happens when I paste a URL."**
 Follow [§2](#2-the-system-in-one-picture) top to bottom. Mention the caches.
+
+**"What does the chat add that the audio doesn't?"**
+The audio hears the streamer; the chat hears the audience. A clutch played in
+silence has no audio spike and no words, and chat still erupts. More
+importantly, chat goes into the *prompt*, not only the score, so it changes
+which moments are proposed at all, not just how they are ordered. See
+[§5a](#5a-aiml-audio-signal-processing-and-feature-fusion), *A crowd as a noisy
+label*.
 
 **"Why is it slow?"**
 Transcription dominates — it is the only stage proportional to *video length*
