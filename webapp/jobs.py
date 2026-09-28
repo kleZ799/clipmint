@@ -1017,6 +1017,18 @@ class JobStore:
                 self._finalize(job, shorts, all_highlights)
                 return
 
+            # A stream's chat replay, fetched while Whisper works. It is a
+            # network job and transcription is a GPU one, so they overlap for
+            # free; a big stream's chat can take minutes on its own, and
+            # waiting for it in line would add them to every run.
+            from shorts_generator import chat as chat_replay
+            fetched: Dict = {}
+            fetching = threading.Thread(
+                target=lambda: fetched.update(
+                    track=chat_replay.load(source_path, job.source)),
+                name="chat-replay", daemon=True)
+            fetching.start()
+
             self._update(job, stage="transcribe", message=_STAGE_LABELS["transcribe"])
             # "auto" is the one value that means "let whisper decide"; every
             # other value pins it, so a stream in one language cannot drift
@@ -1036,6 +1048,12 @@ class JobStore:
             # hear a reaction, and what tells each clip where its own loudest
             # moment is so the cold open can start there.
             audio = analyse_audio(source_path, transcript.get("duration", 0))
+            # Usually long finished by now. If it is not, it is worth a wait:
+            # it is the one signal that says what a real audience reacted to.
+            if fetching.is_alive():
+                self._update(job, message="Reading the stream's chat")
+            fetching.join()
+            chat = fetched.get("track")
             # Room held back for that cold open, so a request for 30-second
             # clips still produces 30-second files once it is on the front.
             reserve = hook_budget(job.spec.hook_replay)
@@ -1056,7 +1074,8 @@ class JobStore:
                                     reserve_seconds=reserve,
                                     kind=job.spec.content_kind,
                                     video_meta=job.video_meta,
-                                    source_path=source_path)
+                                    source_path=source_path,
+                                    chat=chat)
             all_highlights = result.get("highlights", [])
             content = result.get("content") or {}
             if not all_highlights:
