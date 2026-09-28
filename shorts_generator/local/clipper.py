@@ -14,7 +14,8 @@ few frames, and a crop that is always moving a little reads as a shaky camera.
 So the path is now planned before a single frame is rendered:
 
   detect    faces sampled ~8 times a second, following one person and ignoring
-            a face that appears for a frame or two
+            a face that appears for a frame or two -- or, with two people in
+            shot together, whoever is talking (see speaker.py)
   clean     gaps held, spikes removed with a median filter
   operate   the window does not move while the face stays inside a dead zone;
             when it leaves, the window re-centres on it
@@ -34,8 +35,9 @@ from typing import Dict, List, Optional, Tuple
 
 from .. import accel, proc
 from ..config import LOCAL_OUTPUT_DIR, LOCAL_OUTPUT_RESOLUTION
-from ..faces import detect as face_detect
+from ..faces import detect_with_mouths as face_detect
 from ..render import LOUDNESS_FILTER
+from . import speaker
 
 # How often faces are looked for. The plan is interpolated between samples,
 # so detecting on every frame buys nothing but time.
@@ -136,15 +138,24 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
 
     times: List[float] = []
     track: List[Optional[Tuple[float, float, float]]] = []
+    seen: List[List[speaker.Sighting]] = []
     last: Optional[Tuple[float, float, float]] = None
     pending: List[Tuple[float, float, float]] = []
     far = 0.25 * src_w
     index = 0
+    # The frame just before each sample. A mouth is measured across that one
+    # frame gap, where the jaw has moved and the head has barely started to:
+    # see local/speaker.py. It is already decoded by grab(); keeping it costs
+    # a colour conversion.
+    before = None
     try:
         while True:
             if not cap.grab():
                 break
             if index % step:
+                if index % step == step - 1:
+                    ok, before = cap.retrieve()
+                    before = before if ok else None
                 index += 1
                 continue
             ok, frame = cap.retrieve()
@@ -156,9 +167,17 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
             proc.wait_if_paused()
             small = (cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
                      if scale < 1.0 else frame)
-            faces = [(cx / scale, cy / scale, fw / scale)
-                     for cx, cy, fw, _ in face_detect(small, min_fraction=0.04)]
+            found = face_detect(small, min_fraction=0.04)
+            faces = [(cx / scale, cy / scale, fw / scale) for (cx, cy, fw, _), _ in found]
             times.append((index - 1) / fps)
+            # Every face, with the pixels around its mouth, for choosing
+            # between people once the whole clip has been seen.
+            seen.append([
+                speaker.sighting(frame, before, cx, cy, fw,
+                                 (mouth[0] / scale, mouth[1] / scale) if mouth else None)
+                for (cx, cy, fw), (_, mouth) in zip(faces, found)])
+            # With a step of one, the previous sample is the frame before.
+            before = frame if step == 1 else None
 
             if not faces:
                 track.append(None)
@@ -188,6 +207,21 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
     finally:
         frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or index
         cap.release()
+
+    # Two people in the frame together: follow whoever is talking, not the
+    # biggest face. With one person, or people only ever shown one at a time,
+    # this declines and the single-face track above stands.
+    try:
+        chosen = speaker.follow_speaker(seen, fps / step, src_w)
+    except Exception as e:  # noqa: BLE001 - a choice of person must never sink a render
+        print(f"[clip/local] could not tell who was talking ({e}) - "
+              f"following the main face", flush=True)
+        chosen = None
+    if chosen is not None:
+        track, info = chosen
+        print(f"[clip/local] {info['people']} people in shot together for "
+              f"{info['together']:.0%} of the clip - following whoever is talking, "
+              f"{info['shots']} shot(s)", flush=True)
     return times, track, fps, max(frames, index), src_w, src_h
 
 
