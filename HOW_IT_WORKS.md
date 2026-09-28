@@ -275,6 +275,7 @@ shorts_generator/
     ├── transcriber.py      faster-whisper + .srt cache
     ├── llm.py              Gemini / Groq / OpenAI, text + vision, retries, fallback
     ├── clipper.py          renderer: face-following crop on a planned camera path
+    ├── speaker.py          two people in shot: which one is talking
     └── gaming_layout.py    renderer: webcam-over-gameplay vstack, overlay located
 
 webapp/
@@ -1239,6 +1240,57 @@ crop that is always moving a little reads as a shaky camera. So the path is now
 On a real face cam: direction reversals went from 50 to 4, the share of frames
 with any movement from 39% to 21%, and the face stays within 4% of centre
 (median).
+
+**Two people in the shot — `local/speaker.py`.** Step 1 used to decide *who*
+by size: the biggest face, then stay on it. On a two-person podcast shot wide,
+a 9:16 window fits one of them, and the biggest face is whoever sits nearer
+the camera, so the other person's every line went out over a shot of someone
+listening. Now every face at every sample is kept with the pixels around its
+mouth, from that frame and from the one just before it (which the decoder has
+already read, so it costs a colour conversion). After the pass,
+`follow_speaker()` decides:
+
+1. **Is there a choice?** Faces are grouped into people by where they sit
+   (`assign`, nearest centre). A candidate must be in 25% of samples and at
+   least half the size of the largest person — that shuts out a face in a
+   video on a stream, a poster, the tiny figures in a split-screen's wide
+   panel. Two candidates must share at least 20% of samples. Otherwise it
+   returns `None` and the single-face track above stands, unchanged.
+2. **Who is moving their mouth?** For each sighting, the mouth patch is cut at
+   the mouth corners YuNet reports, *smoothed over ±0.5s* so the box does not
+   jitter, from both frames; the two are aligned by phase correlation (so the
+   head moving is not read as the jaw moving), brightness-normalised, and
+   compared. Mean absolute difference is that person's activity.
+3. **Cut like an editor.** Activity is averaged over 2s *centred* on each
+   sample — the plan is offline, so it cuts as someone starts talking, not a
+   second after. The shot moves only when another person is 1.15× more active
+   (`SWITCH_MARGIN`), and shots shorter than 2s (`MIN_SHOT_SECONDS`) fold into
+   the one before. A speaker change between people sitting apart is a jump
+   bigger than `CUT_JUMP`, so the planner keeps it a hard cut.
+
+How the measure was chosen: two episodes of the same podcast, one man and one
+woman, 3 minutes each, scored inside 30-second windows because that is what a
+clip is. Ground truth on the first came from clustering the audio into two
+voices (MFCCs, k-means) and checking the clusters against the moments the
+editor cut to a single of one person talking — 88% pure. On the second the
+voice clusters were *not* clean (they called long stretches of him "her"),
+so its two-shots were labelled by hand from frames, before comparing. Results
+for the production code:
+
+| | Episode 1 (voices) | Episode 2 (hand, unseen) |
+|---|---|---|
+| Biggest face | 73% · her lines 0/41 | 10% · her lines 0/11 |
+| Whoever is talking | **86%** · her lines 34/41 | **96%** · her lines 11/11 |
+
+What lost: raw patch differences (head motion swamps them), optical flow in
+the mouth (close, slightly worse), correlating mouth movement with the audio
+envelope (chance level at 8 samples a second), pitch as ground truth (her
+voice sat at 130–160 Hz, overlapping his, and YIN could not separate them),
+and **normalising each person by their own median activity** — best on the
+three-minute file, worst inside 30-second windows, because in a clip where
+one person talks throughout it makes talker and listener look identical.
+Sampling at 8 per second measured the same as 25, so the detection rate did
+not change. The whole step adds about 0.3s to a 30-second clip.
 
 Fixes that carried over, each of which once produced an opaque failure:
 
