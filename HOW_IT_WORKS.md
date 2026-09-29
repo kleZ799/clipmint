@@ -249,6 +249,7 @@ shorts_generator/
 ├── judge.py                the stranger test, from four frames per candidate (vision)
 ├── boundaries.py           snap spans to sentences; enforce clip length
 ├── hook_open.py            prepend a late payoff to the front of a clip
+├── framing.py              the crop window's geometry; a frame or caption height set by hand
 ├── layout_spec.py          natural language → LayoutSpec; quality ladder
 ├── render.py               one entry point that dispatches a LayoutSpec
 ├── autoedit.py             after the cut: jump cuts, punch-ins, emoji, B-roll, one encode
@@ -2273,7 +2274,7 @@ main
  ├── progress panel     stage pills, % bar, live pipeline log
  └── results panel      search + date chips + sort, then the clip grid
                         (each card: rank, score, four score bars, the reason)
-player overlay   video + control rail + trim panel + captions panel + SEO panel
+player overlay   video + control rail + trim, captions, frame and SEO panels
 mini player      persists while you scroll
 drawer           settings: provider, model, budget meters, logo, Pexels key,
                  save location, cleanup
@@ -2404,9 +2405,9 @@ badge takes its grade's colour.
 ### 12.7 The player and trim editor
 
 The player is a `<video>` with a custom control rail (Play, Sound, Trim,
-Captions, Boost, Save, Download, Show file, Delete, Mini) and keyboard
+Captions, Frame, Boost, Save, Download, Show file, Delete, Mini) and keyboard
 shortcuts — <kbd>Space</kbd>, <kbd>M</kbd>, <kbd>T</kbd>, <kbd>C</kbd>,
-<kbd>B</kbd>, <kbd>F</kbd>.
+<kbd>R</kbd>, <kbd>B</kbd>, <kbd>F</kbd>.
 
 The **captions panel** appears only for a clip that was captioned and kept its
 `heard_words`. It is a text box holding the captions as one line of text; **Burn
@@ -2418,6 +2419,19 @@ The **trim panel** is a two-handle range control built on pointer events, plus
 Handles drag, the fill between them updates live, and the length readout tracks.
 Applying it POSTs to the trim endpoint and swaps the clip in place when the
 re-cut returns.
+
+The **frame panel** (<kbd>R</kbd>) fixes framing the automatic pass got
+wrong. It asks `GET …/frame` for the geometry: the source size, the window's
+size (the whole picture, or on the stacked layout the gameplay panel), where it
+sits, and where the webcam was found. It draws a still from `GET …/still?t=`
+(one ffmpeg frame at ≤960px, from anywhere in the clip's span, picked with a
+slider) with the window as a box whose `box-shadow` dims everything the Short
+leaves out. Every position is in percentages of the source, so the drawing needs
+no pixel maths. Pointer events move the box's centre to the pointer, clamped
+inside the frame. A caption slider draws a dashed guide over the playing clip
+at the height it will render. **Apply** sends `PUT …/frame`. It sends `auto`
+for anything left untouched, so moving only the captions keeps the face
+follow.
 
 The **mini player** persists as you scroll away, and an `IntersectionObserver`
 drives the guide rail's active-section highlight.
@@ -2453,6 +2467,36 @@ On the Create page, a **Kind of video** row sits under Shape and behaves like it
 *Work it out* leaves it to the words and then to the ranker; any other pick is
 sent as `content_kind` and redraws the preview, so choosing Vlog shows the
 face-following crop before anything renders.
+
+### 12.7a Framing by hand — `framing.py`
+
+A position is stored as a **fraction of the window's travel**, 0 flush left or
+top, 1 flush right or bottom, not in pixels. It then means the same thing at
+480p and at 1440p, and at whatever size `pick_output_size` chooses next time.
+It lives on the clip as `frame` (with `caption_y` for the captions), and
+`_rerender` feeds both into every re-render. A trim, a caption fix or a failed
+clip's retry keeps what was set by hand without any of them knowing about it.
+
+Each renderer takes `frame` and reports how it framed the clip, and
+`framing.summary()` keeps that on the clip as `framing`:
+
+| Layout | What the box is | With a frame set |
+|---|---|---|
+| `facetrack` | the whole picture | no tracking at all; one fixed crop |
+| `center` | the whole picture | the crop sits there instead of the middle |
+| `stacked`, webcam found | the gameplay panel (full height) | only `game_x` moves; the webcam is still found |
+| `stacked`, camera fills the frame | the whole picture | handed to `facetrack` with the frame |
+| `stacked`, no webcam | the whole picture | the fallback crop moves |
+
+The editor needs the stacked layout's decision (which panel, where the webcam
+was), and clips from before this kept nothing. For those, `_frame_geometry`
+runs `locate_webcam` again over the clip's span, which takes a few seconds,
+once.
+
+Captions set by hand are clamped to 25–88% of the height. The hook line sits
+across the top for the first seconds of every clip, and a caption dragged up
+there would sit on it. `Plan.caption_height()` is the one place autoedit asks
+where captions go, so the emoji move with them.
 
 ### 12.8 Settings drawer
 
@@ -3717,6 +3761,9 @@ rather than guessing from what the button last did.
 |---|---|
 | `GET /api/jobs/{id}/clips/{file}` | Stream the mp4 |
 | `POST …/clips/{file}/trim` | Re-cut from source at new timestamps, optionally muted |
+| `GET …/clips/{file}/frame` | The frame editor's geometry: source and window size, which panel, where it sits, the webcam, the caption height |
+| `GET …/clips/{file}/still?t=` | One source frame from inside the clip's span, as JPEG, ≤960px wide |
+| `PUT …/clips/{file}/frame` | Place the window (`x`, `y` as 0-1 of its travel) and the captions (`caption_y`), or `auto` / `caption_auto` to hand them back; re-renders from source |
 | `POST …/clips/{file}/save` | Copy out of the working folder into the save location |
 | `DELETE …/clips/{file}` | Delete the clip and its file |
 | `POST /api/jobs/{id}/continue` | Carry on a run the app never finished (distinct from `/resume`, which lifts a pause) |
