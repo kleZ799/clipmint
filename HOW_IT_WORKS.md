@@ -17,10 +17,10 @@ The [README](README.md) is the pitch. This is the map.
 the AI/ML and CS concepts behind it, for explaining the project rather than
 navigating it. Everything here was read
 off the current source, so where the README and the code disagree, this file
-follows the code and says so ([§17](#17-rough-edges-and-stale-docs)).
+follows the code and says so ([§17](#17-rough-edges-and-known-limits)).
 
 Written to be read end-to-end. If you can explain [§1](#1-the-one-paragraph-answer),
-[§4](#4-the-pipeline-stage-by-stage), [§6](#6-the-ranking-engine-the-brain) and
+[§4](#4-the-pipeline-stage-by-stage), [§6](#6-the-ranking-engine--the-brain) and
 [§11](#11-the-backend-job-runner--web-layer), you can explain this project to
 anyone.
 
@@ -47,7 +47,7 @@ anyone.
 12. [The frontend](#12-the-frontend)
 13. [Configuration and precedence](#13-configuration-and-precedence)
 14. [Quota accounting and provider fallback](#14-quota-accounting-and-provider-fallback)
-15. [Caching: seven independent layers](#15-caching-seven-independent-layers)
+15. [Caching: eight independent layers](#15-caching-eight-independent-layers)
     - 15b. [Two themes out of one set of rules](#15b-two-themes-out-of-one-set-of-rules)
 16. [Packaging: a Windows .exe, a mac .app, a Linux binary](#16-packaging-a-windows-exe-a-mac-app-a-linux-binary)
     - 16a. [Subprocesses: windows, and stopping them](#16a-subprocesses-windows-and-stopping-them)
@@ -56,7 +56,7 @@ anyone.
     - 16d. [Posting a clip to YouTube](#16d-posting-a-clip-to-youtube)
 
 **Reference**
-17. [Rough edges and stale docs](#17-rough-edges-and-stale-docs)
+17. [Rough edges and known limits](#17-rough-edges-and-known-limits)
 18. [HTTP API reference](#18-http-api-reference)
 19. [Interview cheat-sheet](#19-interview-cheat-sheet)
 
@@ -70,12 +70,16 @@ Reels or TikToks, each packaged for the app it is going to.**
 
 It downloads the source with **yt-dlp**, transcribes it locally with
 **faster-whisper**, sends the transcript to an **LLM (Gemini, Groq or OpenAI)**
-with a prompt tuned to find moments that travel, dedupes and scores the results,
+with a prompt tuned to find moments that travel (on a YouTube stream, with the
+chat replay's bursts marked in it, so it sees what the live audience reacted
+to), dedupes and scores the results,
 shows **frames from each winner to a vision model** so its title names what is
 actually on screen, then renders the winners with **ffmpeg + OpenCV** into 9:16
-video, and edits each one: word-by-word **captions** burned in with libass,
+video (following whoever is talking when two people share the shot), and edits
+each one: word-by-word **captions** burned in with libass,
 quiet pauses cut, punch-ins on emphasis, and a scorecard saying why it ranked
-where it did. It ships as a **FastAPI** backend behind a **vanilla-JS** single-page UI,
+where it did. Any clip can then be trimmed, re-captioned or re-framed by hand,
+each rendered again from the original download. It ships as a **FastAPI** backend behind a **vanilla-JS** single-page UI,
 wrapped in a native **pywebview** window and packaged by **PyInstaller** into a
 Windows .exe, a mac .app and a Linux binary that need nothing installed.
 
@@ -1989,7 +1993,7 @@ would mean an empty transcript forever.
 
 **This is the slowest step in the pipeline and it is paid exactly once per
 video.** Every re-rank and re-render afterwards is free. That fact drives the
-workflow in [§15](#15-caching-seven-independent-layers).
+workflow in [§15](#15-caching-eight-independent-layers).
 
 ---
 
