@@ -386,6 +386,16 @@
       <p class="lead">Ranked best first — #1 is the one to post today. Click any clip to
         play it, trim it, or copy the title, description and tags to upload it with.</p>
 
+      <!-- what the channel's own view counts say; see webapp/youtube_stats.py -->
+      <div class="perf hidden" id="perf">
+        <div class="perf-head">
+          <h3><svg><use href="#i-yt"/></svg>How your Shorts did</h3>
+          <span class="perf-when" id="perfWhen"></span>
+          <button class="btn ghost sm" id="perfCheck">Check now</button>
+        </div>
+        <div class="perf-body" id="perfBody"></div>
+      </div>
+
       <div class="lib-tools">
         <div class="lib-find">
           <svg><use href="#i-search"/></svg>
@@ -407,6 +417,7 @@
             <option value="hook">Strongest hook</option>
             <option value="energy">Most energy</option>
             <option value="short">Shortest first</option>
+            <option value="views">Most views</option>
           </select>
         </label>
       </div>

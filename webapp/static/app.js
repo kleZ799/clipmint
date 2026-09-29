@@ -2489,6 +2489,7 @@ async function loadLibrary() {
   }));
   reindex();
   renderClips();
+  loadPerformance();
   return clips.length;
 }
 
@@ -2505,6 +2506,7 @@ function sortClips(list) {
     hook: (a, b) => scorePart(b, "hook") - scorePart(a, "hook"),
     energy: (a, b) => scorePart(b, "energy") - scorePart(a, "energy"),
     short: (a, b) => (a.duration ?? Infinity) - (b.duration ?? Infinity),
+    views: (a, b) => ((b.performance || {}).views ?? -1) - ((a.performance || {}).views ?? -1),
   }[libSort];
   return by ? [...list].sort(by) : list;
 }
@@ -2595,7 +2597,8 @@ function clipCard(c) {
           ${c.edited ? `<span>trimmed</span>` : ""}
           ${editFlags(c)}
           ${c.muted ? `<span>muted</span>` : ""}
-          ${c.youtube ? `<span>on YouTube</span>` : ""}
+          ${c.performance ? `<span class="views" title="${esc(I18N.t("Views on YouTube"))}">${fmtViews(c.performance.views)} ${esc(I18N.t("views"))}</span>`
+            : c.youtube ? `<span>on YouTube</span>` : ""}
           ${c.saved_to ? `<span>saved</span>` : ""}
           ${!seo ? `<span class="need">no title yet</span>` : ""}
           ${filed ? `<span class="subj">${esc(filed)}</span>` : ""}
@@ -2787,6 +2790,7 @@ function openPlayer(i) {
     c.score != null ? (c.scorecard ? `${c.scorecard.grade.label} · score ${c.score}`
                                    : `score ${c.score}`) : "",
     c.muted ? "muted" : "",
+    c.performance ? `${Number(c.performance.views).toLocaleString()} views on YouTube` : "",
   ].filter(Boolean).join(" · ");
   renderWhy(c);
   $("pDownload").href = c.url;
@@ -3829,6 +3833,113 @@ $("tApply").onclick = async () => {
     busy(false);
     $("tApply").disabled = false;
   }
+};
+
+// ---------------------------------------------------------------- how your Shorts did
+//
+// The numbers come from the channel (webapp/youtube_stats.py) and the reading
+// of them from shorts_generator/performance.py. This only shows them: what
+// holds up, what might, what does not yet, and whether the ranking moved.
+
+let perf = null;
+
+function perfAgo(ts) {
+  const mins = Math.round((Date.now() / 1000 - ts) / 60);
+  if (mins < 1) return I18N.t("just now");
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 60 * 24) return `${Math.round(mins / 60)} h ago`;
+  return whenMade(ts);
+}
+
+function fmtViews(n) {
+  n = Number(n) || 0;
+  if (n >= 10000) return `${Math.round(n / 1000)}K`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+}
+
+async function loadPerformance() {
+  try {
+    perf = await api("/api/performance");
+  } catch (_) {
+    perf = null;
+  }
+  renderPerformance();
+  return perf;
+}
+
+function renderPerformance() {
+  const box = $("perf");
+  if (!perf) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  const chk = perf.check || {};
+  const a = perf.analysis || {};
+  const running = chk.state === "running";
+  $("perfCheck").disabled = running || !perf.connected;
+  $("perfCheck").textContent = I18N.t(running ? "Checking…" : "Check now");
+  $("perfWhen").textContent = chk.checked_at
+    ? `${I18N.t("Checked")} ${perfAgo(Date.parse(chk.checked_at) / 1000)}` : "";
+
+  if (!perf.connected) {
+    $("perfBody").innerHTML = `<p>${esc(I18N.t("Connect your YouTube channel in Settings to see how the Shorts you post actually do, and let that tune the ranking."))}</p>
+      <button class="btn ghost sm" id="perfConnect">${esc(I18N.t("Open Settings"))}</button>`;
+    $("perfConnect").onclick = openDrawer;
+    return;
+  }
+  const bits = [];
+  if (chk.state === "error" && chk.error) bits.push(`<p class="perf-err">${esc(chk.error)}</p>`);
+  const found = (a.clips || 0) + (a.waiting || 0);
+  if (!found) {
+    bits.push(`<p>${esc(I18N.t(running
+      ? "Reading your channel…"
+      : "None of these clips is on your channel yet. Upload some, and their views show up here."))}</p>`);
+    $("perfBody").innerHTML = bits.join("");
+    return;
+  }
+  bits.push(`<p class="perf-stats">${a.clips} ${esc(I18N.t(a.clips === 1 ? "clip" : "clips"))} ${esc(I18N.t("on YouTube"))}`
+    + (a.median_views != null ? ` · ${esc(I18N.t("median"))} ${fmtViews(a.median_views)} ${esc(I18N.t("views"))}` : "")
+    + (a.waiting ? ` · ${a.waiting} ${esc(I18N.t("more are under two days old"))}` : "") + `</p>`);
+
+  const shown = (a.findings || []).filter((f) => f.verdict !== "none");
+  const quiet = (a.findings || []).filter((f) => f.verdict === "none");
+  if ((a.clips || 0) < 6) {
+    bits.push(`<p>${esc(I18N.t("Too few clips old enough to judge yet. Patterns show up here once there are six."))}</p>`);
+  } else if (shown.length) {
+    bits.push(`<ul class="perf-list">${shown.map((f) => `<li><span class="perf-tag ${f.verdict}">${
+      esc(I18N.t(f.verdict === "real" ? "Looks real" : "Worth watching"))}</span><span>${esc(f.text)}
+      <span class="perf-small">(${f.groups[0]} ${esc(I18N.t("vs"))} ${f.groups[1]} ${esc(I18N.t("clips"))})</span></span></li>`).join("")}</ul>`);
+  } else {
+    bits.push(`<p>${esc(I18N.t("Nothing stands out yet: no difference between clips is bigger than chance would make."))}</p>`);
+  }
+  if (quiet.length) {
+    bits.push(`<p class="perf-small">${esc(I18N.t("No clear link yet:"))} ${quiet.map((f) => esc(f.label)).join(", ")}.</p>`);
+  }
+  const tune = a.tuning || {};
+  const names = { audio_spike: "loudness", keyword: "reaction words", motion: "motion",
+                  silence_to_peak: "build-up", chat_velocity: "chat" };
+  bits.push(`<p class="perf-small">${Object.keys(tune).length
+    ? esc(I18N.t("The ranking now leans on what worked here:")) + " "
+      + Object.entries(tune).map(([k, v]) => `${esc(names[k] || k)} ×${Number(v).toFixed(2)}`).join(", ")
+    : esc(I18N.t("The ranking is unchanged: nothing here is strong enough to move it yet."))}</p>`);
+  bits.push(`<p class="perf-small">${esc(I18N.t("Only clips at least two days old are compared, and every pattern is tested against chance. Numbers are refreshed on each check and kept for at most 30 days, as YouTube requires."))}</p>`);
+  $("perfBody").innerHTML = bits.join("");
+}
+
+$("perfCheck").onclick = async () => {
+  $("perfCheck").disabled = true;
+  try {
+    await api("/api/performance/check", { method: "POST" });
+  } catch (e) {
+    toast(e.message, true);
+  }
+  // Poll until the check finishes, then show the new numbers on the cards too.
+  for (let i = 0; i < 60; i++) {
+    await loadPerformance();
+    if (!perf || (perf.check || {}).state !== "running") break;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  await loadLibrary();
+  if (perf && (perf.check || {}).state === "done") toast(I18N.t("Views updated."));
 };
 
 // ---------------------------------------------------------------- save / delete
