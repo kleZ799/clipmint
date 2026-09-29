@@ -205,11 +205,16 @@ uploads can be public.
   > When a user presses "Upload to YouTube" on a clip, it calls videos.insert
   > once for that clip with the title, description, tags, category, audience
   > and optional publishAt that the user has reviewed and can edit on screen.
-  > It uses youtube.readonly only to show which channel is connected, and to
-  > read the privacy status of the video it just uploaded. It never uploads
+  > It uses youtube.readonly to show which channel is connected, to read the
+  > privacy status of the video it just uploaded, and to read the view, like
+  > and comment counts of the user's own ClipMint clips on their channel
+  > (channels.list mine, playlistItems.list on their uploads to match clips by
+  > title, videos.list for statistics), so the app can show the user how each
+  > clip did and which kinds of clip do well on their channel. It never uploads
   > without a click, never uploads in bulk, and stores nothing on a server:
-  > tokens and upload records stay on the user's own computer, and channel
-  > details and upload records are refreshed or deleted within 30 days.
+  > tokens, upload records and view counts stay on the user's own computer,
+  > and channel details, upload records and view counts are refreshed or
+  > deleted within 30 days.
 - A **screen recording**: connecting, editing a title, uploading, and the
   video showing up in Studio. An unlisted YouTube video works well.
 - **Expected volume.** Be realistic, for example "a few uploads a day per user".
@@ -255,11 +260,18 @@ a checklist.
 | User keeps final control; values aren't altered (III.C.3) | Uploads exactly what's in the boxes. Anything YouTube would reject is refused with the reason, never trimmed |
 | Links YouTube's Terms and Google's Privacy Policy (III.A.1, III.A.2.c) | Settings → Post to your channel |
 | Privacy policy with the required contents (III.A.2) | `PRIVACY.md`, published at klez799.github.io/clipmint/privacy.html |
-| Easy revocation, with data deleted (III.D.2.b, III.E.4.g) | **Disconnect** revokes at Google and deletes the token, channel details and upload records; a link to Google's permissions page is in the app |
-| Keeps API data no longer than 30 days (III.E.4) | Channel details refreshed or dropped at 30 days; upload records swept at startup |
+| Easy revocation, with data deleted (III.D.2.b, III.E.4.g) | **Disconnect** revokes at Google and deletes the token, channel details, upload records and every clip's view counts; a link to Google's permissions page is in the app |
+| Keeps API data no longer than 30 days (III.E.4) | Channel details refreshed or dropped at 30 days; upload records and view counts swept at startup, view counts refreshed on every check (`webapp/youtube_stats.py`) |
+| Anything worked out from API data is explained, not passed off as YouTube's | The **How your Shorts did** panel says what it compared, how (clips two or more days old, tested against chance), and that it is ClipMint's reading of the numbers. Nothing derived is stored; it is recomputed from the kept numbers each time |
 | Identifies itself honestly (III.D.2.b.2) | App name `ClipMint` on the consent screen; the policy says who makes it |
 
 ### What you still have to do
+
+**Since v1.24.0, `youtube.readonly` has a third use:** reading view counts for
+**How your Shorts did**. A verification or audit submitted before that describes
+only the first two. Update the written scope justification with the text in 3.1,
+and show the panel (and **Check now**) in the demo video, before Google reviews
+it, or the review can fail on a use of the scope nobody explained.
 
 1. Create the project and client (section 1), and **publish** it to production.
 2. Put the github.io home page, privacy policy and authorized domain on the
