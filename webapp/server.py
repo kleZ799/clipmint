@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from shorts_generator import captions as caption_styles
+from shorts_generator import framing
 from shorts_generator.layout_spec import (
     ASPECT_PRESETS, EDIT_FIELDS, LayoutSpec, parse_layout_prompt,
 )
@@ -1269,6 +1270,10 @@ async def _rerender(job, clip: dict, highlight: dict, mute: bool, what: str):
 
     old_path = _clip_path(job, clip["file"])
     prefix = f"edit_{clip.get('index', 1):02d}_{int(time.time())}"
+    # A frame or a caption height someone set by hand belongs to the clip, not
+    # to one render of it: a trim or a caption fix afterwards keeps it.
+    highlight.setdefault("frame", clip.get("frame"))
+    highlight.setdefault("caption_y", clip.get("caption_y"))
 
     def _render():
         out = render_highlights(job.source_path, [highlight], job.spec,
@@ -1360,6 +1365,7 @@ async def fix_captions(job_id: str, filename: str, req: CaptionFixRequest) -> di
         "hook_replay_seconds": result.get("hook_replay_seconds"),
         "edit": result.get("edit"),
         "caption_words": words,
+        "framing": framing.summary(result.get("layout")),
     })
     return updated or {}
 
@@ -1411,8 +1417,201 @@ async def trim_clip(job_id: str, filename: str, req: TrimRequest) -> dict:
         "caption_words": None,
         "muted": bool(req.mute),
         "edited": True,
+        "framing": framing.summary(result.get("layout")),
     })
 
+    return updated or {}
+
+
+def _output_size(job, src_w: int, src_h: int):
+    """The size this job's clips are rendered at, the way render_highlights
+    works it out -- so the window drawn in the editor is the one rendered."""
+    from shorts_generator.layout_spec import pick_output_size
+
+    spec = job.spec
+    if spec.match_source_quality:
+        try:
+            return pick_output_size(src_w, src_h, spec.aspect_ratio, spec.layout)
+        except Exception:  # noqa: BLE001 - the spec's own size is a fine answer
+            pass
+    return spec.width, spec.height
+
+
+def _frame_geometry(job, clip: dict) -> dict:
+    """What the frame editor draws: the source, the window, and where it is."""
+    from shorts_generator.local.gaming_layout import _probe_dimensions, locate_webcam
+
+    src_w, src_h = _probe_dimensions(job.source_path)
+    out_w, out_h = _output_size(job, src_w, src_h)
+    spec = job.spec
+    saved = clip.get("framing") or {}
+    panel = saved.get("panel")
+    cam = saved.get("cam")
+    # Whether the automatic framing followed a face around, so has no single
+    # place to show. The face-follow layout does; so does a stacked clip
+    # whose camera turned out to be the whole picture.
+    follows = spec.layout == "facetrack" or (
+        spec.layout == "stacked" and panel == framing.PICTURE and saved.get("x") is None)
+    if spec.layout == "stacked" and not panel:
+        # A clip rendered before its framing was kept: find the webcam again,
+        # the same way the render did, to know which window it cut.
+        found = locate_webcam(job.source_path, float(clip["start_time"]),
+                              float(clip["end_time"]), corner=spec.webcam_corner,
+                              face_context_multiple=spec.face_zoom,
+                              panel_aspect=out_w / max(2, int(out_h * spec.cam_panel_fraction)))
+        panel = framing.GAMEPLAY if found and not found.get("full_frame") else framing.PICTURE
+        if panel == framing.GAMEPLAY:
+            cam = {k: int(found[k]) for k in ("x", "y", "w", "h")}
+        follows = bool(found and found.get("full_frame"))
+    panel = panel or framing.PICTURE
+
+    if panel == framing.GAMEPLAY:
+        win_w, win_h = framing.gameplay_window(src_w, src_h, out_w, out_h,
+                                               spec.cam_panel_fraction)
+    else:
+        win_w, win_h = framing.picture_window(src_w, src_h, out_w, out_h)
+
+    chosen = framing.normalise(clip.get("frame")) or {}
+    x = chosen.get("x", saved.get("x"))
+    y = chosen.get("y", saved.get("y"))
+    default_caption = caption_styles.caption_y(spec.layout, spec.aspect_ratio,
+                                               spec.cam_panel_fraction)
+    return {
+        "panel": panel,
+        "layout": spec.layout,
+        "src_w": src_w, "src_h": src_h,
+        "win_w": win_w, "win_h": win_h,
+        "out_w": out_w, "out_h": out_h,
+        "x": 0.5 if x is None else x,
+        "y": 0.5 if y is None else y,
+        # Set by hand, or placed automatically. "moving" is automatic framing
+        # that followed someone, so it has no one place to show.
+        "manual": bool(chosen),
+        "moving": not chosen and x is None and follows,
+        "cam": cam,
+        "caption_y": clip.get("caption_y") if clip.get("caption_y") is not None
+        else default_caption,
+        "caption_default": default_caption,
+        "caption_set": clip.get("caption_y") is not None,
+        "caption_min": framing.CAPTION_Y_MIN,
+        "caption_max": framing.CAPTION_Y_MAX,
+        "has_captions": bool(clip.get("heard_words")),
+        "start": float(clip["start_time"]),
+        "end": float(clip["end_time"]),
+    }
+
+
+def _editable_clip(job_id: str, filename: str):
+    job = _job_or_404(job_id)
+    clip = STORE.clip(job, os.path.basename(filename))
+    if clip is None:
+        raise HTTPException(404, "No such clip")
+    if clip.get("start_time") is None or clip.get("end_time") is None:
+        raise HTTPException(409, "This clip has no span in the source to reframe.")
+    if not job.source_path or not os.path.exists(job.source_path):
+        raise HTTPException(409, "The source video for this job is gone — re-run it to edit.")
+    return job, clip
+
+
+@app.get("/api/jobs/{job_id}/clips/{filename}/frame")
+async def frame_info(job_id: str, filename: str) -> dict:
+    """Where a clip's window sits in its source, for the frame editor."""
+    job, clip = _editable_clip(job_id, filename)
+    try:
+        return await asyncio.to_thread(_frame_geometry, job, clip)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Could not read this clip's framing: {e}")
+
+
+@app.get("/api/jobs/{job_id}/clips/{filename}/still")
+async def frame_still(job_id: str, filename: str, t: Optional[float] = None) -> Response:
+    """One full source frame from inside the clip, to place the window on.
+
+    The whole source, not the clip: the point is to see what the crop left
+    out. `t` is seconds into the source, kept inside the clip's span.
+    """
+    import subprocess
+
+    job, clip = _editable_clip(job_id, filename)
+    start, end = float(clip["start_time"]), float(clip["end_time"])
+    at = (start + end) / 2 if t is None else max(start, min(end, float(t)))
+
+    def grab() -> bytes:
+        return subprocess.run(
+            ["ffmpeg", "-v", "error", "-ss", f"{at:.3f}", "-i", job.source_path,
+             "-frames:v", "1", "-vf", "scale='min(960,iw)':-2", "-q:v", "4",
+             "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+            capture_output=True, timeout=60,
+        ).stdout
+
+    try:
+        data = await asyncio.to_thread(grab)
+    except Exception as e:
+        raise HTTPException(500, f"Could not read that frame: {e}")
+    if not data:
+        raise HTTPException(500, "Could not read that frame from the source.")
+    return Response(content=data, media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=3600"})
+
+
+class FrameRequest(BaseModel):
+    # Where the window goes, 0-1 across its travel each way. None, or
+    # auto=True, hands the framing back to the app.
+    x: Optional[float] = None
+    y: Optional[float] = None
+    auto: bool = False
+    # Where the captions go, as a fraction of the frame's height. None keeps
+    # the layout's own place.
+    caption_y: Optional[float] = None
+    caption_auto: bool = False
+
+
+@app.put("/api/jobs/{job_id}/clips/{filename}/frame")
+async def set_frame(job_id: str, filename: str, req: FrameRequest) -> dict:
+    """Put the window, and the captions, where someone chose; render again.
+
+    Rendered from the same span with the same edit, and with the words that
+    were already heard -- and corrected, if they were -- so nothing but the
+    framing and the caption height changes.
+    """
+    job, clip = _editable_clip(job_id, filename)
+
+    frame = None if req.auto else framing.normalise({"x": req.x, "y": req.y})
+    cap_y = None if req.caption_auto else framing.caption_y(req.caption_y)
+    if cap_y is None and not req.caption_auto:
+        cap_y = clip.get("caption_y")
+
+    highlight = {
+        "title": clip.get("title") or "Clip",
+        "start_time": float(clip["start_time"]),
+        "end_time": float(clip["end_time"]),
+        "score": clip.get("score"),
+        "frame": frame,
+        "caption_y": cap_y,
+    }
+    if clip.get("heard_words"):
+        highlight["heard_words"] = clip["heard_words"]
+    if clip.get("caption_words"):
+        highlight["caption_words"] = clip["caption_words"]
+    if clip.get("hook_replay_seconds") and clip.get("hook_peak") is not None:
+        highlight["hook_peak"] = clip["hook_peak"]
+
+    result, new_name = await _rerender(job, clip, highlight, bool(clip.get("muted")),
+                                       "reframe")
+    updated = STORE.replace_clip(job, clip["file"], {
+        "file": new_name,
+        "url": f"/api/jobs/{job.id}/clips/{new_name}",
+        "duration": clip_length({**result, "start_time": clip["start_time"],
+                                 "end_time": clip["end_time"]}),
+        "hook_replay_seconds": result.get("hook_replay_seconds"),
+        "edit": result.get("edit"),
+        "frame": frame,
+        "caption_y": cap_y,
+        "framing": framing.summary(result.get("layout")),
+        "edited": True,
+    })
     return updated or {}
 
 
