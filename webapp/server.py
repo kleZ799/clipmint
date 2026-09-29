@@ -26,7 +26,7 @@ from shorts_generator import framing
 from shorts_generator.layout_spec import (
     ASPECT_PRESETS, EDIT_FIELDS, LayoutSpec, parse_layout_prompt,
 )
-from . import notify, updater
+from . import notify, updater, youtube_stats
 from .jobs import STORE, clip_length, job_kind, regenerate_seo, rename_to_title
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -36,6 +36,23 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts", ".flv"}
 
 app = FastAPI(title="ClipMint")
+
+
+@app.on_event("startup")
+async def _check_views() -> None:
+    """Read how the channel's Shorts did, when the last look is stale.
+
+    In the background, after the runs on disk are known, so the numbers land
+    on the clips they belong to. See webapp/youtube_stats.py.
+    """
+    def run():
+        try:
+            STORE.restore()
+            youtube_stats.maybe_check_at_launch(STORE)
+        except Exception as e:  # noqa: BLE001 - a missed check waits for the next launch
+            print(f"[youtube] could not check views at launch: {e}", flush=True)
+    import threading
+    threading.Thread(target=run, name="views-at-launch", daemon=True).start()
 
 
 @app.on_event("startup")
@@ -903,11 +920,42 @@ main{{max-width:460px;text-align:center}}h1{{font-size:22px}}p{{color:#aaa}}</st
     return HTMLResponse(page, status_code=200 if not problem else 400)
 
 
+@app.get("/api/performance")
+async def performance_summary() -> dict:
+    """How the channel's Shorts did, and what that says about the ranking.
+
+    The numbers are the ones already on the clips (youtube_stats.py); this
+    only reads and analyses them, so it is cheap to ask as often as the
+    library is shown.
+    """
+    from shorts_generator import performance
+    from . import youtube_upload
+
+    def build():
+        clips = [c for j in STORE.jobs() for c in j.clips]
+        return {
+            "connected": bool(youtube_upload.status().get("connected")),
+            "check": youtube_stats.status(),
+            "analysis": performance.analyse(clips),
+        }
+    return await asyncio.to_thread(build)
+
+
+@app.post("/api/performance/check")
+async def performance_check() -> dict:
+    """Read the channel's numbers again now, in the background."""
+    from . import youtube_upload
+    if not (await asyncio.to_thread(youtube_upload.status)).get("connected"):
+        raise HTTPException(409, "Connect your YouTube channel in Settings first.")
+    return await asyncio.to_thread(youtube_stats.check_in_background, STORE)
+
+
 @app.post("/api/youtube/disconnect")
 async def youtube_disconnect() -> dict:
     """Give the permission back, and forget every upload record with it."""
     from . import youtube_upload
     await asyncio.to_thread(STORE.forget_youtube)
+    youtube_stats.forget()
     return await asyncio.to_thread(youtube_upload.disconnect)
 
 

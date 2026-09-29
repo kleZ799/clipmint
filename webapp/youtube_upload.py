@@ -66,8 +66,9 @@ API_URL = "https://www.googleapis.com/youtube/v3"
 # The least that does the job. upload is the whole point; readonly is there so
 # the app can say which channel is connected -- someone with a brand channel
 # and a personal one needs to see that before a clip lands on the wrong one --
-# and so it can read a finished upload back to see whether YouTube kept it
-# private.
+# so it can read a finished upload back to see whether YouTube kept it
+# private, and so it can read how the channel's ClipMint clips did
+# (youtube_stats.py).
 SCOPE_UPLOAD = "https://www.googleapis.com/auth/youtube.upload"
 SCOPE_READ = "https://www.googleapis.com/auth/youtube.readonly"
 SCOPES = [SCOPE_UPLOAD, SCOPE_READ]
