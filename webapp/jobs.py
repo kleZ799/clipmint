@@ -439,13 +439,20 @@ class JobStore:
         """Attach freshly written upload metadata to one clip."""
         return self.replace_clip(job, filename, {"seo": seo})
 
+    def jobs(self) -> List[Job]:
+        """Every job, as the objects themselves, for a pass over all clips."""
+        with self._lock:
+            return list(self._jobs.values())
+
     def forget_youtube(self, only_expired: bool = False) -> int:
         """Drop what YouTube handed back about uploads from every clip.
 
         YouTube's policies cap how long that may be kept, and say it goes when
         the user disconnects. `only_expired` keeps anything younger than the
-        cap, for the sweep made at startup.
+        cap, for the sweep made at startup. The same goes for each clip's view
+        counts (youtube_stats.py), which are kept to the same rule.
         """
+        from .youtube_stats import expired as stats_expired
         from .youtube_upload import expired
 
         dropped = 0
@@ -460,6 +467,10 @@ class JobStore:
                         del c["youtube"]
                         changed = True
                         dropped += 1
+                    perf = c.get("performance")
+                    if perf is not None and (not only_expired or stats_expired(perf)):
+                        del c["performance"]
+                        changed = True
                 if changed:
                     job._version += 1
             if changed:
@@ -1055,6 +1066,15 @@ class JobStore:
                 self._update(job, message="Reading the stream's chat")
             fetching.join()
             chat = fetched.get("track")
+            # What this channel's own Shorts showed each signal is worth. Only
+            # evidence that survived a test against chance moves anything --
+            # see shorts_generator/performance.py.
+            from shorts_generator import performance
+            tuning = performance.analyse(
+                [c for j in self.jobs() for c in j.clips]).get("tuning") or {}
+            if tuning:
+                print(f"[rank] tuned to how your Shorts did: "
+                      f"{performance.describe_tuning(tuning)}", flush=True)
             # Room held back for that cold open, so a request for 30-second
             # clips still produces 30-second files once it is on the front.
             reserve = hook_budget(job.spec.hook_replay)
@@ -1076,7 +1096,8 @@ class JobStore:
                                     kind=job.spec.content_kind,
                                     video_meta=job.video_meta,
                                     source_path=source_path,
-                                    chat=chat)
+                                    chat=chat,
+                                    tuning=tuning)
             all_highlights = result.get("highlights", [])
             content = result.get("content") or {}
             if not all_highlights:
