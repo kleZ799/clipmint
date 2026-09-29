@@ -19,27 +19,20 @@ LOUDNESS_FILTER = "loudnorm=I=-14:TP=-1.5:LRA=11"
 
 
 def _render_center_clip(source_path: str, start: float, end: float, out_path: str,
-                        out_w: int, out_h: int) -> Dict:
+                        out_w: int, out_h: int, frame: Optional[Dict] = None) -> Dict:
     """Widest centre crop at the target ratio, in one ffmpeg pass.
 
     No face detection at all — for footage where the webcam is irrelevant or
-    the user explicitly asked for gameplay only.
+    the user explicitly asked for gameplay only. `frame` is a position chosen
+    by hand, which replaces the centre.
     """
+    from . import framing
     from .local.gaming_layout import _probe_dimensions
 
     src_w, src_h = _probe_dimensions(source_path)
-    target = out_w / out_h
-
-    if target < src_w / src_h:
-        crop_h = src_h
-        crop_w = int(crop_h * target)
-    else:
-        crop_w = src_w
-        crop_h = int(crop_w / target)
-    crop_w = min(crop_w - (crop_w % 2), src_w)
-    crop_h = min(crop_h - (crop_h % 2), src_h)
-    x = ((src_w - crop_w) // 2) & ~1
-    y = ((src_h - crop_h) // 2) & ~1
+    crop_w, crop_h = framing.picture_window(src_w, src_h, out_w, out_h)
+    x, y = framing.place(frame, src_w, src_h, crop_w, crop_h,
+                         ((src_w - crop_w) // 2, (src_h - crop_h) // 2))
 
     filt = (
         f"[0:v]crop={crop_w}:{crop_h}:{x}:{y},"
@@ -60,7 +53,9 @@ def _render_center_clip(source_path: str, start: float, end: float, out_path: st
         "-movflags", "+faststart",
         out_path,
     ], what="ffmpeg (centre crop render)", crf=23)
-    return {"crop": {"x": x, "y": y, "w": crop_w, "h": crop_h}}
+    return {"crop": {"x": x, "y": y, "w": crop_w, "h": crop_h},
+            "panel": framing.PICTURE, "manual": bool(framing.normalise(frame)),
+            "x": framing.fraction(x, src_w, crop_w), "y": framing.fraction(y, src_h, crop_h)}
 
 
 def _render_center_highlights(source_path: str, highlights: List[Dict], out_dir: str,
@@ -73,7 +68,7 @@ def _render_center_highlights(source_path: str, highlights: List[Dict], out_dir:
         try:
             info = _render_center_clip(
                 source_path, float(h["start_time"]), float(h["end_time"]),
-                out_path, out_w, out_h,
+                out_path, out_w, out_h, frame=h.get("frame"),
             )
             results.append({**h, "clip_url": out_path, "layout": info})
         except Exception as e:

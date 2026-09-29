@@ -44,7 +44,7 @@ import os
 import statistics
 from typing import Dict, List, Optional, Tuple
 
-from .. import accel, proc
+from .. import accel, framing, proc
 from ..config import LOCAL_OUTPUT_DIR
 from ..faces import detect as face_detect
 from ..render import LOUDNESS_FILTER
@@ -347,8 +347,14 @@ def render_stacked_clip(
     cam_panel_fraction: float = CAM_PANEL_FRACTION,
     face_context_multiple: float = FACE_CONTEXT_MULTIPLE,
     log_label: str = "",
+    frame: Optional[Dict] = None,
 ) -> Dict:
-    """Cut [start, end] and render it as webcam-over-gameplay in one ffmpeg pass."""
+    """Cut [start, end] and render it as webcam-over-gameplay in one ffmpeg pass.
+
+    `frame` is where someone put the gameplay window by hand (see framing.py):
+    the webcam panel is still found automatically, and only the part of the
+    game shown under it moves.
+    """
     src_w, src_h = _probe_dimensions(source_path)
     cam_h = int(out_h * cam_panel_fraction)
     cam_h -= cam_h % 2
@@ -375,19 +381,21 @@ def render_stacked_clip(
 
     if cam and cam.get("full_frame"):
         from .clipper import crop_clip_local
-        crop_clip_local(source_path, start, end, f"{out_w}:{out_h}", out_path,
-                        target_resolution=f"{out_w}x{out_h}")
-        return {"cam": cam, "full_frame": True}
+        info = crop_clip_local(source_path, start, end, f"{out_w}:{out_h}", out_path,
+                               target_resolution=f"{out_w}x{out_h}", frame=frame)
+        return {**info, "cam": cam, "full_frame": True}
 
     # Gameplay: the widest centre crop matching the bottom panel's aspect,
     # nudged away from the corner the webcam occupies.
-    game_crop_h = src_h
-    game_crop_w = int(game_crop_h * (out_w / game_h))
-    game_crop_w = min(game_crop_w - (game_crop_w % 2), src_w)
+    game_crop_w, game_crop_h = framing.gameplay_window(src_w, src_h, out_w, out_h,
+                                                       cam_panel_fraction)
     game_x = (src_w - game_crop_w) // 2
     if cam and corner.endswith("left"):
         game_x = max(game_x, min(cam["x"] + cam["w"], src_w - game_crop_w))
     game_x -= game_x % 2
+    if cam:
+        game_x, _ = framing.place(frame, src_w, src_h, game_crop_w, game_crop_h,
+                                  (game_x, 0))
 
     if cam:
         filt = (
@@ -399,10 +407,11 @@ def render_stacked_clip(
         )
     else:
         # No webcam found — fall back to a full-height centre crop.
-        fb_w = min(int(src_h * (out_w / out_h)), src_w)
-        fb_w -= fb_w % 2
+        fb_w, fb_h = framing.picture_window(src_w, src_h, out_w, out_h)
+        fb_x, fb_y = framing.place(frame, src_w, src_h, fb_w, fb_h,
+                                   ((src_w - fb_w) // 2, (src_h - fb_h) // 2))
         filt = (
-            f"[0:v]crop={fb_w}:{src_h}:{(src_w - fb_w) // 2}:0,"
+            f"[0:v]crop={fb_w}:{fb_h}:{fb_x}:{fb_y},"
             f"scale={out_w}:{out_h}:flags=lanczos,setsar=1[v]"
         )
 
@@ -417,7 +426,14 @@ def render_stacked_clip(
         "-movflags", "+faststart",
         out_path,
     ], what="ffmpeg (stacked render)", crf=23)
-    return {"cam": cam, "game_x": game_x, "cam_panel_h": cam_h}
+    manual = bool(framing.normalise(frame))
+    if not cam:
+        return {"cam": None, "panel": framing.PICTURE, "manual": manual,
+                "x": framing.fraction(fb_x, src_w, fb_w),
+                "y": framing.fraction(fb_y, src_h, fb_h)}
+    return {"cam": cam, "game_x": game_x, "cam_panel_h": cam_h,
+            "panel": framing.GAMEPLAY, "manual": manual,
+            "x": framing.fraction(game_x, src_w, game_crop_w)}
 
 
 def render_stacked_highlights(
@@ -444,6 +460,7 @@ def render_stacked_highlights(
                 cam_panel_fraction=cam_panel_fraction,
                 face_context_multiple=face_context_multiple,
                 log_label=f"[stack] {i}",
+                frame=h.get("frame"),
             )
             results.append({**h, "clip_url": out_path, "layout": info})
         except Exception as e:

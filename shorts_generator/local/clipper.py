@@ -33,7 +33,7 @@ import tempfile
 import time
 from typing import Dict, List, Optional, Tuple
 
-from .. import accel, proc
+from .. import accel, framing, proc
 from ..config import LOCAL_OUTPUT_DIR, LOCAL_OUTPUT_RESOLUTION
 from ..faces import detect_with_mouths as face_detect
 from ..render import LOUDNESS_FILTER
@@ -346,8 +346,14 @@ def _write_commands(plan: List[Tuple[int, int]], fps: float, out: str) -> None:
 
 
 def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
-                      target_resolution: Optional[str] = None) -> str:
-    """Crop the cut clip to the target aspect ratio, following the face."""
+                      target_resolution: Optional[str] = None,
+                      frame: Optional[Dict] = None) -> Dict:
+    """Crop the cut clip to the target aspect ratio, following the face.
+
+    `frame` is a position someone chose by hand (framing.normalise): then
+    nothing is tracked and the window stays exactly where they put it.
+    Returns what framing.summary keeps on the clip.
+    """
     try:
         import cv2  # type: ignore  # noqa: F401
         import numpy  # type: ignore  # noqa: F401
@@ -357,13 +363,27 @@ def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
             "    pip install -r requirements-local.txt"
         ) from e
 
-    times, track, fps, frames, src_w, src_h = track_faces(in_path)
-    crop_w, crop_h = _crop_size(src_w, src_h, _ratio(aspect_ratio))
-    plan = plan_path(times, track, fps, frames, src_w, src_h, crop_w, crop_h)
-    seen = sum(1 for t in track if t is not None)
-    moves = sum(1 for a, b in zip(plan, plan[1:]) if a != b)
-    print(f"[clip/local] face in {seen}/{len(track)} samples; window moves on "
-          f"{moves}/{max(1, len(plan))} frames", flush=True)
+    frame = framing.normalise(frame)
+    if frame:
+        cap = cv2.VideoCapture(in_path)
+        src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        cap.release()
+        crop_w, crop_h = _crop_size(src_w, src_h, _ratio(aspect_ratio))
+        fixed = framing.place(frame, src_w, src_h, crop_w, crop_h,
+                              ((src_w - crop_w) // 2, (src_h - crop_h) // 2))
+        plan = [fixed]
+        print(f"[clip/local] framed by hand at {fixed[0]},{fixed[1]} - "
+              f"not following faces", flush=True)
+    else:
+        times, track, fps, frames, src_w, src_h = track_faces(in_path)
+        crop_w, crop_h = _crop_size(src_w, src_h, _ratio(aspect_ratio))
+        plan = plan_path(times, track, fps, frames, src_w, src_h, crop_w, crop_h)
+        seen = sum(1 for t in track if t is not None)
+        moves = sum(1 for a, b in zip(plan, plan[1:]) if a != b)
+        print(f"[clip/local] face in {seen}/{len(track)} samples; window moves on "
+              f"{moves}/{max(1, len(plan))} frames", flush=True)
 
     resolution = target_resolution if target_resolution is not None else LOCAL_OUTPUT_RESOLUTION
     scale = ""
@@ -392,7 +412,17 @@ def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
         ], what="ffmpeg (face-tracked reframe)", crf=20)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    return out_path
+
+    info: Dict = {"panel": framing.PICTURE}
+    if frame:
+        info.update(manual=True, x=framing.fraction(plan[0][0], src_w, crop_w),
+                    y=framing.fraction(plan[0][1], src_h, crop_h))
+    elif plan and all(p == plan[0] for p in plan):
+        # A window that never moved has a place worth showing in the editor;
+        # one that followed someone around does not have just one.
+        info.update(x=framing.fraction(plan[0][0], src_w, crop_w),
+                    y=framing.fraction(plan[0][1], src_h, crop_h))
+    return info
 
 
 def crop_clip_local(
@@ -402,15 +432,16 @@ def crop_clip_local(
     aspect_ratio: str,
     out_path: str,
     target_resolution: Optional[str] = None,
-) -> str:
-    """Cut + reframe one highlight, returning the local mp4 path."""
+    frame: Optional[Dict] = None,
+) -> Dict:
+    """Cut + reframe one highlight into `out_path`; returns how it was framed."""
     cut_path = out_path + ".cut.mp4"
     try:
         _cut_subclip(source_path, start_time, end_time, cut_path)
-        _reframe_vertical(cut_path, out_path, aspect_ratio, target_resolution=target_resolution)
+        return _reframe_vertical(cut_path, out_path, aspect_ratio,
+                                 target_resolution=target_resolution, frame=frame)
     finally:
         _safe_remove(cut_path)
-    return out_path
 
 
 def crop_highlights_local(
@@ -428,15 +459,16 @@ def crop_highlights_local(
         out_path = os.path.join(out_dir, f"{name_prefix}_{i:02d}.mp4")
         print(f"[clip/local] {i}/{len(highlights)}: {h.get('title', '(untitled)')}", flush=True)
         try:
-            crop_clip_local(
+            info = crop_clip_local(
                 source_path,
                 float(h["start_time"]),
                 float(h["end_time"]),
                 aspect_ratio,
                 out_path,
                 target_resolution=target_resolution,
+                frame=h.get("frame"),
             )
-            results.append({**h, "clip_url": out_path})
+            results.append({**h, "clip_url": out_path, "layout": info})
         except Exception as e:
             print(f"[clip/local] {i} failed: {e}", flush=True)
             results.append({**h, "clip_url": None, "error": str(e)})
