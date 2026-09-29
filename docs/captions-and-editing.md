@@ -192,6 +192,10 @@ on why the moment works:
 | **Pace** | How quickly the talking starts | the words |
 | **Chat** | How hard the stream's chat reacted, against its usual pace. Only on a YouTube stream whose chat replay was busy enough to read | the chat replay |
 
+These are the app's predictions. Once clips are on your YouTube channel,
+**How your Shorts did** at the top of the library says which of them actually
+went with views, and every card shows its views.
+
 A bar is only drawn when it was actually measured. A video with no usable
 audio has no Energy bar rather than an empty one, and a video with no chat has
 no Chat bar.
