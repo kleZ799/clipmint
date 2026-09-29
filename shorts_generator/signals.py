@@ -362,24 +362,31 @@ def measure(highlight: Dict, transcript: Optional[Dict],
     return out
 
 
-def _available_weights(measured: Dict[str, float]) -> Dict[str, float]:
+def _available_weights(measured: Dict[str, float],
+                       tuning: Optional[Dict[str, float]] = None) -> Dict[str, float]:
     """Weights for the signals we actually have, summing to 1.
+
+    `tuning` multiplies a signal's rule-book weight by what the channel's own
+    view counts showed it is worth (performance.tuning): bounded, and only
+    on evidence that survived a test against chance.
 
     Redistribution rather than zeroing, per the rule book: a video with no
     usable audio should still produce scores that use the full 0-100 range,
     otherwise its best clip looks worse than a mediocre clip from a video that
     happened to decode.
     """
-    have = {k: w for k, w in BASE_WEIGHTS.items() if k in measured}
+    tuning = tuning or {}
+    have = {k: w * float(tuning.get(k, 1.0)) for k, w in BASE_WEIGHTS.items() if k in measured}
     total = sum(have.values())
     if not have or total <= 0:
         return {}
     return {k: w / total for k, w in have.items()}
 
 
-def signal_score(measured: Dict[str, float]) -> Optional[int]:
+def signal_score(measured: Dict[str, float],
+                 tuning: Optional[Dict[str, float]] = None) -> Optional[int]:
     """The rule book's HookScore for one candidate, 0-100, or None."""
-    weights = _available_weights(measured)
+    weights = _available_weights(measured, tuning)
     if not weights:
         return None
     score = sum(measured[k] * w for k, w in weights.items())
@@ -408,7 +415,8 @@ def coverage(measured: Dict[str, float]) -> float:
 
 
 def rescore(highlights: List[Dict], transcript: Optional[Dict],
-            audio: Optional[AudioTrack], chat=None) -> List[Dict]:
+            audio: Optional[AudioTrack], chat=None,
+            tuning: Optional[Dict[str, float]] = None) -> List[Dict]:
     """Fold measured signals into each highlight's rank, in place.
 
     `score` stays the field everything downstream sorts on, so nothing else in
@@ -437,7 +445,7 @@ def rescore(highlights: List[Dict], transcript: Optional[Dict],
                                  float(h.get("end_time", 0) or 0))
             h["chat_ratio"] = round(ratio, 1)
 
-        measured_score = signal_score(measured)
+        measured_score = signal_score(measured, tuning)
         h["signal_score"] = measured_score
 
         model_score = int(h.get("score", 0) or 0)

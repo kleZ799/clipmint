@@ -826,6 +826,7 @@ def finalize(
     reserve_seconds: float = 0.0,
     source_path: Optional[str] = None,
     chat=None,
+    tuning: Optional[Dict[str, float]] = None,
 ) -> List[Dict]:
     """Turn the model's proposals into the spans that actually get cut.
 
@@ -847,7 +848,7 @@ def finalize(
         content_type=content_type, reserve_seconds=reserve_seconds,
     )
     visual.measure_all(highlights, source_path)
-    signals.rescore(highlights, transcript, audio, chat)
+    signals.rescore(highlights, transcript, audio, chat, tuning)
     highlights = dedupe_highlights(highlights)
     highlights.sort(key=lambda h: int(h.get("score", 0) or 0), reverse=True)
     return highlights
@@ -866,6 +867,7 @@ def get_highlights(
     video_meta: Optional[Dict] = None,
     source_path: Optional[str] = None,
     chat=None,
+    tuning: Optional[Dict[str, float]] = None,
 ) -> Dict:
     """Main entry point — returns {highlights: [...], content: {...}}, best first.
 
@@ -891,6 +893,9 @@ def get_highlights(
     `chat` is a stream's chat replay (chat.ChatTrack), when it had one busy
     enough to read. Its bursts are marked in the transcript the model ranks,
     and each candidate is scored on how hard chat answered it.
+
+    `tuning` is what the channel's own view counts say each measured signal
+    is worth (performance.tuning); empty means the rule book's weights.
     """
     llm_fn = llm_fn or call_muapi_llm
     duration = transcript.get("duration", 0)
@@ -960,6 +965,7 @@ def get_highlights(
         reserve_seconds=reserve_seconds,
         source_path=source_path,
         chat=chat,
+        tuning=tuning,
     )
     print(f"[rank] {len(highlights)} candidate(s) after snapping · "
           f"{signals.summarise(highlights)}", flush=True)
