@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import accel, captions, proc
+from . import accel, captions, framing, proc
 from .bundled import asset_dir
 
 Span = Tuple[float, float]
@@ -201,6 +201,15 @@ class Plan:
     # the new timeline -- which is where a cold open will replay from.
     hook: str = ""
     peak: Optional[float] = None
+    # Where someone moved the captions to, as a fraction of the frame's
+    # height (framing.caption_y), or None for the layout's own place.
+    caption_y: Optional[float] = None
+
+    def caption_height(self, opts: "Options") -> float:
+        """Where the middle of the caption goes, as a fraction of the height."""
+        if self.caption_y is not None:
+            return self.caption_y
+        return captions.caption_y(opts.layout, opts.aspect_ratio, opts.cam_panel_fraction)
 
     @property
     def new_duration(self) -> float:
@@ -487,7 +496,8 @@ def analyse(path: str, highlight: Dict, opts: Options,
         return None
 
     plan = Plan(path=path, duration=duration, width=width, height=height,
-                has_audio=has_audio, keeps=[(0.0, duration)])
+                has_audio=has_audio, keeps=[(0.0, duration)],
+                caption_y=framing.caption_y(highlight.get("caption_y")))
 
     given = highlight.get("heard_words")
     if not opts.needs_words:
@@ -624,7 +634,7 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
     folder = asset_dir("emoji")
     if plan.emoji and folder is not None:
         size = int(min(W, H) * 0.15) // 2 * 2
-        y_cap = captions.caption_y(opts.layout, opts.aspect_ratio, opts.cam_panel_fraction)
+        y_cap = plan.caption_height(opts)
         if opts.layout == "stacked":
             # Beside the caption on the gameplay side, never over the face.
             ex, ey = int(W * 0.78 - size / 2), int(H * y_cap + H * 0.05)
@@ -724,7 +734,7 @@ def render(plan: Plan, opts: Options) -> Dict:
         ass_name = fonts = None
         style = opts.captions
         if style != captions.OFF and (plan.caption_words or plan.hook):
-            y = captions.caption_y(opts.layout, opts.aspect_ratio, opts.cam_panel_fraction)
+            y = plan.caption_height(opts)
             script = captions.build_ass(plan.caption_words, style, plan.width, plan.height, y,
                                         hook=plan.hook, hook_windows=hook_windows(plan, opts))
             if script:
