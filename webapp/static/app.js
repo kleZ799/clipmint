@@ -2794,7 +2794,9 @@ function openPlayer(i) {
 
   body.classList.add("player-on");
   $("player").classList.remove("trim-on", "cap-on");
+  closeFrame();
   $("pCapBtn").classList.toggle("hidden", !canFixCaptions(c));
+  $("pFrameBtn").classList.toggle("hidden", !canFrame(c));
   renderSeo();
   setMuteIcon();
   vid.play().catch(() => {});
@@ -2834,6 +2836,7 @@ function editSummary(c) {
 function closePlayer() {
   body.classList.remove("player-on");
   $("player").classList.remove("trim-on", "seo-on", "cap-on");
+  closeFrame();
   vid.pause();
 }
 $("pClose").onclick = closePlayer;
@@ -2903,6 +2906,7 @@ document.addEventListener("keydown", (e) => {
   else if (k === "m") { vid.muted = !vid.muted; setMuteIcon(); }
   else if (k === "t") { toggleTrim(); }
   else if (k === "c") { toggleCaptions(); }
+  else if (k === "r") { toggleFrame(); }
   else if (k === "b") { toggleSeo(); }
   else if (k === "f") { showClipFile(clips[cur]); }
   else if (e.key === "ArrowRight") { vid.currentTime = Math.min(vid.duration || 0, vid.currentTime + 2); }
@@ -3252,6 +3256,7 @@ function toggleSeo() {
   if (p.classList.contains("seo-on")) { p.classList.remove("seo-on"); return; }
   if (!clips[cur]) return;
   p.classList.remove("trim-on", "cap-on");
+  closeFrame();
   renderSeo();
   p.classList.add("seo-on");
 }
@@ -3365,6 +3370,7 @@ function toggleTrim() {
   if (!clips[cur]) return;
   resetTrim();
   p.classList.remove("seo-on", "cap-on");
+  closeFrame();
   p.classList.add("trim-on");
 }
 
@@ -3394,6 +3400,7 @@ function toggleCaptions() {
   $("capText").value = joinWords((c.caption_words || []).length ? c.caption_words : c.heard_words);
   $("capMsg").innerHTML = "";
   p.classList.remove("seo-on", "trim-on");
+  closeFrame();
   p.classList.add("cap-on");
 }
 $("pCapBtn").onclick = toggleCaptions;
@@ -3428,6 +3435,197 @@ $("capApply").onclick = async () => {
     $("capApply").disabled = false;
   }
 };
+// ---------------------------------------------------------------- frame
+//
+// Automatic framing is sometimes wrong: the face-follow picks the wrong
+// person, the centre crop halves the action, the gameplay panel shows the
+// empty side of the screen. This panel shows the whole source picture with
+// the part the Short keeps marked on it, and the box goes wherever it is
+// dragged. The captions' height is set here too, with a guide line drawn over
+// the clip while it moves. Both are rendered again from the source, and stay
+// with the clip through any later trim or caption fix.
+
+let framer = null;   // the server's geometry, plus what has been changed here
+
+function canFrame(c) {
+  return !!(c && c.start_time != null && c.end_time != null && c.url);
+}
+
+function frameUrl(c, tail) {
+  return `/api/jobs/${encodeURIComponent(jobOf(c))}/clips/${encodeURIComponent(c.file)}/${tail}`;
+}
+
+async function toggleFrame() {
+  const p = $("player");
+  if (p.classList.contains("frame-on")) { closeFrame(); return; }
+  const c = clips[cur];
+  if (!canFrame(c)) return;
+  p.classList.remove("seo-on", "trim-on", "cap-on");
+  p.classList.add("frame-on");
+  $("frMsg").innerHTML = "";
+  $("frNote").textContent = "";
+  $("frApply").disabled = true;
+  $("frLoad").classList.remove("hidden");
+  $("frWin").style.display = "none";
+  $("frCam").classList.add("hidden");
+  framer = null;
+  try {
+    const g = await api(frameUrl(c, "frame"));
+    if (clips[cur] !== c || !p.classList.contains("frame-on")) return;
+    framer = { ...g, clip: c, moved: false, capMoved: false };
+    $("frStage").style.aspectRatio = `${g.src_w} / ${g.src_h}`;
+    $("frTime").value = 500;
+    loadStill();
+    // Nothing to place when the window already is the whole picture.
+    const travels = g.win_w < g.src_w || g.win_h < g.src_h;
+    $("frWin").style.display = travels ? "" : "none";
+    $("frStage").classList.toggle("fixed", !travels);
+    drawFrame();
+    $("frCapRow").classList.toggle("hidden", !g.has_captions);
+    $("frCapY").min = Math.round(g.caption_min * 100);
+    $("frCapY").max = Math.round(g.caption_max * 100);
+    $("frCapY").value = Math.round(g.caption_y * 100);
+    $("frNote").textContent = frameNote(g, travels);
+  } catch (e) {
+    $("frLoad").classList.add("hidden");
+    $("frMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function frameNote(g, travels) {
+  if (!travels) return I18N.t("This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.");
+  if (g.panel === "gameplay") return I18N.t("Your webcam is found automatically. This moves the part of the game shown under it.");
+  if (g.manual) return I18N.t("Placed by hand. Back to automatic hands it back to the app.");
+  if (g.moving) return I18N.t("Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.");
+  return "";
+}
+
+function closeFrame() {
+  $("player").classList.remove("frame-on");
+  $("pCapGuide").classList.add("hidden");
+  framer = null;
+}
+
+function loadStill() {
+  if (!framer) return;
+  const f = framer;
+  const at = f.start + (f.end - f.start) * (Number($("frTime").value) / 1000);
+  const img = $("frStill");
+  $("frLoad").classList.remove("hidden");
+  img.onload = img.onerror = () => { if (framer === f) $("frLoad").classList.add("hidden"); };
+  img.src = frameUrl(f.clip, `still?t=${at.toFixed(2)}`);
+}
+
+function drawFrame() {
+  const f = framer;
+  if (!f) return;
+  const box = $("frWin").style;
+  const left = f.x * (f.src_w - f.win_w), top = f.y * (f.src_h - f.win_h);
+  box.left = `${(left / f.src_w) * 100}%`;
+  box.top = `${(top / f.src_h) * 100}%`;
+  box.width = `${(f.win_w / f.src_w) * 100}%`;
+  box.height = `${(f.win_h / f.src_h) * 100}%`;
+  const cam = f.panel === "gameplay" ? f.cam : null;
+  $("frCam").classList.toggle("hidden", !cam);
+  if (cam) {
+    Object.assign($("frCam").style, {
+      left: `${(cam.x / f.src_w) * 100}%`, top: `${(cam.y / f.src_h) * 100}%`,
+      width: `${(cam.w / f.src_w) * 100}%`, height: `${(cam.h / f.src_h) * 100}%`,
+    });
+  }
+  $("frApply").disabled = !(f.moved || f.capMoved);
+}
+
+// Wherever the pointer goes, the middle of the box follows, kept inside.
+function frameAt(e) {
+  const f = framer;
+  const r = $("frStage").getBoundingClientRect();
+  if (!f || !r.width) return;
+  const px = ((e.clientX - r.left) / r.width) * f.src_w;
+  const py = ((e.clientY - r.top) / r.height) * f.src_h;
+  const travelX = f.src_w - f.win_w, travelY = f.src_h - f.win_h;
+  if (travelX > 0) f.x = Math.min(1, Math.max(0, (px - f.win_w / 2) / travelX));
+  if (travelY > 0) f.y = Math.min(1, Math.max(0, (py - f.win_h / 2) / travelY));
+  f.moved = true;
+  drawFrame();
+}
+
+$("frStage").addEventListener("pointerdown", (e) => {
+  if (!framer || $("frStage").classList.contains("fixed")) return;
+  $("frStage").setPointerCapture(e.pointerId);
+  $("frStage").classList.add("drag");
+  frameAt(e);
+});
+$("frStage").addEventListener("pointermove", (e) => {
+  if ($("frStage").classList.contains("drag")) frameAt(e);
+});
+["pointerup", "pointercancel"].forEach((ev) =>
+  $("frStage").addEventListener(ev, () => $("frStage").classList.remove("drag")));
+
+let stillTimer = null;
+$("frTime").addEventListener("input", () => {
+  clearTimeout(stillTimer);
+  stillTimer = setTimeout(loadStill, 180);
+});
+
+function showCapGuide() {
+  const guide = $("pCapGuide");
+  guide.style.top = `${Number($("frCapY").value)}%`;
+  guide.classList.remove("hidden");
+}
+$("frCapY").addEventListener("input", () => {
+  if (!framer) return;
+  framer.capMoved = true;
+  showCapGuide();
+  drawFrame();
+});
+$("frCapY").addEventListener("change", () => {
+  clearTimeout(showCapGuide.t);
+  showCapGuide.t = setTimeout(() => $("pCapGuide").classList.add("hidden"), 1600);
+});
+
+async function sendFrame(body, doing, done) {
+  const c = framer && framer.clip;
+  if (!c) return;
+  $("frApply").disabled = $("frAuto").disabled = true;
+  busy(true, doing);
+  $("frMsg").innerHTML = "";
+  vid.pause();
+  try {
+    const updated = await api(frameUrl(c, "frame"), json("PUT", body));
+    patchClip(cur, updated);
+    vid.src = `${updated.url}?v=${Date.now()}`;
+    $("pDownload").href = updated.url;
+    $("pDownload").setAttribute("download", updated.file);
+    vid.play().catch(() => {});
+    toast(done);
+    closeFrame();
+  } catch (e) {
+    $("frMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    busy(false);
+    $("frAuto").disabled = false;
+    if (framer) drawFrame();
+  }
+}
+
+$("frApply").onclick = () => {
+  const f = framer;
+  if (!f) return;
+  const body = {};
+  // A box never touched keeps whatever it had: automatic stays automatic.
+  if (f.moved || f.manual) { body.x = f.x; body.y = f.y; } else body.auto = true;
+  if (f.capMoved) body.caption_y = Number($("frCapY").value) / 100;
+  else if (!f.caption_set) body.caption_auto = true;
+  sendFrame(body, I18N.t("Framing it again from the source…"), I18N.t("Clip reframed."));
+};
+$("frAuto").onclick = () => {
+  if (!framer) return;
+  sendFrame({ auto: true, caption_auto: true },
+            I18N.t("Handing the framing back to the app…"), I18N.t("Back to automatic framing."));
+};
+$("pFrameBtn").onclick = toggleFrame;
+$("frClose").onclick = closeFrame;
 $("pTrimBtn").onclick = toggleTrim;
 $("trimClose").onclick = () => $("player").classList.remove("trim-on");
 

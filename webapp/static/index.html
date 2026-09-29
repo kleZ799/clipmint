@@ -52,6 +52,7 @@
   <symbol id="i-save" viewBox="0 0 24 24"><path d="M6 4.5h12a1 1 0 0 1 1 1V20l-7-3.6L5 20V5.5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></symbol>
   <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-film" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M8.5 4.5v15M15.5 4.5v15M3.5 12h17" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-frame" viewBox="0 0 24 24"><path d="M7 3v14h14M3 7h14v14" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-captions" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M6.5 14.5h5M13.5 14.5h4M6.5 11h3M11.5 11h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.6L12 17l-1.9-5.4L4.5 10l5.6-1.6z" fill="currentColor"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" fill="currentColor" opacity=".7"/></symbol>
   <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.7-.9 1.3v.5" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="12" cy="16.4" r="1" fill="currentColor"/></symbol>
@@ -660,6 +661,7 @@
       <div class="pv-shell">
         <video id="pVideo" playsinline preload="metadata"></video>
         <div class="pv-tap" id="pTap"><span class="pv-bigplay"><svg><use href="#i-play"/></svg></span></div>
+        <div class="pv-capguide hidden" id="pCapGuide"><span>Captions</span></div>
         <div class="pv-busy hidden" id="pBusy"><span class="spin lg"></span><span id="pBusyText">Re-cutting&hellip;</span></div>
         <div class="pv-foot">
           <div class="pv-title" id="pTitle"></div>
@@ -674,6 +676,7 @@
         <button class="rbtn" id="pMute" title="Mute (M)"><svg><use href="#i-vol"/></svg><span>Sound</span></button>
         <button class="rbtn" id="pTrimBtn" title="Trim (T)"><svg><use href="#i-scissors"/></svg><span>Trim</span></button>
         <button class="rbtn hidden" id="pCapBtn" title="Fix the captions (C)"><svg><use href="#i-captions"/></svg><span>Captions</span></button>
+        <button class="rbtn hidden" id="pFrameBtn" title="Move the frame or the captions (R)"><svg><use href="#i-frame"/></svg><span>Frame</span></button>
         <button class="rbtn" id="pSeoBtn" title="Title, description and tags (B)"><svg><use href="#i-spark"/></svg><span>Boost</span></button>
         <button class="rbtn" id="pSave" title="Save to your folder"><svg><use href="#i-save"/></svg><span>Save</span></button>
         <a class="rbtn" id="pDownload" download title="Download"><svg><use href="#i-download"/></svg><span>Download</span></a>
@@ -718,6 +721,35 @@
       </div>
       <p class="hint">Correct a name or a word Whisper misheard. Words you keep stay exactly where they were said; words you change or add take the time of the ones they replace.</p>
       <div id="capMsg"></div>
+    </div>
+
+    <!-- frame panel -->
+    <div class="trim framer" id="framer">
+      <div class="t-head">
+        <h3><svg><use href="#i-frame"/></svg>Frame it yourself</h3>
+        <button class="ibtn sm" id="frClose"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="fr-stage" id="frStage">
+        <img id="frStill" alt="The whole source picture at this moment, with the part the Short shows marked">
+        <div class="fr-cam hidden" id="frCam"><span>Webcam</span></div>
+        <div class="fr-win" id="frWin"></div>
+        <div class="fr-load" id="frLoad"><span class="spin"></span></div>
+      </div>
+      <label class="fr-row">
+        <span>Look at</span>
+        <input type="range" id="frTime" min="0" max="1000" value="500" aria-label="Which moment of the clip to look at">
+      </label>
+      <p class="fr-note" id="frNote"></p>
+      <label class="fr-row hidden" id="frCapRow">
+        <span>Captions</span>
+        <input type="range" id="frCapY" min="25" max="88" value="70" aria-label="How far down the captions sit">
+      </label>
+      <div class="t-actions">
+        <button class="btn ghost" id="frAuto">Back to automatic</button>
+        <button class="btn primary" id="frApply" disabled>Apply</button>
+      </div>
+      <p class="hint">Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.</p>
+      <div id="frMsg"></div>
     </div>
 
     <!-- trim panel -->
