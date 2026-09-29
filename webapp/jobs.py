@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from shorts_generator import proc, scorecard
+from shorts_generator import framing, proc, scorecard
 from shorts_generator.layout_spec import LayoutSpec
 
 from shorts_generator import user_config
@@ -889,7 +889,7 @@ class JobStore:
         self._update(job, stage="render", frac=0.0, message=_STAGE_LABELS["render"])
 
         keys = ("title", "start_time", "end_time", "score", "hook_sentence", "first_line",
-                "virality_reason", "hook_peak", "seo", "scene")
+                "virality_reason", "hook_peak", "seo", "scene", "frame", "caption_y")
         sink = _JobStdout(self, job)
         with contextlib.redirect_stdout(sink):
             shorts = self._render(job, job.source_path,
@@ -907,6 +907,7 @@ class JobStore:
                            "hook_replay_seconds": s.get("hook_replay_seconds"),
                            "edit": s.get("edit"),
                            "heard_words": s.get("heard_words"),
+                           "framing": framing.summary(s.get("layout")),
                            "duration": clip_length(s)}
                 fixed += 1
             else:
@@ -1214,6 +1215,9 @@ class JobStore:
                 # What was heard, word by word, so the captions can be
                 # corrected and burned again without listening twice.
                 "heard_words": s.get("heard_words"),
+                # Which part of the source the window covered, and where, so
+                # the frame editor can show it -- see shorts_generator/framing.py.
+                "framing": framing.summary(s.get("layout")),
                 "error": s.get("error"),
                 "job_id": job.id,
                 "file": name,
