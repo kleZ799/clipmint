@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 29 September 2026_
+_Last updated: 29 September 2026 (v1.24.0)_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,
@@ -30,7 +30,7 @@ permissions:
 | Permission | What ClipMint does with it |
 | --- | --- |
 | Manage your YouTube videos (`youtube.upload`) | Uploads a clip when you press **Upload to YouTube**, with the title, description, tags, category, audience setting and schedule you can see and edit in the app. It never uploads anything by itself. |
-| View your YouTube account (`youtube.readonly`) | Shows the name of the channel you connected, so you can check that clips go to the right one. After an upload, reads back that one video's privacy status to tell you if YouTube kept it private. |
+| View your YouTube account (`youtube.readonly`) | Shows the name of the channel you connected, so you can check that clips go to the right one. After an upload, reads back that one video's privacy status to tell you if YouTube kept it private. Reads your channel's list of uploads and the view, like and comment counts of the videos that are your ClipMint clips, so the app can show how each one did and learn which kinds of clip do well on your channel. |
 
 ClipMint does not delete, edit or comment on anything on your channel. It does
 not read your watch history, subscriptions, analytics or any other videos.
@@ -50,6 +50,14 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
   privacy setting, saved with that clip so the app can show "On YouTube" and
   open it in Studio. ClipMint deletes these once they are 30 days old, the
   next time it starts.
+- **How each of your clips did on YouTube**: its video's ID, views, likes,
+  comments and publish date, saved with that clip. Clips you uploaded
+  yourself are found by matching their title against your channel's list of
+  uploads; the list is used for that match and not kept. The numbers are
+  refreshed each time the app checks (at most every six hours, or when you
+  press **Check now**) and deleted once they are 30 days old without a
+  refresh. What the app concludes from them is worked out afresh each time
+  from the numbers it has, and never stored.
 - **Your upload choices** (privacy, category, made-for-kids), kept in the app
   window's local storage so the form remembers them.
 - **Your caption style and edit choices**, kept the same way.
@@ -95,7 +103,8 @@ ClipMint does not sell or rent anything to anyone.
 
 - **In the app:** Settings → **Post to your channel** → **Disconnect**.
   ClipMint gives its permission back to Google and immediately deletes the
-  sign-in token, the channel details and every upload record.
+  sign-in token, the channel details, every upload record and every clip's
+  view counts.
 - **At Google:** remove ClipMint at
   [security.google.com/settings/security/permissions](https://security.google.com/settings/security/permissions).
   The next time ClipMint tries to use the permission, it finds it withdrawn and
