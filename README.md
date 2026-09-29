@@ -76,6 +76,7 @@ browser rather than in a window of its own.
 | **Explains them** | A score split into Hook, Moment, Look, Energy and Pace, with the reason each clip ranked where it did |
 | **Packages them** | Ranked titles, descriptions and tags for Shorts, captions for Reels and TikTok, all editable |
 | **Posts them** | Straight to your YouTube channel, one clip or a whole run, now or on a schedule |
+| **Learns from them** | Reads how each posted clip did, tells you what is working on your channel, and tunes the ranking when the evidence is strong |
 | **Stays on your PC** | Free, no account, no watermark; it runs on your GPU if you have one |
 
 ---
@@ -468,6 +469,39 @@ the app tells you straight away when it does.
 and the review, and the
 [privacy policy](https://klez799.github.io/clipmint/privacy.html) says what is
 stored and where: on your PC, and nowhere else.
+
+### See how your Shorts did, and learn from it
+
+With your channel connected, the library opens with **How your Shorts did**.
+ClipMint reads the views, likes and comments of every clip that's on your
+channel, including ones you uploaded yourself, which it finds by title. Then it
+says what the numbers show:
+
+<img src="assets/screenshots/16-performance.png" alt="How your Shorts did: 26 clips on YouTube with a median of 7 views, a finding marked Looks real that clips with a title the AI actually wrote got a median of 42.5 views against 3.5 for the rest, a line listing what has no clear link yet, and a note that the ranking is unchanged" width="880">
+
+- **Every pattern is tested against chance.** With a few dozen Shorts, most
+  differences are noise, and the panel says so: a finding is marked **Looks
+  real** only when shuffling the views at random almost never produces one as
+  strong. Everything else is listed as *no clear link yet*.
+- **Only clips at least two days old count.** A Short gets most of its views in
+  its first days, and yesterday's hasn't had them yet.
+- **The ranking learns, carefully.** When the loudness, reaction words, motion,
+  build-up or chat of a clip really does go with views on your channel, that
+  signal counts for more in the next run. It never moves by more than 40%, and
+  only once there are a dozen clips to go on. Until then, the ranking stays as
+  it is, and the panel tells you why.
+- **Every card shows its views**, and **Most views** sorts a run by them.
+
+On the channel this was built with, the one thing that held up was the titles.
+Clips whose title the AI actually wrote got **ten times** the views of clips
+where it had fallen back to the first thing said. That held within the same
+week's uploads too, so it wasn't just older Shorts doing better. None of the
+ranking scores tracked views yet, so nothing was tuned.
+
+It uses the same YouTube connection as uploading, with no new permission. It
+checks by itself at most every six hours, or when you press **Check now**. The
+numbers stay on your PC and are deleted after 30 days without a refresh, as
+YouTube's rules require. Disconnecting deletes them straight away.
 
 ### Written from a playbook that keeps up with the algorithms
 
@@ -1071,8 +1105,10 @@ same.
 How much those move a rank is scaled by how much of them was actually
 measurable, so a video with no readable audio leans on the model rather than on
 one keyword list. Every clip keeps its own numbers in `job.json` beside it —
-the model's score, the measured one, each sub-signal — so the weights can one
-day be corrected against real retention instead of being trusted forever.
+the model's score, the measured one, each sub-signal — so once clips are on
+YouTube, the weights are checked against how they actually did (see
+[How your Shorts did](#see-how-your-shorts-did-and-learn-from-it)) instead of
+being trusted forever.
 
 **Then the span is snapped to something real.** Ask for 30-second clips and a
 model hands back 19s, 24s, 47s: it is estimating durations from timestamps it
@@ -1445,6 +1481,7 @@ shorts_generator/
 ├── boundaries.py          # snap spans to sentences; enforce the length asked for
 ├── hook_open.py           # the cold open that puts a late payoff first
 ├── framing.py             # where the crop window sits, and moving it by hand
+├── performance.py         # what the channel's view counts say, tested against chance
 ├── words.py               # word timings for a finished clip
 ├── autoedit.py            # pause cuts, punch-ins, emoji, B-roll, logo — one encode
 ├── captions.py            # burned-in captions: four styles, fixable afterwards
