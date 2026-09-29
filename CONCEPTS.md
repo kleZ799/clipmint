@@ -75,7 +75,9 @@ engineering is.
 > degradation path; transcription is the expensive step, so there are eight
 > layers of caching that make every re-rank free. And when the automatic
 > framing is wrong, the fix is a stored parameter and a re-render from the
-> source, never an edit of the rendered file.
+> source, never an edit of the rendered file. Once clips are posted, their
+> view counts come back and are tested against chance before anything in the
+> ranking is allowed to move.
 
 If they want less, stop after the first paragraph. If they want more, the
 answer to "what was hard?" is in [§14](#14-questions-you-should-expect).
@@ -705,6 +707,39 @@ changes precision.
 And there is a floor. Under 150 messages, or 3 a minute, the "label" is three
 people, and the honest move is to treat it as missing: redistribute, as above,
 rather than score a spike made of noise.
+
+### Learning from a handful of numbers
+
+Once Shorts are posted, every clip is a labelled example: the features it was
+ranked on, and the views it got. The temptation is to fit a model. With a few
+dozen examples, that would fit noise, and a ranking tuned to noise is worse
+than one that was never tuned. `performance.py` is built around the small-data
+problem instead:
+
+- **Rank statistics.** Views are heavy-tailed. One Short at 1,200 views next to
+  twenty at 5 makes Pearson's correlation a statement about that one Short.
+  **Spearman's ρ** correlates the ranks, so every clip gets one vote.
+- **A test against chance.** With 12 features and 20 clips, some feature will
+  correlate at 0.4 by accident. A **permutation test** answers "how often does
+  shuffling the views across clips produce a correlation this strong?"
+  directly, with no assumption about the distribution. Below 5% it's reported
+  as real; everything else is listed, honestly, as no clear link.
+- **Censoring by age.** A Short published yesterday hasn't had its views yet.
+  Counting it would read as "recent clips are bad". Clips under two days old
+  are left out and counted as waiting.
+- **Shrinkage.** Even a real finding from 12 clips is a noisy estimate. The
+  weight moves by `ρ · n/(n+20)`, which is a Bayesian-flavoured pull toward the
+  prior, and is capped at 40%. Twelve clips nudge the weight, a hundred move it
+  most of the way, and nothing ever flips it.
+- **Confounding.** The strongest real finding, model-written titles getting 10×
+  the views, could have been time: the older Shorts, from a better period, had
+  good titles. Re-running the test inside a single week's uploads still gave
+  20 views against 3.5 at p = 0.008. Checking a finding within a slice where
+  the suspected confounder is held fixed is the cheapest control there is.
+
+The result on the real channel was that nothing in the ranking moved. That is
+the design working: it will change the ranking when the channel's own numbers
+say to, and not before.
 
 ### Post-hoc enforcement over prompt compliance
 
@@ -1755,11 +1790,12 @@ it required understanding *why* an LLM's numeric output was untrustworthy rather
 than just calling the API.
 
 **"How do you know the clips are actually good?"**
-The honest answer, which is more impressive than a fake one: there is no
-automated quality metric. Ranking quality is judged manually. Building an
-evaluation set — clips labelled by actual retention data from published Shorts —
-is the obvious next step and the only way to make the rubric empirical rather
-than assumed.
+Views on the channel, read back and tested. On the first real run, 19 clips
+were old enough to judge, and the honest answer was that none of the ranking's
+scores predicted views yet. The one thing that did was whether the AI wrote the
+title, at 10×. So the app says that, and tunes nothing. See
+[§5a](#5a-aiml-audio-signal-processing-and-feature-fusion), *Learning from a
+handful of numbers*.
 
 ---
 
@@ -1780,18 +1816,13 @@ Ordered by value, with the reasoning that makes each defensible:
    and it is genuinely **worse** than either cloud provider at nuanced judgement
    over a long transcript. It is the right *last resort*, not the right primary.
 
-3. **Evaluation against real retention data.** Everything about the ranking
-   rubric is currently assumed. Published Shorts produce retention curves; those
-   are labels. Without them, "viral potential" is an untested hypothesis.
-
-   Half of this now exists: every clip's feature vector and both of its scores
-   are written into `job.json` beside it, so the training set is accumulating
-   whether or not anything reads it yet. What is missing is the other half —
-   an OAuth flow to the YouTube Analytics API, and a correlation pass that
-   re-derives the weights in `signals.py` from *this channel's* median
-   retention rather than from a rule book. Note the shape of that problem: it
-   is not a modelling challenge, it is a plumbing one, and the recording had to
-   come first because you cannot correlate against outcomes nobody wrote down.
+3. **Retention instead of views.** Built since v1.24.0 with views: every
+   clip's features were recorded first, the channel's view counts now come back,
+   and a permutation-tested correlation pass tunes the signal weights. Views
+   are a weak label. They mix "was it shown" with "was it watched", and a small
+   channel has few of them. Retention, how much of each Short people watched,
+   is what the ranking is really trying to predict. It needs the YouTube
+   Analytics API, a new scope, and another pass through Google's review.
 
 4. **Surface degraded output in the UI.** `generated: False` is recorded but a
    degraded run looks identical to a good one until you notice the filenames.
