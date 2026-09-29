@@ -72,7 +72,7 @@ browser rather than in a window of its own.
 | **Finds the moments** | Ranks every moment by the rules for its kind of video, then looks at the best ones the way a stranger scrolling past would |
 | **Frames them** | Webcam over gameplay, a crop that follows your face (or whoever is talking, when two people share the shot), or plain centre crop, at the source's real quality |
 | **Captions them** | Burned in, a few words at a time, the spoken word lit up. Four styles; fix a misheard word afterwards |
-| **Edits them** | Cuts quiet pauses and "um"s, punches in on emphasis, adds emoji, stock B-roll and your logo if you want |
+| **Edits them** | Cuts quiet pauses and "um"s, punches in on emphasis, adds emoji, stock B-roll and your logo if you want. Framed wrong? Drag the frame, or move the captions, yourself |
 | **Explains them** | A score split into Hook, Moment, Look, Energy and Pace, with the reason each clip ranked where it did |
 | **Packages them** | Ranked titles, descriptions and tags for Shorts, captions for Reels and TikTok, all editable |
 | **Posts them** | Straight to your YouTube channel, one clip or a whole run, now or on a schedule |
@@ -574,6 +574,20 @@ rendered file. The new span is captioned and edited the same way the run was.
 To change only the words on screen, press **Captions** in the player instead
 (or **C**): type the line as it should read and it is burned in again, on the
 same span, with the same cuts.
+
+**Framed wrong? Move it.** Press **Frame** (or **R**) and the whole source
+picture opens with the part the Short shows marked on it. Drag the box to
+where it should be, and a slider under it moves the captions up or down, with a
+line on the clip showing where they will land. It renders again from the
+source in a few seconds, and stays put through any later trim or caption fix.
+**Back to automatic** undoes it.
+
+- **Face-following and gameplay-only clips:** the box is the whole picture.
+- **Webcam-over-gameplay clips:** your webcam is still found for you, shown
+  shaded, and the box is the game underneath it, for when the action is off to
+  one side.
+
+<img src="assets/screenshots/15-frame.png" alt="The clip player with the Frame panel open: the whole source picture with the part the Short shows boxed in red and the rest dimmed, the webcam marked as found automatically, a slider for which moment to look at, a Captions slider, and a dashed line on the clip showing where the captions will land" width="880">
 
 <img src="assets/screenshots/04-player-trim.png" alt="The clip player, its burned-in caption and emoji on screen, with the trim panel open showing in and out handles" width="880">
 
@@ -1430,6 +1444,7 @@ shorts_generator/
 ├── chat.py                # a stream's chat replay → when the audience reacted
 ├── boundaries.py          # snap spans to sentences; enforce the length asked for
 ├── hook_open.py           # the cold open that puts a late payoff first
+├── framing.py             # where the crop window sits, and moving it by hand
 ├── words.py               # word timings for a finished clip
 ├── autoedit.py            # pause cuts, punch-ins, emoji, B-roll, logo — one encode
 ├── captions.py            # burned-in captions: four styles, fixable afterwards
