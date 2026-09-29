@@ -45,6 +45,13 @@ will sit on the clip:
   above the band where TikTok, Reels and Shorts draw their own buttons.
 - **Square, 4:5 and 16:9:** a little lower.
 
+**Captions in the wrong place on one clip?** Open it, press **Frame** in the
+player (or **R**), and move the **Captions** slider. A dashed line on the clip
+shows where they will land. They can go anywhere from a quarter of the way down
+to near the bottom, but not higher: the hook line sits across the top. The
+height stays with that clip through a trim or a caption fix, and **Back to
+automatic** returns it to the layout's own place.
+
 Lines break where you pause or finish a clause, not only at the word limit.
 Japanese, Chinese and Thai are joined without spaces. The fonts ship with the
 app, so captions look the same on every PC.
@@ -161,7 +168,8 @@ it should read and press **Burn in again**.
 The clip is rendered again from the downloaded video, on the same span with
 the same edit, so the video it came from has to still be on this PC. Trimming a
 clip gives it a new span and new words, so a trim drops any fixes; fix the
-captions after the trim, not before.
+captions after the trim, not before. A caption height or a frame you set by
+hand is different: a trim keeps both.
 
 The Captions button only appears on clips made with captions on, in v1.19.0 or
 later.
