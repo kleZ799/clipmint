@@ -452,6 +452,25 @@ operator does:
 
 Measured on the same clip: direction reversals fell from 50 to 4.
 
+### Storing an edit as intent, not pixels
+
+The frame editor stores where the window was put as a **fraction of its
+travel**, not as a pixel offset. The same clip can be rendered at 480p today,
+at 1440p when a better download arrives, and in a different output size after a
+settings change, and "flush left" has to stay flush left through all of them.
+Pixels are derived at render time from the geometry of *that* render. It is the
+same idea as normalised device coordinates in graphics, or storing a crop as a
+percentage in a photo editor.
+
+The other half is **non-destructive editing**. Nothing edits the rendered mp4.
+Every change (a trim, a caption fix, a frame) is a parameter stored on the
+clip, and the clip is rendered again from the original download with all of
+them applied. That is why the edits compose: a trim after a reframe keeps the
+frame, because the trim's render reads the same stored parameters. The rendered
+file is a cache of (source, span, parameters), never the thing being edited.
+The cost is that the source has to still be on disk, which is why every edit
+route refuses clearly when it is gone.
+
 ### Active speaker detection, and evaluating without labels
 
 With two people in a wide shot, *which* face to follow is a classification
