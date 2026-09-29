@@ -56,9 +56,10 @@ engineering is.
 > tutorial — and produces vertical clips packaged for YouTube Shorts, Instagram
 > Reels and TikTok. Three stages: transcribe the audio with Whisper, have an LLM
 > work out what kind of video it is and rank the transcript for clippable
-> moments by that kind's rules, then cut and re-frame those spans with ffmpeg
+> moments by that kind's rules (on a stream, with the chat replay marking what
+> the live audience reacted to), then cut and re-frame those spans with ffmpeg
 > into 9:16: the webcam stacked over the gameplay for a stream, a crop that
-> follows the face for a vlog or podcast. Then each clip is edited the way a
+> follows the face for a vlog, or whoever is talking on a two-person podcast. Then each clip is edited the way a
 > person would: captions burned in word by word, quiet pauses cut, a zoom on
 > the line that matters. Each clip says why it ranked where it did.
 >
@@ -71,8 +72,10 @@ engineering is.
 > The interesting parts aren't the models, they're everything around them:
 > a 3h47m VOD does not fit in a context window, so ranking is chunked and
 > checkpointed; the LLM is unreliable, so there's a retry budget and a
-> degradation path; transcription is the expensive step, so there are seven
-> layers of caching that make every re-rank free.
+> degradation path; transcription is the expensive step, so there are eight
+> layers of caching that make every re-rank free. And when the automatic
+> framing is wrong, the fix is a stored parameter and a re-render from the
+> source, never an edit of the rendered file.
 
 If they want less, stop after the first paragraph. If they want more, the
 answer to "what was hard?" is in [§14](#14-questions-you-should-expect).
