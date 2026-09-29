@@ -82,6 +82,7 @@ def main() -> None:
     shutil.copy2(ROOT / "assets" / "icon.png", OUT / "icon.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "01-create.png", OUT / "screenshot.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "09-youtube-upload.png", OUT / "upload.png")
+    shutil.copy2(ROOT / "assets" / "screenshots" / "15-frame.png", OUT / "frame.png")
     shutil.copy2(ROOT / "assets" / "showcase" / "clipmint-showcase.mp4", OUT / "showcase.mp4")
     shutil.copy2(ROOT / "assets" / "showcase" / "clipmint-showcase-poster.jpg", OUT / "showcase.jpg")
     # The caption samples on the home page use the fonts the app burns in.

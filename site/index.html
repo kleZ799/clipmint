@@ -19,6 +19,7 @@
     <nav class="links">
       <a href="#download">Download</a>
       <a href="#captions">Captions</a>
+      <a href="#fix">Fixing a clip</a>
       <a href="#youtube">YouTube uploads</a>
       <a href="privacy.html">Privacy policy</a>
       <a href="https://github.com/kleZ799/clipmint">Source code</a>
@@ -66,13 +67,19 @@
     <h2>What it does</h2>
     <div class="grid">
       <div class="card"><h3>Finds the moments</h3>
-        <p>Transcribes the video on your computer, ranks the moments most worth posting, and
-          tells you why each one ranked where it did.</p></div>
+        <p>Transcribes the video on your computer and ranks every moment on one question:
+          would a stranger scrolling past stay for it? It looks at the best ones before
+          cutting them, and tells you why each ranked where it did.</p></div>
+      <div class="card"><h3>Reads the chat</h3>
+        <p>On a YouTube stream, it reads the chat replay to find what your live audience
+          reacted to, including the moments nobody said anything about. Floods you asked
+          for, like "everybody type W", don't count.</p></div>
       <div class="card"><h3>Cuts them vertical</h3>
-        <p>Renders 9:16 clips with faces and gameplay framed the way Shorts need them.</p></div>
+        <p>Renders 9:16 clips with faces and gameplay framed the way Shorts need them. With
+          two people in the shot, it frames whoever is talking and cuts between them.</p></div>
       <div class="card"><h3>Captions them</h3>
-        <p>Burns in captions a few words at a time, with the word being said lit up. Four
-          styles, and a misheard name can be fixed afterwards.</p></div>
+        <p>Burns in captions a few words at a time, with the word being said lit up, and puts
+          each clip's hook line across the top for its first seconds. Four styles.</p></div>
       <div class="card"><h3>Edits out the dead air</h3>
         <p>Cuts quiet pauses and "um"s, zooms in on the lines that land, and can add emoji,
           stock B-roll and your logo.</p></div>
@@ -80,6 +87,9 @@
         <p>Drafts titles, descriptions and tags for YouTube, plus captions for Reels and TikTok. You can edit every word.</p></div>
       <div class="card"><h3>Posts to your channel</h3>
         <p>Optionally uploads a clip to YouTube, now or on a schedule, when you press Upload.</p></div>
+      <div class="card"><h3>Lets you fix it</h3>
+        <p>Trim any clip, correct a misheard word, drag the frame to where it should be, or
+          move the captions. Each one renders again from the original video.</p></div>
     </div>
   </section>
 
@@ -129,11 +139,35 @@
       <li><b>Emoji, stock B-roll and your logo</b> are there when you want them. B-roll uses a
         free Pexels key and never goes over gameplay.</li>
       <li><b>Say it instead of clicking:</b> <i>"comic captions, keep the pauses"</i>.</li>
-      <li><b>Every clip says why it ranked,</b> with bars for its hook, the moment, its energy
-        and its pace.</li>
+      <li><b>The hook line</b> goes across the top for the clip's first seconds, so a stranger
+        knows what they're about to see.</li>
+      <li><b>Captions in the wrong place on one clip?</b> Move them up or down, with a line on
+        the clip showing where they'll land.</li>
+      <li><b>Every clip says why it ranked,</b> with bars for its hook, the moment, how its
+        frames look to a stranger, its energy and its pace, and on a stream, how hard chat
+        reacted.</li>
     </ul>
     <p>The full guide, including how to fix a misheard word, is
       <a href="https://github.com/kleZ799/clipmint/blob/main/docs/captions-and-editing.md">on GitHub</a>.</p>
+  </section>
+
+  <section id="fix">
+    <h2>When it gets it wrong</h2>
+    <p>Automatic is right most of the time. For the rest, every clip opens in a player where
+      you can fix it without running anything again:</p>
+    <img class="shot" src="frame.png" width="1440" height="900" loading="lazy"
+         alt="The clip player with the Frame panel open: the whole source picture with the part the Short shows boxed in red, the webcam marked as found automatically, and a line on the clip showing where the captions will land">
+    <ul>
+      <li><b>Framed wrong?</b> Press <b>Frame</b> and the whole source picture opens with the
+        part the Short shows marked on it. Drag the box to where it should be. On a
+        webcam-over-gameplay clip your webcam stays found for you, and the box moves the game
+        underneath it.</li>
+      <li><b>Cut in the wrong place?</b> Trim it. The span can grow as well as shrink, because
+        it's cut again from the original video.</li>
+      <li><b>A name misheard?</b> Type the line as it should read, and it's burned in again.</li>
+    </ul>
+    <p>Each fix stays with the clip, so a trim after a reframe keeps the frame.
+      <b>Back to automatic</b> undoes it.</p>
   </section>
 
   <section id="youtube">
