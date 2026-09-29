@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 25 September 2026_
+_Last updated: 29 September 2026_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,
@@ -57,6 +57,13 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
   stays until you remove it in Settings.
 - **Your logo**, if you upload one, in the settings folder. It stays until
   you remove it in Settings.
+- **How busy a stream's chat was**, second by second, when the video you gave
+  it was a YouTube stream with a public chat replay. ClipMint downloads the
+  replay from YouTube the same way it downloads the video, counts how many
+  messages arrived each second, and deletes the replay straight away. Only
+  those counts are kept, in a small file beside the downloaded video. No
+  viewer's name or message is kept, and none is ever sent anywhere, including
+  to the AI provider.
 
 ClipMint does not use cookies or any tracking or analytics. The YouTube sign-in
 cookies feature, used only to *download* videos when YouTube asks for proof
