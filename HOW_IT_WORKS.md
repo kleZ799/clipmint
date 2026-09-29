@@ -54,6 +54,7 @@ anyone.
     - 16b. [Shipping updates to an installed .exe](#16b-shipping-updates-to-an-installed-exe)
     - 16c. [Telling somebody a run has finished](#16c-telling-somebody-a-run-has-finished)
     - 16d. [Posting a clip to YouTube](#16d-posting-a-clip-to-youtube)
+    - 16e. [How the Shorts did](#16e-how-the-shorts-did--youtube_statspy-and-performancepy)
 
 **Reference**
 17. [Rough edges and known limits](#17-rough-edges-and-known-limits)
@@ -79,7 +80,9 @@ video (following whoever is talking when two people share the shot), and edits
 each one: word-by-word **captions** burned in with libass,
 quiet pauses cut, punch-ins on emphasis, and a scorecard saying why it ranked
 where it did. Any clip can then be trimmed, re-captioned or re-framed by hand,
-each rendered again from the original download. It ships as a **FastAPI** backend behind a **vanilla-JS** single-page UI,
+each rendered again from the original download. Once clips are on YouTube, it
+reads their view counts back, reports what is and is not working on the
+channel, and tunes the ranking on whatever survives a test against chance. It ships as a **FastAPI** backend behind a **vanilla-JS** single-page UI,
 wrapped in a native **pywebview** window and packaged by **PyInstaller** into a
 Windows .exe, a mac .app and a Linux binary that need nothing installed.
 
@@ -254,6 +257,7 @@ shorts_generator/
 ├── boundaries.py           snap spans to sentences; enforce clip length
 ├── hook_open.py            prepend a late payoff to the front of a clip
 ├── framing.py              the crop window's geometry; a frame or caption height set by hand
+├── performance.py          what the channel's view counts say; the ranking's tuning
 ├── layout_spec.py          natural language → LayoutSpec; quality ladder
 ├── render.py               one entry point that dispatches a LayoutSpec
 ├── autoedit.py             after the cut: jump cuts, punch-ins, emoji, B-roll, one encode
@@ -287,6 +291,8 @@ webapp/
 ├── __main__.py             python -m webapp
 ├── server.py               FastAPI routes (~30 endpoints)
 ├── jobs.py                 job queue, worker thread, progress, persistence
+├── youtube_upload.py       sign-in and uploads through the Data API
+├── youtube_stats.py        how each clip did on the channel, kept to the 30-day rule
 └── static/                 index.html / app.js / style.css — the whole UI
 ```
 
@@ -873,9 +879,13 @@ transcript means *"we did not look"*, not *"this clip opens on silence"*.
 
 Every sub-signal is kept on the highlight and written into `job.json`. The rule
 book those weights come from is explicit that they are seed values to be
-corrected against real retention data; that correction is impossible against
-outcomes nobody recorded. Reading YouTube Analytics back in is not built — this
-is the half of the loop that can exist without an OAuth flow.
+corrected against real outcomes; that correction is impossible against
+outcomes nobody recorded. Since v1.24.0 the other half exists: views come back
+from the channel ([§16e](#16e-how-the-shorts-did--youtube_statspy-and-performancepy)),
+and `rescore()` takes a `tuning` dict that multiplies a signal's weight by what
+the channel showed it is worth. Coverage is still measured against the
+untuned weights, so tuning changes what counts, not how much measurement
+counts.
 
 ### 6.11 Boundaries — `boundaries.py`
 
@@ -3495,6 +3505,69 @@ Policy III.E.4 caps stored API data at 30 days:
   `JobStore.forget_youtube(only_expired=True)` at the end of `restore()`.
 - `POST /api/youtube/disconnect` revokes the token at Google, deletes it, and
   runs `forget_youtube()` over every run.
+- Each clip's `performance` (view counts, [§16e](#16e-how-the-shorts-did--youtube_statspy-and-performancepy))
+  carries `fetched_at`, is refreshed on every check, and goes in the same
+  sweep and on the same disconnect.
+
+## 16e. How the Shorts did — `youtube_stats.py` and `performance.py`
+
+The ranking guesses; this reads back what happened. Two modules, split by
+whether they touch the network.
+
+**`webapp/youtube_stats.py` fetches.** `check(store)`:
+
+1. `channels.list(mine=true)` for the uploads playlist, then
+   `playlistItems.list` in pages of 50 (at most 20 pages): every video's id,
+   title and publish time.
+2. `match()` pairs clips with videos. A clip uploaded from ClipMint carries its
+   video id in `youtube.video_id`. That is certain, and it claims the video
+   first, so no title match can take it. A clip uploaded by hand is matched on
+   `norm_title()` (lowercase, hashtags and punctuation stripped) of its SEO
+   title, its title or its file name, which `rename_to_title` keeps equal. Only
+   videos published after the run started (less a day) count, and the earliest
+   such video wins, so an older video with the same title is never mistaken
+   for the clip.
+3. `videos.list(part=statistics,snippet)` in batches of 50 for the matched ids,
+   and each clip gets `performance = {video_id, views, likes, comments,
+   published_at, matched, url, fetched_at}`. A clip whose video has gone gets
+   its old numbers removed rather than kept.
+
+The uploads list is used for the match and dropped. A check costs a handful of
+quota units. It runs at startup, in a thread after `STORE.restore()`, when the
+last one is more than six hours old (`youtube_stats.json` in the settings
+folder holds only that time and a count), and on **Check now**.
+`JobStore.forget_youtube()` now drops `performance` too: at startup once
+`fetched_at` is 30 days old, and on disconnect, all of it.
+
+**`shorts_generator/performance.py` reads.** It never touches the network and
+stores nothing: `analyse(clips)` works from whatever `performance` is on the
+clips right now, so a conclusion expires with the numbers it came from.
+
+- **Who counts:** clips with views published at least `MIN_AGE` (2 days) ago.
+  Younger ones are reported as waiting.
+- **Features:** the overall score, hook, moment, Look, each measured signal,
+  pace, length, and whether the title was written by the model or fell back.
+- **Per feature:** Spearman's ρ between it and views (ranks, so one viral Short
+  can't decide everything), a median split (or the two groups, for a yes/no
+  feature) for the plain-language line, and a two-sided **permutation test**:
+  views shuffled 4,000 times with a fixed seed, and p is how often a shuffle
+  correlates at least as strongly. p < 0.05 is **Looks real**, p < 0.15 **Worth
+  watching**, and anything else is listed as no clear link.
+- **Tuning:** only for the measured signals, only at 12+ clips, only on a real
+  finding. The multiplier is `1 + ρ · n/(n + 20)`, capped at ±0.4, so twelve
+  clips can nudge a weight and a hundred can move it most of the way.
+
+`jobs.py` calls `analyse()` over every clip in the store just before ranking
+and passes `tuning` to `get_highlights`, logging what moved. `GET
+/api/performance` returns the check state and the analysis for the library's
+panel; `POST /api/performance/check` starts a check.
+
+On the author's channel, the first run matched 28 clips (21 by upload record,
+7 by title) out of 406 videos. One finding survived: model-written titles, a
+median of 42.5 views against 3.5, p = 0.0002. It also held inside one week's
+uploads alone (20 against 3.5, p = 0.008), so it is not just older Shorts from
+a better period. No ranking signal correlated with views above |ρ| = 0.25, so
+`tuning` was empty. That is the right outcome, not a failure.
 
 ## 17. Rough edges and known limits
 
@@ -3680,11 +3753,14 @@ as a separate argument and Explorer fell back to Documents. It now goes through
 to be re-parsed. The lesson generalises: a shell-ish call that worked for
 `short_01.mp4` is not proof it works for a filename a person would recognise.
 
-**The learning loop is half-built.** Every clip's signal values and both scores
-are written into `job.json`, which is the record the rule book's Part 6 needs —
-but nothing reads YouTube Analytics back in, so the weights in `signals.py` are
-still hand-set seeds rather than anything derived from this channel's own
-retention. That is an OAuth flow and a correlation pass away.
+**The learning loop learns from views, not retention.** Views are what
+`youtube.readonly` can read without a new scope and a new review. Retention
+(how much of each Short was watched) is the better label, and it needs the
+YouTube Analytics API and `yt-analytics.readonly`. On a small channel both are
+thin: the first real run had 19 clips old enough to judge, and only one pattern
+survived the permutation test. The tuning is built to do nothing on evidence
+like that, which is correct, and it also means the ranking will not visibly
+change until a channel has posted a few dozen Shorts.
 
 **Chat is YouTube's only.** `chat.py` reads YouTube's live-chat replay. A
 Twitch or Kick VOD has its chat somewhere else and is ranked without it, as is
@@ -3786,7 +3862,9 @@ rather than guessing from what the button last did.
 | `POST /api/youtube/client` | Save the user's Desktop app client from its JSON or a path to it; an empty `client` goes back to the bundled one. Rejects a Web application client |
 | `POST /api/youtube/connect` | Open Google's consent page in the real browser, with PKCE and a loopback redirect |
 | `GET /api/youtube/callback` | Where Google sends the browser back. Checks `state`, exchanges the code, checks the granted scopes, and renders a page saying what happened |
-| `POST /api/youtube/disconnect` | Revoke at Google, delete the token, and forget every clip's upload record |
+| `POST /api/youtube/disconnect` | Revoke at Google, delete the token, and forget every clip's upload record and view counts |
+| `GET /api/performance` | Whether YouTube is connected, the last views check, and `performance.analyse()` over every clip: findings, the ranking check, the tuning |
+| `POST /api/performance/check` | Read every clip's views from the channel again, in the background. 409 when not connected |
 | `POST …/clips/{file}/youtube` | Upload one clip in the background with the `title`, `description`, `tags`, `privacy`, `publish_at`, `made_for_kids` and `category` sent. Validated first; returns the upload's status with its `id` |
 | `GET /api/youtube/uploads/{id}` | Bytes sent, size, `state` (`queued` / `starting` / `uploading` / `checking` / `done` / `error`), and the result: video id, privacy, schedule and `kept_private` |
 | `POST /api/youtube/open` | Open an uploaded video in Studio or on YouTube, by a validated id only |
@@ -3902,8 +3980,8 @@ driven through real typing and clicks in the browser rather than by setting
 state directly.
 
 **"What would you do next?"**
-Rank title options, and weight the scorecard's four parts, against real
-retention data rather than an assumed rubric. Dub clips into the interface's
+Swap views for retention as the label, through the Analytics API, and rank
+title options against it, not just the signals. Dub clips into the interface's
 other languages.
 Add a regression test suite around `_sanitize_highlights`,
 `chunk_transcript` and `layout_spec` parse ordering — all three encode hard-won
