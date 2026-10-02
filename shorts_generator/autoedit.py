@@ -482,9 +482,11 @@ def plan_emoji(words: List[Dict], duration: float) -> List[Tuple[float, float, s
 # --- planning ---------------------------------------------------------------
 
 def analyse(path: str, highlight: Dict, opts: Options,
-            language: Optional[str] = None) -> Optional[Plan]:
+            language: Optional[str] = None,
+            llm_fn: Optional[Callable[[str], str]] = None) -> Optional[Plan]:
     """Listen to a rendered clip and decide its edit. None if there is none."""
     from . import words as words_mod
+    from .hinglish import words_to_hinglish
     from .signals import analyse_audio
 
     try:
@@ -506,9 +508,13 @@ def analyse(path: str, highlight: Dict, opts: Options,
         spoken = [dict(w) for w in given]
     else:
         spoken = words_mod.transcribe_words(path, language) if has_audio else []
+    # Hindi comes back from Whisper in Devanagari; captions for it are read
+    # in Hinglish. Words saved by an older version are rewritten the same way.
+    spoken = words_to_hinglish(spoken, llm_fn)
     plan.heard = [{"start": w["start"], "end": w["end"], "word": w["word"]} for w in spoken]
     fixed = highlight.get("caption_words")
-    shown = [dict(w) for w in fixed] if isinstance(fixed, list) and fixed else spoken
+    shown = (words_to_hinglish([dict(w) for w in fixed], llm_fn)
+             if isinstance(fixed, list) and fixed else spoken)
     track = analyse_audio(path, duration) if has_audio and (
         opts.cut_pauses or opts.punch_ins) else None
     if track:
@@ -815,7 +821,7 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
         for i, r in enumerate(todo, 1):
             print(f"[edit] {i}/{steps}: listening to "
                   f"{os.path.basename(r['clip_url'])}", flush=True)
-            plan = analyse(r["clip_url"], r, opts, language)
+            plan = analyse(r["clip_url"], r, opts, language, llm_fn)
             if plan is not None:
                 plans.append((r, plan))
     finally:
