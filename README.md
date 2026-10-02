@@ -135,6 +135,10 @@ Separately, the *spoken* language of the video is pinned to English by default
 and changeable per run. Those are two different settings on purpose: you might
 run an English interface over a Hindi stream.
 
+Hindi speech is captioned in Hinglish (*"bhai ye game kya hai"*), the Roman
+script Hindi Shorts are actually read in, not the Devanagari the speech
+recogniser writes.
+
 ### It watches the whole VOD so you don't have to
 
 Transcribes the audio locally with faster-whisper, then ranks every moment for
@@ -1169,7 +1173,8 @@ than over the whole video. It drives four things, all in one more ffmpeg
 encode:
 
 - **Captions**, burned in with libass: a few words at a time, with the spoken
-  word lit up, in one of four styles whose fonts ship with the app.
+  word lit up, in one of four styles whose fonts ship with the app. Hindi is
+  written in Hinglish, word for word, so the timing is untouched.
 - **Pause cuts.** A gap between words is cut only if the clip's own loudness
   says it is quiet, so a laugh or the game going off stays. So does the quiet
   run-up to the clip's loudest moment. The cold open is moved to match.
