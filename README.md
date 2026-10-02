@@ -4,15 +4,19 @@
 
 ### Turn any long video into Shorts, Reels and TikToks — on your own PC
 
-An all-in-one short-form clip generator for stream VODs, gaming videos, vlogs,
-podcasts and tutorials. It works out what kind of video it is, finds the moments
+A free, open-source AI clip generator for podcasts, interviews, vlogs,
+tutorials, gaming videos and stream VODs. It works out what kind of video it is, finds the moments
 worth posting, cuts them to 9:16, burns in word-by-word captions, cuts the dead
 air, and writes the title, captions and hashtags for **YouTube Shorts,
 Instagram Reels and TikTok**. Every clip tells you why it ranked where it did.
 
-No subscription, no per-clip credits, no watermark, and nothing is uploaded
-unless you press Upload — transcription and ranking both run locally. When you
-do, a clip goes straight to your YouTube channel, now or on a schedule.
+No subscription, no per-clip credits, no watermark, and your video is never
+uploaded unless you press Upload — transcription runs on your PC, and only the
+transcript text goes to the AI that ranks it. When you do press Upload, a clip
+goes straight to your YouTube channel, now or on a schedule.
+
+A free alternative to Opus Clip, Klap and Vizard —
+**[see how it compares](docs/compare.md)**, including where they do more.
 
 
 [![Download](https://img.shields.io/badge/⬇_Download_for_Windows-224_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
@@ -48,6 +52,9 @@ browser rather than in a window of its own.
 &nbsp;·&nbsp; [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/)
 &nbsp;·&nbsp; [Discord](https://discord.gg/jnMrGbBz3m)
 &nbsp;·&nbsp; [Buy me a coffee](https://buymeacoffee.com/parthbhadana)
+
+**Engineer or hiring?** [The five-minute engineering case study](docs/case-study.md):
+the architecture, the hard problems, and the numbers.
 
 **No Python. No ffmpeg. Nothing to install.** Double-click and go.
 
@@ -1579,5 +1586,9 @@ ClipMint is free, and stays free. If it saves you time,
 
 Built and maintained by me. If you use it, fork it, or ship anything based on
 it, the MIT licence asks one thing in return: keep the copyright notice.
+
+How it's built, what was hard and what I'd change is in the
+[engineering case study](docs/case-study.md). I'm open to software engineering
+roles and collaborations: [parthbhadana57@gmail.com](mailto:parthbhadana57@gmail.com).
 
 Repository: <https://github.com/kleZ799/clipmint>
