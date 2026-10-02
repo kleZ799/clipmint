@@ -56,6 +56,18 @@ Lines break where you pause or finish a clause, not only at the word limit.
 Japanese, Chinese and Thai are joined without spaces. The fonts ship with the
 app, so captions look the same on every PC.
 
+**Hindi is captioned in Hinglish.** The speech recogniser writes Hindi in
+Devanagari, and that includes every English word said in a Hindi sentence.
+Shorts in Hindi are read in Roman script, the way people type in chats, so
+the captions come out as *"bhai ye game kya hai yaar"* rather than
+*"भाई ये गेम क्या है यार"*. Your AI provider does the spelling when one is set
+up, which is what turns गेम into *game* rather than *gem*. Without one, ClipMint
+spells it by rule, which gets common words right and English loanwords only
+roughly. Each word keeps its timing, and a word it got wrong can be fixed like
+any misheard one ([§5](#5-fixing-a-misheard-word)). A clip made before v1.24.1
+switches over the next time it renders again: a trim, a reframe or a caption
+fix.
+
 ### The hook line
 
 Since v1.20.0, the clip's **on-screen hook**, the short line written for it
