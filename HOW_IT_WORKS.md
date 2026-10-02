@@ -13,6 +13,8 @@ A complete walkthrough of this codebase: what it does, how it does it, what
 technology it uses, and *why* each piece is shaped the way it is.
 
 The [README](README.md) is the pitch. This is the map.
+The [case study](docs/case-study.md) is the five-minute version, and
+[docs/compare.md](docs/compare.md) sets ClipMint beside Opus Clip, Klap and Vizard.
 [CONCEPTS.md](CONCEPTS.md) is the theory — the same system described in terms of
 the AI/ML and CS concepts behind it, for explaining the project rather than
 navigating it. Everything here was read
