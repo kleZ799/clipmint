@@ -265,6 +265,7 @@ shorts_generator/
 ├── autoedit.py             after the cut: jump cuts, punch-ins, emoji, B-roll, one encode
 ├── captions.py             burned-in word-by-word captions: four presets, ASS for libass
 ├── words.py                word timings for a rendered clip (faster-whisper, per clip)
+├── hinglish.py             Hindi caption words from Devanagari into Roman script
 ├── broll.py                where stock footage fits (the LLM) and fetching it (Pexels)
 ├── scorecard.py            a clip's score split into Hook / Moment / Look / Energy / Pace + why
 ├── brand.py                the channel's logo: stored, validated, placed in a corner
@@ -1466,6 +1467,24 @@ between webcam and gameplay; elsewhere at 70% height, above the band each app
 covers with its own buttons. Lines break at the word limit, on punctuation, and
 before a pause. Scripts written without spaces (Japanese, Chinese, Thai) are
 joined without them.
+
+**Hindi in Hinglish** (`hinglish.py`). Whisper writes Hindi in Devanagari, and
+it writes the English inside a Hinglish sentence that way too ("वीडियो",
+"गेम"). Hindi Shorts are read in Roman script, so `analyse()` passes every
+word list through `words_to_hinglish()` before anything is planned from it:
+the words just heard, words saved with the clip by an older version, and
+words corrected by hand. It is one for one. The list keeps its length and
+every word keeps its `start` and `end`, because cuts, punch-ins and the
+caption editor all index into it. Only words containing Devanagari are
+touched. The configured LLM (`call_local_llm`, the same one B-roll uses) is
+asked for the whole clip at once as a JSON array of the same length, which
+is how गेम becomes *game* instead of *gem*. A wrong-length answer, a word
+still in Devanagari, or a failed call falls back to `romanize()`, a rule-based
+transliterator: Hindi schwa deletion (करना is *karna*, समझना *samajhna*,
+दोस्त *dost*, but मित्र *mitra*), long vowels doubled only in one-syllable
+words (*baat*, *theek*, but *pani*), anusvara as *m* before labials, and a
+table of the words that come up constantly, stream English included. It
+never raises, so a clip never fails over its captions' spelling.
 
 **The hook line.** The packaging step has always written a `hook_text` per
 clip, the on-screen line for the first two seconds, and until v1.20.0 nothing
