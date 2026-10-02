@@ -13,6 +13,9 @@ on:
     paths:
       - "site/**"
       - "PRIVACY.md"
+      - "docs/compare.md"
+      - "docs/case-study.md"
+      - "assets/social-preview.png"
       - "assets/icon.png"
       - "assets/screenshots/01-create.png"
       - "assets/screenshots/09-youtube-upload.png"

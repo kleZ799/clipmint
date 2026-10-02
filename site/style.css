@@ -188,6 +188,9 @@ article.doc p, article.doc li { color: var(--text-2); }
 article.doc strong { color: var(--text); }
 article.doc code { background: var(--raised); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 0.9em; }
 .table-scroll { overflow-x: auto; }
+/* Diagrams are drawn in monospace and can't wrap; they scroll inside their box. */
+article.doc pre { overflow-x: auto; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 13px; line-height: 1.45; }
+article.doc pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 article.doc table { border-collapse: collapse; width: 100%; min-width: 520px; margin: 12px 0; font-size: 15px; }
 article.doc th, article.doc td { border: 1px solid var(--line); padding: 9px 11px; text-align: left; vertical-align: top; }
 article.doc th { background: var(--raised); color: var(--text); }
