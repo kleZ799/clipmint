@@ -771,7 +771,8 @@ rest.**
 
 ## 5b. Media: word timing, captions and the edit
 
-**Files:** `shorts_generator/words.py`, `captions.py`, `autoedit.py`
+**Files:** `shorts_generator/words.py`, `captions.py`, `autoedit.py`,
+`hinglish.py`
 
 ### Word-level timestamps, and choosing what to run them over
 
@@ -846,6 +847,35 @@ their exact timing; a replaced stretch spreads its new words evenly over the
 time the old ones took; an insertion takes the gap between its neighbours.
 The cuts are still planned from what was *heard*, because the audio did not
 change, only the text on screen.
+
+### Transliteration is not translation
+
+Writing Hindi captions in Hinglish changes the **script**, not the language:
+*"क्या"* becomes *"kya"*, not *"what"*. That is **transliteration**, and doing
+it word for word is what keeps it cheap here. Each word maps to exactly one
+word, so the list keeps its length and every timestamp still points at the
+right sound. A translation would reorder and merge words and break the
+alignment that captions and cuts depend on.
+
+The interesting part of rule-based Hindi transliteration is **schwa
+deletion**. Every Devanagari consonant carries an unwritten "a" (क is *ka*),
+and speech drops many of them: करना is *karna*, not *karana*. The rule used
+is the standard one from the linguistics literature: drop the final schwa,
+and drop a medial one between a vowel and a consonant that has a vowel of its
+own, working right to left so that deleting one schwa protects its
+neighbour (समझना is *samajhna*, not *samjhna*). It is a heuristic with known
+exceptions, which is why the rules are the fallback.
+
+The primary path is an LLM, because the hard case is not phonetics but
+**code-switching**. A Hinglish speaker drops English words into Hindi
+sentences, and the recogniser spells them phonetically in Devanagari: गेम.
+Rules turn that into *gem*. Knowing it is the English word *game* needs a
+model of both languages, which an LLM has and a lookup table only has for
+the words someone thought to list. The LLM's answer is checked against the
+same one-for-one contract (same count, no Devanagari left) and anything that
+fails it falls back to the rules, word by word. The same pattern runs
+through the project: the strong model when it is there, a deterministic floor
+when it is not.
 
 ---
 
