@@ -139,10 +139,14 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      # -c constraints.txt pins every package to the version the last good
+      # release shipped. Without it this installs whatever was published
+      # overnight -- which is how v1.24.1 shipped PyAV 19 and broke every
+      # transcription. All three platform jobs use it.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-web.txt pyinstaller
+          pip install -r requirements-web.txt pyinstaller -c constraints.txt
 
       # bin/ is gitignored -- it is 200 MB of binaries that do not belong in
       # git -- so the runner fetches its own copy. build_exe.py bundles
@@ -348,7 +352,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-web.txt pyinstaller
+          pip install -r requirements-web.txt pyinstaller -c constraints.txt
 
       # Static arm64 builds, because the obvious alternative is not one: a
       # Homebrew ffmpeg links against dylibs in /opt/homebrew, so bundling it
@@ -637,7 +641,7 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh             | env UV_INSTALL_DIR=/usr/local/bin sh
           uv --version
           uv venv --python 3.13 /opt/venv
-          uv pip install --python /opt/venv/bin/python             -r requirements-web.txt pyinstaller
+          uv pip install --python /opt/venv/bin/python             -r requirements-web.txt pyinstaller -c constraints.txt
           echo "/opt/venv/bin" >> "$GITHUB_PATH"
           /opt/venv/bin/python --version
 
