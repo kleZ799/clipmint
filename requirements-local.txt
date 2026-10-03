@@ -13,6 +13,11 @@ yt-dlp>=2024.1.1
 # torch is NOT needed, not even for the GPU: see requirements-nvidia.txt.
 faster-whisper>=1.0.0
 ctranslate2>=4.0
+# faster-whisper decodes audio through PyAV and passes av.open() a
+# metadata_errors argument that PyAV 19 removed: every transcription fails with
+# "open() got an unexpected keyword argument". Lift this once faster-whisper
+# stops passing it.
+av>=11,<19
 
 # Ranking, vision and packaging: Gemini first, then Groq and OpenAI. Groq is
 # reached through the OpenAI client, so there is no separate package for it.
