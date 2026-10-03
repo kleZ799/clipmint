@@ -1282,6 +1282,12 @@ PyInstaller cannot cross-compile, so the published mac build is made on a macOS
 runner by [the release workflow](.github/workflows/release.yml), which is also
 where those two download URLs live.
 
+The release builds install with `-c constraints.txt`, which pins every package
+to the version the last good release shipped; add it to your own `pip install`
+to build exactly what the downloads contain. Without it pip takes the newest
+version each requirement allows — that is how v1.24.1 picked up PyAV 19 and
+failed every transcription.
+
 On Linux the same `--onefile` command produces `dist/ClipMint`, with no
 extension. Put static `ffmpeg` and `ffprobe` in `./bin` — a distribution's own
 ffmpeg links against that distribution's libraries and would only run on your
