@@ -79,6 +79,10 @@ class EditChoice(BaseModel):
     predates these controls still behaves.
     """
     captions: Optional[str] = None
+    caption_font: Optional[str] = None
+    caption_color: Optional[str] = None
+    caption_text_color: Optional[str] = None
+    caption_position: Optional[str] = None
     cut_pauses: Optional[bool] = None
     punch_ins: Optional[bool] = None
     emoji: Optional[bool] = None
@@ -141,6 +145,10 @@ async def options() -> dict:
         ],
         "corners": ["bottom-left", "bottom-right", "top-left", "top-right"],
         "captions": caption_styles.options(),
+        "caption_fonts": caption_styles.font_options(),
+        "caption_positions": list(caption_styles.POSITIONS),
+        "caption_highlights": list(caption_styles.HIGHLIGHTS),
+        "caption_text_colours": list(caption_styles.TEXT_COLOURS),
     }
 
 
@@ -324,6 +332,7 @@ async def caption_font(name: str) -> FileResponse:
     from shorts_generator.bundled import asset_dir
 
     allowed = {p["file"] for p in caption_styles.PRESETS.values()}
+    allowed |= {f["file"] for f in caption_styles.FONTS.values()}
     folder = asset_dir("fonts")
     if folder is None or name not in allowed or not (folder / name).exists():
         raise HTTPException(404, "No such font")
@@ -1523,7 +1532,8 @@ def _frame_geometry(job, clip: dict) -> dict:
     x = chosen.get("x", saved.get("x"))
     y = chosen.get("y", saved.get("y"))
     default_caption = caption_styles.caption_y(spec.layout, spec.aspect_ratio,
-                                               spec.cam_panel_fraction)
+                                               spec.cam_panel_fraction,
+                                               spec.caption_position)
     return {
         "panel": panel,
         "layout": spec.layout,

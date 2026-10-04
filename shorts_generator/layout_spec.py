@@ -77,7 +77,8 @@ def pick_output_size(src_w: int, src_h: int, aspect_ratio: str,
 
 LAYOUTS = ("stacked", "facetrack", "center")
 # The LayoutSpec fields that describe the edit rather than the framing.
-EDIT_FIELDS = ("captions", "cut_pauses", "punch_ins", "emoji", "broll", "logo")
+EDIT_FIELDS = ("captions", "caption_font", "caption_color", "caption_text_color",
+               "caption_position", "cut_pauses", "punch_ins", "emoji", "broll", "logo")
 
 
 def _has_logo() -> bool:
@@ -133,6 +134,13 @@ class LayoutSpec:
     # The edit made after the cut -- see autoedit. Captions burned in, one
     # word lit at a time, in one of captions.PRESETS or "off".
     captions: str = caption_styles.DEFAULT
+    # Put over the style: a face from captions.FONTS, the spoken word's colour
+    # and the rest of the line's as RRGGBB, and where the words sit
+    # (captions.POSITIONS). "" and "auto" leave each to the style and layout.
+    caption_font: str = ""
+    caption_color: str = ""
+    caption_text_color: str = ""
+    caption_position: str = "auto"
     # Take out quiet pauses and "um"s. A pause with sound in it is kept.
     cut_pauses: bool = True
     # Zoom in on the lines said with emphasis.
@@ -176,6 +184,10 @@ class LayoutSpec:
         self.content_kind = content_kinds.normalise(self.content_kind)
         self.layout_set = bool(self.layout_set)
         self.captions = caption_styles.normalise(self.captions)
+        self.caption_font = caption_styles.normalise_font(self.caption_font)
+        self.caption_color = caption_styles.normalise_colour(self.caption_color)
+        self.caption_text_color = caption_styles.normalise_colour(self.caption_text_color)
+        self.caption_position = caption_styles.normalise_position(self.caption_position)
         for name in ("cut_pauses", "punch_ins", "emoji", "broll", "logo"):
             setattr(self, name, bool(getattr(self, name)))
         self.edit_from_words = [f for f in (self.edit_from_words or [])
@@ -272,7 +284,10 @@ class LayoutSpec:
         """The edit made after the cut, in a few words, or "" for none."""
         bits = []
         if self.captions != caption_styles.OFF:
-            bits.append(f"{self.captions} captions")
+            face = caption_styles.FONTS.get(self.caption_font)
+            bits.append(f"{self.captions} captions"
+                        + (f" in {face['label']}" if face else "")
+                        + (f", {self.caption_position}" if self.caption_position != "auto" else ""))
         if self.cut_pauses:
             bits.append("pauses cut")
         if self.punch_ins:

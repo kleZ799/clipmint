@@ -120,6 +120,11 @@ _EMOJI_OF = {w: name for name, ws in EMOJI_WORDS.items() for w in ws}
 @dataclass
 class Options:
     captions: str = captions.OFF
+    # Over the caption style: its face, colours and place (captions.look).
+    caption_font: str = ""
+    caption_color: str = ""
+    caption_text_color: str = ""
+    caption_position: str = "auto"
     cut_pauses: bool = False
     punch_ins: bool = False
     emoji: bool = False
@@ -162,6 +167,10 @@ def options_from_spec(spec, kind: Optional[str] = None) -> Options:
         wants_broll = False
     return Options(
         captions=captions.normalise(getattr(spec, "captions", captions.OFF)),
+        caption_font=captions.normalise_font(getattr(spec, "caption_font", "")),
+        caption_color=captions.normalise_colour(getattr(spec, "caption_color", "")),
+        caption_text_color=captions.normalise_colour(getattr(spec, "caption_text_color", "")),
+        caption_position=captions.normalise_position(getattr(spec, "caption_position", "auto")),
         cut_pauses=bool(getattr(spec, "cut_pauses", False)),
         punch_ins=bool(getattr(spec, "punch_ins", False)),
         emoji=bool(getattr(spec, "emoji", False)),
@@ -209,7 +218,8 @@ class Plan:
         """Where the middle of the caption goes, as a fraction of the height."""
         if self.caption_y is not None:
             return self.caption_y
-        return captions.caption_y(opts.layout, opts.aspect_ratio, opts.cam_panel_fraction)
+        return captions.caption_y(opts.layout, opts.aspect_ratio, opts.cam_panel_fraction,
+                                  opts.caption_position)
 
     @property
     def new_duration(self) -> float:
@@ -742,12 +752,14 @@ def render(plan: Plan, opts: Options) -> Dict:
         if style != captions.OFF and (plan.caption_words or plan.hook):
             y = plan.caption_height(opts)
             script = captions.build_ass(plan.caption_words, style, plan.width, plan.height, y,
-                                        hook=plan.hook, hook_windows=hook_windows(plan, opts))
+                                        hook=plan.hook, hook_windows=hook_windows(plan, opts),
+                                        font=opts.caption_font, colour=opts.caption_color,
+                                        text_colour=opts.caption_text_color)
             if script:
                 with open(os.path.join(work, "captions.ass"), "w", encoding="utf-8") as f:
                     f.write(script)
                 ass_name = "captions.ass"
-                if captions.copy_font(style, Path(work) / "fonts"):
+                if captions.copy_font(style, Path(work) / "fonts", opts.caption_font):
                     fonts = "fonts"
 
         graph, extra, audio_cut, video = build_filter(plan, opts, ass_name, fonts)

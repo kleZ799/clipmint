@@ -13,10 +13,15 @@ Four looks, each a complete preset rather than a pile of knobs:
   clean  sentence case on a soft dark box, five words at a time, no bounce
   comic  a comic-book face with a purple outline, the spoken word in gold
 
+Three things can be put over a style without unpicking it: the typeface (any
+of FONTS, sized to fill the style's line), the colour of the spoken word and
+of the rest of the line, and where the words sit (POSITIONS). The style keeps
+everything else -- that is what makes it a look.
+
 The fonts ship with the app (assets/fonts), because a caption style that
 depends on what is installed looks different on every PC that renders it.
 
-Where the words sit depends on the layout. On the stacked layout they go on
+Left to itself, where the words sit depends on the layout. On the stacked layout they go on
 the seam between the webcam and the gameplay -- the one place that covers
 neither the face nor the action. Everywhere else they sit in the lower middle,
 above the band the apps cover with their own buttons and captions.
@@ -83,6 +88,47 @@ PRESETS: Dict[str, Dict] = {
 
 CHOICES = (OFF, *PRESETS)
 
+# Typefaces any style can be drawn in instead of its own. The style still
+# decides everything else -- case, words per line, the pop, the box -- so a
+# font is a change of face, not of look. `width` is how wide a run of
+# capitals and of lower case sets, in ems (the same sample for every face),
+# so a swapped face can be sized to fill the line its style was tuned for.
+FONTS: Dict[str, Dict] = {
+    "montserrat": {"label": "Montserrat", "font": "Montserrat Black",
+                   "file": "Montserrat-Black.ttf", "width": (17.61, 14.88)},
+    "anton": {"label": "Anton", "font": "Anton",
+              "file": "Anton-Regular.ttf", "width": (11.24, 11.04)},
+    "bebas": {"label": "Bebas Neue", "font": "Bebas Neue",
+              "file": "BebasNeue-Regular.ttf", "width": (9.26, 9.26)},
+    "poppins": {"label": "Poppins", "font": "Poppins Black",
+                "file": "Poppins-Black.ttf", "width": (15.87, 14.00)},
+    "archivo": {"label": "Archivo Black", "font": "Archivo Black",
+                "file": "ArchivoBlack-Regular.ttf", "width": (18.33, 14.89)},
+    "lilita": {"label": "Lilita One", "font": "Lilita One",
+               "file": "LilitaOne-Regular.ttf", "width": (14.37, 11.38)},
+    "luckiest": {"label": "Luckiest Guy", "font": "Luckiest Guy",
+                 "file": "LuckiestGuy-Regular.ttf", "width": (13.93, 13.87)},
+    "bangers": {"label": "Bangers", "font": "Bangers",
+                "file": "Bangers-Regular.ttf", "width": (10.21, 10.21)},
+    "marker": {"label": "Permanent Marker", "font": "Permanent Marker",
+               "file": "PermanentMarker-Regular.ttf", "width": (16.88, 13.83)},
+    "bungee": {"label": "Bungee", "font": "Bungee",
+               "file": "Bungee-Regular.ttf", "width": (17.19, 17.19)},
+}
+# The styles' own faces, measured the same way, for sizing a swap against.
+_OWN_WIDTH = {"Montserrat-ExtraBold.ttf": (17.41, 14.57),
+              **{f["file"]: f["width"] for f in FONTS.values()}}
+
+# Where the captions sit, when not left to the layout. Top stays below the
+# hook line; bottom is the layout's own low place, clear of the apps' UI.
+POSITIONS = ("auto", "top", "middle", "bottom")
+_TOP, _MIDDLE = 0.27, 0.5
+
+# Colours offered for the spoken word and for the rest of the line. Any
+# other RRGGBB works too; these are the ones the picker shows.
+HIGHLIGHTS = ("FFE14D", "4DFF7C", "FF4D4D", "4DD2FF", "FF5CC8", "FF9A3C", "FFFFFF")
+TEXT_COLOURS = ("FFFFFF", "FFE14D", "4DD2FF", "000000")
+
 # A pause this long between two words starts a new caption: the line on
 # screen should end when the sentence does, not wait for the next one.
 _BREAK_GAP = 0.45
@@ -112,9 +158,37 @@ def options() -> List[Dict]:
     ]
 
 
-def caption_y(layout: str, aspect_ratio: str, cam_panel_fraction: float) -> float:
+def font_options() -> List[Dict]:
+    """The faces a style can be swapped to, for the interface to offer."""
+    return [{"value": k, "label": f["label"], "file": f["file"], "width": f["width"]}
+            for k, f in FONTS.items()]
+
+
+def normalise_font(value: Optional[str]) -> str:
+    """A font this module knows, or "" for the style's own."""
+    v = str(value or "").strip().lower()
+    return v if v in FONTS else ""
+
+
+def normalise_colour(value: Optional[str]) -> str:
+    """An RRGGBB colour in capitals, or "" for the style's own."""
+    v = str(value or "").strip().lstrip("#").upper()
+    return v if re.fullmatch(r"[0-9A-F]{6}", v) else ""
+
+
+def normalise_position(value: Optional[str]) -> str:
+    v = str(value or "").strip().lower()
+    return v if v in POSITIONS else "auto"
+
+
+def caption_y(layout: str, aspect_ratio: str, cam_panel_fraction: float,
+              position: str = "auto") -> float:
     """Where the middle of the caption goes, as a fraction of frame height."""
-    if layout == "stacked":
+    if position == "top":
+        return _TOP
+    if position == "middle":
+        return _MIDDLE
+    if layout == "stacked" and position != "bottom":
         # The seam between the two panels.
         return max(0.2, min(0.8, float(cam_panel_fraction)))
     if aspect_ratio == "16:9":
@@ -125,9 +199,43 @@ def caption_y(layout: str, aspect_ratio: str, cam_panel_fraction: float) -> floa
     return 0.70
 
 
-def font_file(style: str) -> Optional[Path]:
+def look(style: str, font: str = "", colour: str = "", text_colour: str = "") -> Dict:
+    """A style's preset with the face and colours someone chose put over it.
+
+    A swapped face is sized to set the same width of line the style was
+    tuned for, within limits: a condensed face scaled to a wide one's width
+    would be taller than the frame wants. Dark text gets a light edge, and
+    on the boxed style a light box, so it never sits black on black.
+    """
+    preset = dict(PRESETS.get(style) or {})
+    if not preset:
+        return preset
+    face = FONTS.get(normalise_font(font))
+    if face and face["file"] != preset["file"]:
+        side = 0 if preset["upper"] else 1
+        own = _OWN_WIDTH.get(preset["file"], face["width"])[side]
+        scale = max(0.8, min(1.35, own / face["width"][side]))
+        preset.update(font=face["font"], file=face["file"],
+                      size=round(preset["size"] * scale, 4))
+    colour, text_colour = normalise_colour(colour), normalise_colour(text_colour)
+    if colour:
+        preset["active"] = colour
+    if text_colour:
+        preset["primary"] = text_colour
+    if _dark(preset["primary"]):
+        preset["edge"] = "FFFFFF"
+        preset["box_colour"] = "F2F2F2"
+    return preset
+
+
+def _dark(hex_rgb: str) -> bool:
+    r, g, b = (int(hex_rgb[i:i + 2], 16) for i in (0, 2, 4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 90
+
+
+def font_file(style: str, font: str = "") -> Optional[Path]:
     """The bundled font file a style is drawn in, if this copy has it."""
-    preset = PRESETS.get(style)
+    preset = look(style, font)
     folder = asset_dir("fonts")
     if not preset or folder is None:
         return None
@@ -135,9 +243,9 @@ def font_file(style: str) -> Optional[Path]:
     return path if path.exists() else None
 
 
-def copy_font(style: str, dest_dir: Path) -> bool:
+def copy_font(style: str, dest_dir: Path, font: str = "") -> bool:
     """Put a style's font where libass will be told to look. False if absent."""
-    src = font_file(style)
+    src = font_file(style, font)
     if src is None:
         return False
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -211,7 +319,8 @@ def _ass_colour(hex_rgb: str, alpha: int = 0) -> str:
 
 def build_ass(words: List[Dict], style: str, width: int, height: int,
               y_frac: float, hook: str = "",
-              hook_windows: Sequence[Tuple[float, float]] = ()) -> str:
+              hook_windows: Sequence[Tuple[float, float]] = (),
+              font: str = "", colour: str = "", text_colour: str = "") -> str:
     """An ASS script that captions `words` in `style`. "" when there is nothing
     to say.
 
@@ -219,8 +328,11 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
     of `hook_windows` (clip seconds). More than one window when a cold open
     will be put on the front afterwards: the replayed slice has to carry the
     line too, or the viewer's first second would be the one without it.
+
+    `font`, `colour` and `text_colour` swap the style's face, the spoken
+    word's colour and the rest of the line's -- see look().
     """
-    preset = PRESETS.get(style)
+    preset = look(style, font, colour, text_colour)
     if not preset:
         return ""
 
@@ -243,7 +355,8 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
     # The box is opaque on purpose. libass draws one per run of text, and the
     # lit word is its own run, so a see-through box shows a darker patch
     # wherever two of them overlap.
-    back = _ass_colour("141414", 0x00) if preset["box"] else _ass_colour("000000", 0x80)
+    back = (_ass_colour(preset.get("box_colour", "141414"), 0x00) if preset["box"]
+            else _ass_colour("000000", 0x80))
     border_style = 3 if preset["box"] else 1
 
     joiner = _joiner(words)
