@@ -2396,6 +2396,7 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 
 /* What can be put over a style: face, colours, place. */
 .cap-more { margin-top: 2px; }
+.edit-box .cap-more .ar-row { margin-top: 14px; }
 .cap-more.hidden { display: none; }
 .chipbar.wrap { flex-wrap: wrap; overflow: visible; }
 .fontbar .chip[data-font] span { font-size: 15px; line-height: 1; }
