@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 2 October 2026 (v1.24.1)_
+_Last updated: 4 October 2026 (v1.26.0)_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,
@@ -86,8 +86,9 @@ YouTube.
   upload, and to Google when you sign in.
 - **The AI provider you choose** (Google Gemini, Groq or OpenAI), using your
   own API key: the clip's transcript text, a few still frames from each clip,
-  and the source video's title and description, so it can pick moments and
-  write titles. When a clip is spoken in Hindi, its words are also sent so
+  the source video's title and description, and what you type in the
+  **What to make** box, so it can understand what you asked for, pick moments
+  and write titles. The box is read once you stop typing, not on every key. When a clip is spoken in Hindi, its words are also sent so
   the captions can be written in Roman script. Nothing from your Google account or YouTube channel is ever
   sent to an AI provider.
 - **Pexels**, only if you add a Pexels key and tick **B-roll**: a search of

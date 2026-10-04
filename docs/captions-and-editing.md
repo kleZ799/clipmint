@@ -171,6 +171,7 @@ change it, change the words.
 | Say | Does |
 |---|---|
 | `comic captions`, `captions in punch` | that caption style |
+| `yellow captions at the top in bebas` | the font, colours and placement (read by your AI model, since v1.26.0) |
 | `no captions`, `subtitles off` | no captions |
 | `keep the pauses`, `no jump cuts` | no pause cuts |
 | `cut the pauses`, `remove the dead air` | pause cuts on |

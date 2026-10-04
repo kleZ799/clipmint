@@ -1314,7 +1314,23 @@ being the only moment the payload exists.
 
 **Clips come out at the source's real quality.** The renderer measures the crop it's actually going to take and picks the highest standard size that crop genuinely supports — a stacked 1440p stream renders at 1440×2560 rather than being flattened to 1080p. It won't upscale past what the footage holds, because inventing pixels only grows the file.
 
-**Describe the layout in plain English.** A live preview redraws as you type — the real frame shape, the real webcam panel height — so you can see your words land before spending a single second of render time:
+**Say what you want, like a message.** Type into **What to make** the way you'd
+text a friend who edits for you: *"give me 2 funny ones and 2 where I ask chat a
+question, around 30 sec each, 720p is fine"*. Misspelled, in Hinglish, several
+requests in one sentence: your AI model reads it, works out every setting it
+implies (how many clips, how long, what kind of video, quality, framing,
+captions, the edit) and answers under the box with what it's going to make:
+
+> ✦ I'll make 4 clips: 2 funny ones and 2 that ask a question, about 30 seconds each, in 720p.
+
+A mixed request really is mixed: each moment the ranker finds is tagged with
+the group it fits, and each group's count is filled from its own moments, so
+"2 funny, 2 questions" can't come back as four funny clips. A group the video
+can't fill hands its places to the best of the rest.
+
+The live preview redraws as you type — the real frame shape, the real webcam
+panel height — so you can see your words land before spending a single second
+of render time. These short phrases work instantly, even with no AI key:
 
 | Type this | You get |
 |---|---|
@@ -1333,6 +1349,7 @@ being the only moment the payload exists.
 | `no zooms` | no punch-ins |
 | `add emoji` / `add b-roll` | turn on emoji pops or stock B-roll |
 | `no logo` | leave your logo off this run |
+| `720p` / `1080p` / `best quality` | the download and render quality |
 
 Combine them freely — `cut 14:45 to 15:30, gameplay only, square` does all three.
 
@@ -1341,7 +1358,7 @@ The **Edit** box under Render works the other way round: when the prompt names a
 caption style or an edit, the words win, and the box shows it with a *set by
 your words* tag.
 
-Parsing is keyword-first and runs in about 70ms, so the preview keeps up with typing and costs no quota. Only genuinely novel phrasing falls through to the LLM.
+While you type, the preview uses a keyword pass that runs in about 70ms and costs no quota. About a second after you stop, the model reads the whole thing; its answer is cached, so starting the run doesn't ask again. Where both read the same setting, your literal words win.
 
 ### Naming an exact span
 

@@ -313,6 +313,38 @@ tolerant parser (`_parse_json_loose`) that survives markdown fences, plus a
 retry that re-asks more forcefully on a parse failure. **Defence in depth**: the
 model is asked nicely, constrained by the API, and then not trusted anyway.
 
+### The model as a parser, the keywords as its floor
+
+The **What to make** box is free text, and people write it like a chat
+message: *"2 short funny 2 shorts that aka quesstion, 720 is fine"*. A list
+of phrases cannot read that. It saw "2 short" and made two clips. So the box
+is read twice. A **deterministic keyword pass** runs on every pause in
+typing: 70ms, free, offline. Then the **LLM reads the whole message once**
+and turns it into the same structured settings (JSON, validated and clamped
+like everything else). It can also return two things no phrase list could:
+the request split into groups with their own counts (`asks`), and a
+one-sentence reply that shows the user what was understood before any
+render time is spent.
+
+The two are combined by **provenance, not confidence**: where both read the
+same setting, the keyword pass wins, because it matched the user's literal
+words and the model may be guessing. The model fills the gaps, and its answer
+is cached by prompt so one message costs one call. A request that only the
+model can understand still degrades gracefully: with no key, or a model that
+is slow or down, the keyword reading stands.
+
+### Filling quotas, not just taking the top N
+
+"2 funny, 2 that ask a question" is a **stratified selection**. Taking the
+four highest scores ignores the strata: on a real 33-minute transcript, two of
+the top four fit neither group. So the ranker labels each candidate with its
+stratum (`ask`), and `pick()` fills each stratum's quota from its own ranked
+list first, then gives unfilled places to the best remaining candidates. The
+final list is re-sorted by score, so it is still best first. It is the same
+idea as stratified sampling in statistics, or a recommender making sure every
+category the user follows gets a slot: the overall ranking decides order,
+the quotas decide membership.
+
 ### Asking for several answers, then ranking them
 
 A model asked for one title returns its first idea. Asked for five on named

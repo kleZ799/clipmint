@@ -680,6 +680,19 @@ stranger could follow, not every time the streamer swears. It explicitly
 instructs the model to ignore framing instructions (webcam position, aspect
 ratio, clip count) — those belong to the renderer.
 
+**`asks_block()`** follows it when the prompt was a mixed request
+(`LayoutSpec.asks`, [§8.1](#81-two-stages-in-this-order)): the groups are
+listed with their counts, the model is told to find candidates for every group,
+and each highlight carries an `"ask"` field, the number of the group it fits or
+0. `_sanitize_highlights()` keeps it. After the vision check, `pick()` fills
+each group's count from its own best-scoring moments, then hands any places a
+group could not fill to the best of the rest, and returns them best first;
+`pool()` makes sure each group's best few are among the candidates the judge
+looks at ([§6.14](#614-the-stranger-test-with-eyes--judgepy)). Without groups both are the old
+top-N by score. Measured on a cached 33-minute transcript asking for "2 funny,
+2 that ask a question": the top four by score included two moments that fit
+neither group; `pick()` returned two of each.
+
 ### 6.3 Double scoring, and the blend
 
 The model scores each clip **twice, independently**:
@@ -755,7 +768,7 @@ that happens on the *next* one.
 Reuse is gated by a fingerprint:
 
 ```
-v{PROMPT_VERSION}|{duration, to the minute}|{chunk_count}|{num_clips}|{clip_length}|{kind}
+v{PROMPT_VERSION}|{duration, to the minute}|{chunk_count}|{num_clips}|{clip_length}|{kind}[|chat][|ask{hash}]
 ```
 
 - Duration is compared **to the minute**, and that is load-bearing. A transcript
@@ -778,6 +791,11 @@ v{PROMPT_VERSION}|{duration, to the minute}|{chunk_count}|{num_clips}|{clip_leng
   are no answer for the same video ranked as a podcast. The detected kind itself
   is saved in the file too, and read back *whatever the fingerprint says* — the
   question may have changed while what kind of video it is has not.
+- The brief and the groups are in there, as a short hash, since v1.26.0. Before
+  that, chunks ranked for "the funny moments" were reused for "the emotional
+  ones" on the same video, and only chunks ranked with a mixed request's groups
+  carry the `ask` tags that fill them. A run with no brief adds nothing, so it
+  keeps every chunk it had.
 
 ### 6.7 Dedupe
 
@@ -1575,19 +1593,45 @@ Hook, Energy or length as well as by rank.
 
 ## 8. Natural-language layout parsing
 
-`layout_spec.py` turns free text into a validated `LayoutSpec`. Type
-*"webcam at the top, square, 5 clips"* and the frame preview updates as you type.
+`layout_spec.py` turns free text into a validated `LayoutSpec`. People write
+the box like a chat message, *"2 short funny 2 shorts that ask a question, 720
+is fine"*, misspelled, in any language, several requests in one sentence, and
+the preview updates as they type.
 
 ### 8.1 Two stages, in this order
 
 **Stage 1 — deterministic keywords.** Runs in ~70ms, costs nothing, works
-offline. This is what the live preview calls on every keystroke (debounced 450ms).
+offline. This is what the live preview shows while someone is typing
+(`use_llm: false`, debounced 350ms).
 
-**Stage 2 — the LLM.** Consulted **only when the keyword pass resolved absolutely
-nothing.** Anything the keywords did resolve came from the user's literal words,
-so a second opinion adds latency and quota without adding accuracy. And if the
-LLM call fails, the parser notes it and keeps the defaults — a layout prompt is a
-convenience, never a hard dependency.
+**Stage 2 — the model reads all of it.** Since v1.26.0 the configured LLM
+reads **every** prompt, about 1.3s after typing stops (`use_llm: true`). Until
+then it was asked only when the keywords resolved nothing, which left a
+phrase list in charge of free text: "2 short funny 2 shorts that ask a
+question" read as *2 clips*. `_LLM_PROMPT` asks for every setting the words
+imply, including the edit fields and `quality`, and two things only it can
+produce:
+
+- **`asks`**: a mixed request as groups with their own counts,
+  `[{"count": 2, "want": "funny moments"}, {"count": 2, "want": "moments that
+  ask the viewer a question"}]`. Kept only with two or more groups (one group
+  is what the brief already says), capped at ten clips by trimming the last
+  group, and `num_clips` becomes their sum.
+- **`reply`**: one sentence in the user's language saying what it will make,
+  shown under the box like a chat answer.
+
+Where both stages read a setting, **the keyword pass wins**: it came from the
+user's literal words. The exception is a mixed request's count, which only the
+model can add up. Fields the model sets are tagged in `edit_from_words`, so the
+Edit box shows *set by your words* for them too. Answers are cached per prompt
+(`_LLM_CACHE`, 64 entries), so the preview, the job and a retry cost one call.
+
+The server never waits long for it: `_read_prompt()` gives the model 15s for a
+preview and 60s for a job, because Gemini retries a busy spell for minutes on
+its own. Past that it answers with the keyword reading and `reading: true`; the
+read carries on into the cache and the page asks again every 4s. If the call
+fails, the keyword reading stands — a prompt is a convenience, never a hard
+dependency.
 
 ### 8.2 Parse order is load-bearing
 
@@ -1630,6 +1674,9 @@ LayoutSpec(
     time_ranges=[],                # [[start, end], …] → skips transcribe + rank
     clip_seconds=None,             # [min, max] → becomes a prompt instruction
     brief="",                      # the whole prompt, handed to the ranker
+    asks=[],                       # [{count, want}] for a mixed request
+    quality="",                    # best | 1080 | 720, or "" for the control
+    reply="",                      # the model's one-line answer
     content_kind="auto",           # stream | vlog | podcast | tutorial | other
     layout_set=False,              # did the words choose a framing?
     notes=[],                      # human-readable "what I understood"
@@ -2338,23 +2385,30 @@ real frame shape and the real webcam panel height** — so you can see your word
 land before spending a second of render time.
 
 ```js
-$("prompt").addEventListener("input", () => {
-  syncChips();
-  clearTimeout(specTimer);
-  specTimer = setTimeout(refreshPreview, 450);   // debounce
-});
+function promptChanged() {
+  promptSeq++;
+  specTimer = setTimeout(() => refreshPreview(false), 350);  // keywords
+  readTimer = setTimeout(() => refreshPreview(true), 1300);  // the model
+}
 
-async function refreshPreview() {
-  try {
-    const d = await api("/api/layout/preview", json("POST", {…}));
-    drawPreview(d.spec, d.summary, d.notes, d.warning);
-  } catch (_) { /* the preview is cosmetic — never block on it */ }
+async function refreshPreview(useModel = true, tries = 0) {
+  const seq = promptSeq;
+  const d = await api("/api/layout/preview", json("POST", {…, use_llm: useModel}));
+  if (seq !== promptSeq || (!useModel && modelSeq === seq)) return;  // stale
+  drawPreview(d.spec, d.summary, d.notes, d.warning);
+  if (d.reading) setTimeout(() => refreshPreview(true, tries + 1), 4000);
+  else drawReply(d.reply);
 }
 ```
 
-Three things to notice:
+Four things to notice:
 
-- **Debounced 450ms**, so typing doesn't fire a request per keystroke.
+- **Two readings per edit.** The keyword one at 350ms keeps the preview live
+  while typing; the model's at 1.3s idle reads the whole message and answers
+  in the reply bubble under the box. `promptSeq` drops any answer to a prompt
+  that has since changed, and a late keyword answer never overwrites the
+  model's.
+- **Debounced**, so typing doesn't fire a request per keystroke.
 - **The parse happens server-side** — `POST /api/layout/preview` runs the *same*
   `parse_layout_prompt()` the real job will run. There is no duplicated parsing
   logic in JS that could drift from the Python.
@@ -3863,7 +3917,7 @@ rather than guessing from what the button last did.
 |---|---|
 | `POST /api/resolve` | Classify a pasted link: single video, or a channel to pick from |
 | `POST /api/upload` | Accept a dropped video file, return a path to run from |
-| `POST /api/layout/preview` | Parse a layout prompt without running anything — powers the live preview. Takes `aspect_ratio` and `content_kind` picks |
+| `POST /api/layout/preview` | Parse a layout prompt without running anything — powers the live preview. Takes `aspect_ratio` and `content_kind` picks and `use_llm` (false for the quick keyword reading). Returns the model's `reply`, and `reading: true` when it has not answered within 15s |
 | `POST /api/jobs` | Enqueue a job. Returns immediately with an id. `content_kind` (`stream`, `vlog`, `podcast`, `tutorial`, `other`) beats the prompt's words; omit it or send `auto` to leave it to them |
 
 ### Following work
