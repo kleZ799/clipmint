@@ -1955,18 +1955,73 @@ let aspectChoice = "";
 // Same for the kind of video: "" leaves it to the words, then to the ranker.
 let kindChoice = "";
 
-async function refreshPreview() {
+// The prompt is read twice. While someone types, by the keyword pass alone,
+// which is instant and free. Once they stop, by the model, which reads it
+// the way a person would and answers under the box like a chat reply. A
+// model reading is cached by the server, so the controls asking again cost
+// nothing, and a slow one comes back as `reading` and is asked for again.
+let promptSeq = 0;        // bumped on every change to the prompt's text
+let modelSeq = -1;        // the change the model's reading on screen is for
+let readTimer = null;
+const READ_AFTER_MS = 1300;
+
+async function refreshPreview(useModel = true, tries = 0) {
+  const seq = promptSeq;
+  const said = $("prompt").value.trim();
+  if (useModel && said && modelSeq !== seq) drawReply("reading");
+  if (!said) drawReply("");
   try {
     const d = await api("/api/layout/preview", json("POST", {
-      prompt: $("prompt").value, use_llm: true, aspect_ratio: aspectChoice || null,
+      prompt: $("prompt").value, use_llm: useModel, aspect_ratio: aspectChoice || null,
       content_kind: kindChoice || null, ...editChoice,
     }));
+    // A newer prompt, or the model's reading of this one, is already on its way.
+    if (seq !== promptSeq || (!useModel && modelSeq === seq)) return;
     // Whatever the words decided wins, and the controls show it.
     editSaid = d.spec.edit_from_words || [];
+    if (d.spec.quality) editSaid = [...editSaid, "quality"];
     drawEdit(d.spec);
+    drawQuality(d.spec);
     drawPreview(d.spec, d.summary, d.notes, d.warning);
-  } catch (_) { /* the preview is cosmetic — never block on it */ }
+    if (!useModel || !said) return;
+    if (d.reading && tries < 6) {
+      clearTimeout(readTimer);
+      readTimer = setTimeout(() => refreshPreview(true, tries + 1), 4000);
+      return;
+    }
+    modelSeq = seq;
+    drawReply(d.reply || "");
+  } catch (_) {
+    // The preview is cosmetic — never block on it.
+    if (useModel && seq === promptSeq) drawReply("");
+  }
 }
+
+function drawReply(text) {
+  const box = $("reply");
+  box.classList.toggle("hidden", !text);
+  box.classList.toggle("reading", text === "reading");
+  $("replyText").textContent = text === "reading" ? I18N.t("Reading what you asked for") : text;
+}
+
+function promptChanged() {
+  promptSeq++;
+  clearTimeout(specTimer);
+  clearTimeout(readTimer);
+  specTimer = setTimeout(() => refreshPreview(false), 350);
+  readTimer = setTimeout(() => refreshPreview(true), READ_AFTER_MS);
+}
+
+// Source quality: the user's own pick, unless the words name one ("720 is
+// fine"), in which case the control shows the words' answer and says so.
+let formatChoice = $("format").value;
+function drawQuality(spec) {
+  $("format").value = spec.quality || formatChoice;
+}
+$("format").onchange = () => {
+  if (wordsHold("quality")) return;
+  formatChoice = $("format").value;
+};
 
 // ---------------------------------------------------------------- edit
 //
@@ -2330,14 +2385,13 @@ function syncChips() {
       t.value = t.value.trim() ? `${t.value.trim()}, ${phrase}` : phrase;
     }
     syncChips();
-    refreshPreview();
+    promptChanged();
   };
 });
 
 $("prompt").addEventListener("input", () => {
   syncChips();
-  clearTimeout(specTimer);
-  specTimer = setTimeout(refreshPreview, 450);
+  promptChanged();
 });
 
 // ---------------------------------------------------------------- run

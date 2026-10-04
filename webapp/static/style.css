@@ -2347,6 +2347,38 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 .safe-l b { color: var(--text); font-weight: 600; }
 .safe-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 
+/* ======================= the prompt's reply ======================= */
+/* What the model understood from the prompt, under it like a chat reply. */
+.reply {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 4px 14px 14px 14px;
+  background: rgba(var(--fg-rgb), .05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+  animation: reply-in var(--med) ease-out;
+}
+.reply.hidden { display: none; }
+.reply-icon { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; color: var(--red, #ff0033); }
+.reply-icon svg { width: 18px; height: 18px; }
+.reply p { margin: 0; }
+.reply.reading p { color: var(--text-3); }
+.reply.reading p::after {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+  animation: reply-dots 1.2s steps(4) infinite;
+}
+@keyframes reply-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+@keyframes reply-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .reply { animation: none; } .reply.reading p::after { animation: none; content: "…"; } }
+
 /* ======================= captions and the edit ======================= */
 /* The typefaces the burned-in captions are drawn in, served by the app from
    the same files ffmpeg uses, so the picker and the preview show the real

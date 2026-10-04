@@ -202,9 +202,14 @@
         <section class="panel" id="secLayout">
           <div class="p-head">
             <h2><span class="step">2</span>What to make</h2>
-            <span class="p-hint">Length, angle, framing &mdash; plain English</span>
+            <span class="p-hint">Say it however you like, like a message</span>
           </div>
-          <textarea id="prompt" rows="5" placeholder="Describe the shorts you want.&#10;&#10;How long:  30 seconds only  ·  between 20 and 40 seconds  ·  about a minute&#10;What kind: only the funny rage moments  ·  hooks that ask a question&#10;Framing:   webcam at the top  ·  follow my face  ·  5 clips&#10;&#10;Or name an exact span: cut 14:45 to 15:30"></textarea>
+          <textarea id="prompt" rows="5" placeholder="Tell it what you want, in your own words.&#10;&#10;give me 2 funny ones and 2 where I ask chat a question, around 30 sec each, 720p is fine&#10;the emotional bits where I talk about my dad, yellow captions at the top&#10;5 short clips of the rage moments, follow my face, no emoji&#10;&#10;Or name an exact span: cut 14:45 to 15:30"></textarea>
+          <!-- What the model understood, as a reply under the message. -->
+          <div class="reply hidden" id="reply" aria-live="polite">
+            <span class="reply-icon"><svg><use href="#i-spark"/></svg></span>
+            <p id="replyText"></p>
+          </div>
           <div class="ar-row">
             <span class="ar-label">Shape</span>
             <div class="chipbar" id="arBar">
@@ -232,7 +237,7 @@
         <section class="panel" id="secGo">
           <div class="p-head"><h2><span class="step">3</span>Render</h2></div>
           <label class="fld">
-            <span>Source quality. Clips render at the best size this supports</span>
+            <span>Source quality. Clips render at the best size this supports <em class="said hidden" data-said="quality">set by your words</em></span>
             <select id="format">
               <option value="best" selected>Best available &mdash; match the source</option>
               <option value="1080">1080p</option>
