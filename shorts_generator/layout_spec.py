@@ -3,15 +3,23 @@
 Turns a free-text instruction ("webcam bigger, top right, make it square")
 into a validated LayoutSpec the renderers understand.
 
-Two-stage parsing on purpose:
+Two passes on purpose:
 
   1. A deterministic keyword pass that handles the phrasings people actually
-     type. Costs nothing, works offline, and never burns LLM quota.
-  2. An optional LLM pass for anything the keyword pass didn't resolve.
+     type. Costs nothing, works offline, and is what the live preview shows
+     while someone is still typing.
+  2. The configured LLM, reading the whole thing the way a person would.
+     People write the box like a chat message -- "give me 2 funny ones and 2
+     where i ask chat something, around 30 sec, 720 is fine" -- in their own
+     words, misspelled, in any language, several requests in one sentence.
+     No list of phrases covers that, so the model works out every setting
+     the words imply, splits a mixed request into groups with their own
+     counts (`asks`), and writes back one line saying what it understood.
 
-The keyword pass runs first and its results win, so a prompt like
-"square, webcam top right" never needs a network call at all. The LLM is
-only consulted when the prompt said something the keywords missed.
+Where both read the same setting, the keyword pass wins: it came from the
+user's literal words. The one exception is the clip count of a mixed
+request, which only the model can add up. The model's answer is cached per
+prompt, so the preview, the job and a retry pay for one call between them.
 """
 from dataclasses import asdict, dataclass, field, fields as dataclass_fields
 from typing import Dict, List, Optional
@@ -79,6 +87,35 @@ LAYOUTS = ("stacked", "facetrack", "center")
 # The LayoutSpec fields that describe the edit rather than the framing.
 EDIT_FIELDS = ("captions", "caption_font", "caption_color", "caption_text_color",
                "caption_position", "cut_pauses", "punch_ins", "emoji", "broll", "logo")
+
+
+QUALITIES = ("best", "1080", "720")
+MAX_CLIPS = 10
+
+
+def _clean_asks(asks) -> List[Dict]:
+    """Groups of clips as [{"count", "want"}], or [] for a single kind.
+
+    Counts are whole numbers from 1, and the total is held to MAX_CLIPS by
+    taking from the last group first: the first thing asked for is usually
+    the thing most wanted.
+    """
+    out: List[Dict] = []
+    for a in asks if isinstance(asks, list) else []:
+        if not isinstance(a, dict):
+            continue
+        want = re.sub(r"\s+", " ", str(a.get("want") or "")).strip()[:160]
+        try:
+            count = int(a.get("count") or 0)
+        except (TypeError, ValueError):
+            continue
+        if want and count > 0:
+            out.append({"count": min(count, MAX_CLIPS), "want": want})
+    while sum(a["count"] for a in out) > MAX_CLIPS:
+        out[-1]["count"] -= 1
+        if out[-1]["count"] == 0:
+            out.pop()
+    return out if len(out) > 1 else []
 
 
 def _has_logo() -> bool:
@@ -156,6 +193,18 @@ class LayoutSpec:
     # Which of the edit settings above the prompt's own words decided, so the
     # interface can show the words won rather than silently ignoring them.
     edit_from_words: List[str] = field(default_factory=list)
+    # A request for different kinds of clip, each with its own count: "2
+    # funny, 2 that ask a question" is [{"count": 2, "want": "funny moments"},
+    # {"count": 2, "want": "..."}]. Empty for one kind of clip, which the
+    # brief already covers. The ranker tags each moment with the group it
+    # fits, and each group's count is filled from its own moments first.
+    asks: List[Dict] = field(default_factory=list)
+    # Download and render quality the words asked for -- "best", "1080" or
+    # "720" -- or "" to leave it to the Source quality control.
+    quality: str = ""
+    # The model's one-line answer to the prompt, shown under the box like a
+    # chat reply: what it is going to make. "" when no model read it.
+    reply: str = ""
     # Human-readable notes about what the parser understood, shown in the UI
     # so the user can see their prompt was actually applied.
     notes: List[str] = field(default_factory=list)
@@ -192,6 +241,13 @@ class LayoutSpec:
             setattr(self, name, bool(getattr(self, name)))
         self.edit_from_words = [f for f in (self.edit_from_words or [])
                                 if f in EDIT_FIELDS]
+        self.asks = _clean_asks(self.asks)
+        if self.asks:
+            self.num_clips = sum(a["count"] for a in self.asks)
+        self.quality = str(self.quality or "").strip().lower().rstrip("p")
+        if self.quality not in QUALITIES:
+            self.quality = ""
+        self.reply = re.sub(r"\s+", " ", str(self.reply or "")).strip()[:240]
 
         # Keep only sane, ordered, non-duplicate spans.
         clean: List[List[float]] = []
@@ -270,9 +326,13 @@ class LayoutSpec:
             # Say the count up front: it is the number of Shorts the run hands
             # back, and the one setting people most often want to change.
             prefix = f"{self.num_clips} clip{'s' if self.num_clips > 1 else ''} · "
+            if self.asks:
+                prefix += " + ".join(f"{a['count']} {a['want']}" for a in self.asks) + " · "
         if self.clip_seconds:
             lo, hi = int(self.clip_seconds[0]), int(self.clip_seconds[1])
             prefix += f"{lo}-{hi}s each · "
+        if self.quality:
+            prefix += ("best quality · " if self.quality == "best" else f"{self.quality}p · ")
         if self.hook_replay:
             prefix += "hook up front · "
         if self.content_kind != content_kinds.AUTO:
@@ -323,6 +383,15 @@ _ASPECT_WORDS = [
     (r"\b4[:\s/]?5\b|\binstagram feed\b|\bfeed post\b", "4:5"),
     (r"\b1[:\s/]?1\b|\bsquare\b", "1:1"),
     (r"\b9[:\s/]?16\b|\bvertical\b|\bportrait\b|\breels?\b|\btiktok\b|\bshorts?\b", "9:16"),
+]
+
+# Download and render quality. 4K and "high quality" mean the best the
+# source has; a request for speed is the 720p download.
+_QUALITY_WORDS = [
+    (r"\b720\s*p\b|\blow(?:er)? quality\b|\bfast(?:est)? render\b", "720"),
+    (r"\b1080\s*p\b|\bfull hd\b|\bfhd\b", "1080"),
+    (r"\b(?:best|high(?:est)?|max(?:imum)?|top|full) quality\b|\b4k\b|\b2160\s*p\b"
+     r"|\b1440\s*p\b", "best"),
 ]
 
 # Words that say what kind of video the source is.
@@ -574,6 +643,13 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
         spec.notes.append("hook replay → on, each clip opens on its own peak")
         resolved.add("hook_replay")
 
+    for pattern, value in _QUALITY_WORDS:
+        if re.search(pattern, p):
+            spec.quality = value
+            spec.notes.append(f"quality → {value if value == 'best' else value + 'p'}")
+            resolved.add("quality")
+            break
+
     for pattern, value in _ASPECT_WORDS:
         if re.search(pattern, p):
             spec.aspect_ratio = value
@@ -651,43 +727,135 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
     return resolved
 
 
-# --- stage 2: LLM fallback ------------------------------------------------
+# --- stage 2: the model reads it --------------------------------------------
 
-_LLM_PROMPT = """You convert a video-editing instruction into JSON config.
+_LLM_PROMPT = """Someone typed this into ClipMint, an app that cuts a long video into
+vertical Shorts. They write it like a chat message: casual, maybe misspelled,
+maybe not in English, maybe several requests in one sentence. Work out what
+they meant and turn it into settings.
 
-Fields (omit any the instruction does not mention):
-- "layout": "stacked" (webcam panel on top, gameplay below) | "facetrack" (one frame, crop follows the speaker's face) | "center" (one frame, plain centre crop, no webcam)
+Return ONE JSON object. Include a field only when what they typed says
+something about it. Leave everything else out: a field you guess at overrides
+a choice they made somewhere else in the app.
+
+- "asks": only when they want DIFFERENT kinds of clip with their own counts,
+  e.g. "2 funny shorts and 2 that ask a question" ->
+  [{{"count": 2, "want": "funny moments"}}, {{"count": 2, "want": "moments that ask the viewer a question"}}].
+  "want" is a short plain-English description of that kind of moment.
+- "num_clips": how many clips in total, 1-10 (the sum of "asks" when there are groups)
+- "clip_seconds": [min, max] length of each clip in seconds, between 5 and 90.
+  "30 sec" is about [25, 35]; "short ones" is about [15, 30]; "about a minute" is [50, 70]
+- "content_kind": what the SOURCE video is, only if they say so:
+  "stream" | "vlog" | "podcast" | "tutorial" | "other"
 - "aspect_ratio": "9:16" | "4:5" | "1:1" | "16:9"
-- "webcam_corner": where the webcam overlay sits in the ORIGINAL footage: "bottom-left" | "bottom-right" | "top-left" | "top-right"
-- "cam_panel_fraction": 0.15-0.75, how much output height the webcam panel gets
+- "layout": "stacked" (webcam panel on top, gameplay below) | "facetrack" (one
+  frame, crop follows the speaker's face) | "center" (plain centre crop, no webcam)
+- "webcam_corner": where the webcam overlay sits in the ORIGINAL footage:
+  "bottom-left" | "bottom-right" | "top-left" | "top-right"
+- "cam_panel_fraction": 0.15-0.75, how much of the height the webcam panel gets
 - "face_zoom": 2.0-12.0, crop width as a multiple of face width (lower = tighter)
-- "num_clips": 1-10
+- "quality": "best" | "1080" | "720"
+- "captions": "off" | "bold" | "punch" | "clean" | "comic"
+- "caption_font": {fonts}
+- "caption_color": colour of the word being spoken, as RRGGBB
+- "caption_text_color": colour of the other caption words, as RRGGBB
+- "caption_position": "top" | "middle" | "bottom"
+- "cut_pauses", "punch_ins", "emoji", "broll", "hook_replay": true | false
+  (cut silences / zoom on emphasis / pop emoji / stock footage / open each
+  clip on a replay of its loudest moment)
+- "reply": ALWAYS include this. One short, friendly sentence in the language
+  they wrote in, saying what you are going to make, like a chat reply:
+  "4 clips: 2 funny ones and 2 that ask a question, about 30 seconds each, in 720p."
+  If they only described the mood or kind of moment, say that back.
 
-Respond with ONLY a JSON object. No markdown, no explanation.
+Respond with ONLY the JSON object. No markdown, no explanation.
 
-Instruction: {prompt}"""
+What they typed:
+{prompt}"""
+
+# Settings the model can set, beyond the edit fields, in the order applied.
+_LLM_FIELDS = ("layout", "aspect_ratio", "webcam_corner", "cam_panel_fraction",
+               "face_zoom", "num_clips", "clip_seconds", "content_kind", "quality",
+               "hook_replay")
+# The model's answer per prompt, so the preview, the job made from it and a
+# retry of that job pay for one call between them. Small and in memory:
+# prompts are typed by one person, and a restart costs one call.
+_LLM_CACHE: Dict[str, Dict] = {}
+_LLM_CACHE_SIZE = 64
 
 
-def _parse_with_llm(prompt: str, spec: LayoutSpec, already: set) -> None:
-    """Ask the configured LLM about whatever the keyword pass didn't catch."""
+def _ask_llm(prompt: str) -> Dict:
+    key = prompt.strip()
+    if key in _LLM_CACHE:
+        return _LLM_CACHE[key]
     from .local.llm import call_local_llm
 
-    raw = call_local_llm(_LLM_PROMPT.format(prompt=prompt))
+    raw = call_local_llm(_LLM_PROMPT.format(
+        prompt=key, fonts=" | ".join(f'"{k}"' for k in caption_styles.FONTS)))
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end == -1:
         raise ValueError(f"no JSON object in LLM reply: {raw[:200]}")
     data = json.loads(text[start:end + 1])
+    if not isinstance(data, dict):
+        raise ValueError("LLM reply was not a JSON object")
+    if len(_LLM_CACHE) >= _LLM_CACHE_SIZE:
+        _LLM_CACHE.pop(next(iter(_LLM_CACHE)))
+    _LLM_CACHE[key] = data
+    return data
 
-    # Keyword results win — they came from the user's literal words.
-    for key in ("layout", "aspect_ratio", "webcam_corner", "cam_panel_fraction",
-                "face_zoom", "num_clips"):
-        if key in already or key not in data or data[key] is None:
+
+def _clip_seconds(value) -> Optional[List[float]]:
+    try:
+        lo, hi = sorted(max(5.0, min(90.0, float(v))) for v in value)
+    except (TypeError, ValueError):
+        return None
+    return [lo, hi] if hi - lo >= 1 else [max(5.0, lo - 3), min(90.0, hi + 3)]
+
+
+def _parse_with_llm(prompt: str, spec: LayoutSpec, already: set) -> None:
+    """Apply what the model read in the prompt, under what the keywords did."""
+    data = _ask_llm(prompt)
+
+    for key in _LLM_FIELDS:
+        value = data.get(key)
+        if key in already or value is None:
             continue
-        setattr(spec, key, data[key])
-        spec.notes.append(f"{key.replace('_', ' ')} → {data[key]} (interpreted)")
+        if key == "clip_seconds":
+            value = _clip_seconds(value)
+            if not value:
+                continue
+            spec.notes.append(f"clip length → {value[0]:.0f}-{value[1]:.0f}s (understood)")
+        elif key == "content_kind":
+            value = content_kinds.normalise(value)
+            if value == content_kinds.AUTO:
+                continue
+            spec.notes.append(f"kind of video → {content_kinds.LABELS[value]} (understood)")
+        else:
+            spec.notes.append(f"{key.replace('_', ' ')} → {value} (understood)")
+        setattr(spec, key, value)
         if key == "layout":
             spec.layout_set = True
+
+    said = set(spec.edit_from_words or [])
+    for key in EDIT_FIELDS:
+        value = data.get(key)
+        if key in said or value is None or key == "logo":
+            continue
+        setattr(spec, key, value)
+        said.add(key)
+        spec.notes.append(f"{key.replace('_', ' ')} → {value} (understood)")
+    spec.edit_from_words = sorted(said)
+
+    # A mixed request's count is the model's to add up: the keyword pass
+    # would read "2 funny 2 that ask a question" as two clips.
+    asks = _clean_asks(data.get("asks"))
+    if asks:
+        spec.asks = asks
+        spec.num_clips = sum(a["count"] for a in asks)
+        for a in asks:
+            spec.notes.append(f"{a['count']} × {a['want']}")
+    spec.reply = str(data.get("reply") or "")
 
 
 def parse_layout_prompt(
@@ -717,17 +885,19 @@ def parse_layout_prompt(
 
     resolved = _parse_keywords(prompt, spec)
 
-    # Only pay for an LLM call when the keyword pass understood nothing at all.
-    # Anything it did resolve came from the user's literal words, so a second
-    # opinion adds latency (and quota) without adding accuracy — and this runs
-    # on every keystroke behind the live preview.
-    if use_llm and not resolved:
+    # The model reads every prompt, not only the ones the keywords missed:
+    # a phrase list cannot tell "2 short funny ones" from "2 shorts", or know
+    # that "make it feel chill" is a brief and "720 is fine" a setting. The
+    # live preview asks without it while someone is still typing.
+    if use_llm:
         try:
             _parse_with_llm(prompt, spec, resolved)
         except Exception as e:
             # A layout prompt is a convenience, never a hard dependency —
-            # falling back to defaults beats failing the whole render.
-            spec.notes.append(f"could not interpret the rest of the prompt ({e}); kept defaults")
+            # falling back to the keywords beats failing the whole render.
+            # Only worth saying when the keywords got nothing either.
+            if not resolved:
+                spec.notes.append(f"could not interpret the prompt ({e}); kept defaults")
 
     if spec.apply_kind():
         spec.notes.append(f"framing → follows the face, for a {content_kinds.LABELS[spec.content_kind]}")
