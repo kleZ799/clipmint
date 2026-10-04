@@ -801,6 +801,27 @@ for it decide *how* is the same division of labour as SQL over hand-written
 loops. It also means the fonts have to ship with the app, or the same script
 renders differently on every machine.
 
+### Measure the renderer, not the file
+
+Swapping a caption style's font has to keep the line the same width, or a
+two-word line in a wide font runs off the screen. The obvious way is to read
+each font's letter widths from its file and scale by the ratio. That was tried
+first, and Bungee came out at two thirds the size of everything else. The
+reason is that **libass does not size text by the em**, the unit the font file
+measures in. It sizes it by the font's *line height* (ascender plus descender),
+and Bungee declares a line height far taller than its letters. The file was
+telling the truth about a unit the renderer does not use.
+
+So the numbers in `captions.FONTS` are **measured from libass itself**: each
+font is burned onto a black frame at a known size, and the lit pixels give the
+real line width and capital height. A swap then scales to match the style's
+line width, capped so a condensed font never stands more than 30% taller than
+the style's own capitals (`captions.fit`). The same measurement gives the CSS
+size that matches, so the browser preview, which *does* size by the em, draws
+what the render will. The general lesson: when two systems interpret the same
+number differently, calibrate against the one that produces the output, not
+the one that stores the input.
+
 ### Silence detection with a relative threshold
 
 "Is this pause silent?" has no absolute answer: a podcast's silence is room

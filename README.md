@@ -78,7 +78,7 @@ the architecture, the hard problems, and the numbers.
 |---|---|
 | **Finds the moments** | Ranks every moment by the rules for its kind of video, then looks at the best ones the way a stranger scrolling past would |
 | **Frames them** | Webcam over gameplay, a crop that follows your face (or whoever is talking, when two people share the shot), or plain centre crop, at the source's real quality |
-| **Captions them** | Burned in, a few words at a time, the spoken word lit up. Four styles; fix a misheard word afterwards |
+| **Captions them** | Burned in, a few words at a time, the spoken word lit up. Four styles, ten fonts, any colour, top to bottom; fix a misheard word afterwards |
 | **Edits them** | Cuts quiet pauses and "um"s, punches in on emphasis, adds emoji, stock B-roll and your logo if you want. Framed wrong? Drag the frame, or move the captions, yourself |
 | **Explains them** | A score split into Hook, Moment, Look, Energy and Pace, with the reason each clip ranked where it did |
 | **Packages them** | Ranked titles, descriptions and tags for Shorts, captions for Reels and TikTok, all editable |
@@ -350,7 +350,12 @@ Most Shorts are watched on mute, so every clip comes back with **captions
 burned in**, a few words at a time, with the word being said lit up as it is
 said. There are four looks: **Bold**, **Punch**, **Clean** and **Comic**. Each
 uses its own typeface, shipped with the app so it looks the same on every PC.
-On the webcam-over-gameplay layout the captions sit on the seam between the
+Any style can be drawn in one of **ten fonts** instead (Montserrat, Anton,
+Bebas Neue, Poppins, Archivo Black, Lilita One, Luckiest Guy, Bangers,
+Permanent Marker or Bungee), with the **spoken word and the rest of the line in
+any colour**, placed **at the top, in the middle or at the bottom**. The live
+preview shows all of it before you render.
+Left on Auto, on the webcam-over-gameplay layout the captions sit on the seam between the
 two panels, where they cover neither your face nor the game.
 
 Each clip's **hook line** goes across the top for its first couple of
@@ -374,7 +379,7 @@ The same pass does the edit an editor would do next:
   free [Pexels](https://www.pexels.com/api/) key in Settings, and it never
   runs on a stream, where the gameplay is the picture.
 
-<img src="assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words because the prompt says so, punch-ins and the logo ticked, emoji and B-roll off" width="880">
+<img src="assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words because the prompt says so, then the Font row with Luckiest Guy chosen, green picked for the spoken word, Placement set to Middle, punch-ins ticked, emoji and B-roll off" width="880">
 
 **Whisper got a name wrong?** Open the clip and press **Captions**. Type the
 line as it should read and burn it in again. Words you keep stay exactly where
@@ -951,7 +956,7 @@ an application, is mine:**
 - A **desktop app**: a FastAPI server on a free port, run from a background thread, behind a native WebView2 window. No browser, no address bar, no terminal.
 - A **job runner** — queued work, one CPU-bound job at a time, progress streamed to the browser over SSE.
 - A **clip editor** — re-cut, mute, save or delete a finished clip without re-running the pipeline, and fix a misheard word in its captions.
-- **The edit after the cut** — burned-in word-by-word captions in four styles, pause and filler cuts that listen before they cut, punch-ins on emphasis, emoji, Pexels B-roll and a channel logo, in one encode per clip.
+- **The edit after the cut** — burned-in word-by-word captions in four styles, ten fonts and any colours, pause and filler cuts that listen before they cut, punch-ins on emphasis, emoji, Pexels B-roll and a channel logo, in one encode per clip.
 - **A scorecard per clip** — the rank split into Hook, Moment, Look, Energy and Pace, with the model's reason, so "why is this #1" has an answer.
 - **Stages that retry themselves**, and a Try again that resumes a failed run from its caches.
 - The **interface**, built on YouTube's own layout so the audience already knows how to use it.
@@ -1173,7 +1178,8 @@ than over the whole video. It drives four things, all in one more ffmpeg
 encode:
 
 - **Captions**, burned in with libass: a few words at a time, with the spoken
-  word lit up, in one of four styles whose fonts ship with the app. Hindi is
+  word lit up, in one of four styles whose fonts ship with the app, in the
+  font, colours and place you chose over it. Hindi is
   written in Hinglish, word for word, so the timing is untouched.
 - **Pause cuts.** A gap between words is cut only if the clip's own loudness
   says it is quiet, so a laugh or the game going off stays. So does the quiet
@@ -1386,6 +1392,7 @@ The knobs that change output quality most, in order:
 | `TARGET_BY_KIND` | `shorts_generator/boundaries.py` | Clip length per content type, when the prompt names no length of its own |
 | `REPLAY_SECONDS` | `shorts_generator/hook_open.py` | How long the hook cold open runs, `1.9s` by default |
 | `PRESETS` | `shorts_generator/captions.py` | The four caption styles: font, size, colours, words per line. Add a fifth by adding an entry and its font to `assets/fonts` |
+| `FONTS` / `HIGHLIGHTS` | `shorts_generator/captions.py` | The fonts any style can be swapped to, and the colour swatches offered. A new font needs its file in `assets/fonts` and its widths measured from a libass render, not from the font file |
 | `_GAP` / `_QUIET_SHARE` | `shorts_generator/autoedit.py` | How long a pause has to be before it is cut (`0.55s`, `0.9s` on a stream), and how quiet it has to be (under `30%` of speech level) |
 | `_PUNCH_ZOOM` | `shorts_generator/autoedit.py` | How far a punch-in zooms, `1.14×` |
 | `EMOJI_WORDS` | `shorts_generator/autoedit.py` | Which words pop which emoji. English only |
@@ -1403,7 +1410,7 @@ The knobs that change output quality most, in order:
 | `LOCAL_WHISPER_MODEL` | `.env` | `base` is plenty for ranking. `small` reads better and hallucinates less — and on a GPU it is *faster* than `base`, so use it if you have one |
 | Spoken language | Render panel | English by default. Pinning it is the fix for whisper inventing text in another language |
 | Interface language | Settings | English, Hindi, Spanish, Portuguese, French, German, Japanese |
-| Captions and the edit | Render panel, or the prompt | Caption style, pause cuts, punch-ins, emoji, B-roll and your logo, per run. Remembered per machine |
+| Captions and the edit | Render panel, or the prompt | Caption style, font, colours and placement, pause cuts, punch-ins, emoji, B-roll and your logo, per run. Remembered per machine |
 
 ---
 
@@ -1502,7 +1509,7 @@ shorts_generator/
 ├── performance.py         # what the channel's view counts say, tested against chance
 ├── words.py               # word timings for a finished clip
 ├── autoedit.py            # pause cuts, punch-ins, emoji, B-roll, logo — one encode
-├── captions.py            # burned-in captions: four styles, fixable afterwards
+├── captions.py            # burned-in captions: four styles, ten fonts, fixable afterwards
 ├── broll.py               # where stock footage fits, and fetching it from Pexels
 ├── brand.py               # the channel's logo
 ├── scorecard.py           # a clip's score split into Hook / Moment / Energy / Pace

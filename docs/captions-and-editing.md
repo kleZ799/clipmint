@@ -26,7 +26,7 @@ said.
 
 Pick a style under **Render → Edit → Captions**:
 
-<img src="../assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words, punch-ins and the logo ticked" width="880">
+<img src="../assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words, Luckiest Guy as the font, green for the spoken word, Placement on Middle" width="880">
 
 | Style | Looks like | Words at a time |
 |---|---|---|
@@ -36,8 +36,31 @@ Pick a style under **Render → Edit → Captions**:
 | **Comic** | Comic-book capitals with a purple outline, the spoken word in gold | 3 |
 | **Off** | No captions | — |
 
-The live preview shows the style you picked, in the real typeface, where it
-will sit on the clip:
+### Font, colour and placement
+
+Since v1.25.0, three things can be changed on top of any style. The style
+keeps everything else: its capitals or sentence case, how many words at a
+time, the pop, the box.
+
+- **Font.** *Style's own*, or any of ten: Montserrat, Anton, Bebas Neue,
+  Poppins, Archivo Black, Lilita One, Luckiest Guy, Bangers, Permanent Marker
+  and Bungee. Each chip is written in its own font. A new font is sized to
+  fill the same width of line the style was made for, so a narrow font like
+  Anton comes out taller and a wide one like Bungee does not run off the
+  screen.
+- **Spoken word** and **Other words.** Pick a swatch, or the rainbow one for
+  any colour at all. *Style* goes back to the style's own colours. Pick dark
+  text and the outline turns white, and on Clean the box turns light, so the
+  words never end up black on black.
+- **Placement.** *Auto* is the layout's own place (below). *Top* sits just
+  under the hook line, *Middle* in the centre, and *Bottom* in the low spot
+  above the apps' buttons, even on the webcam-over-gameplay layout.
+
+All of it is remembered on this PC, like the style. Clips you already made
+keep their look until you change them.
+
+The live preview shows the style you picked, in the real typeface, at the
+size and in the place it will be on the clip. Left on **Auto**:
 
 - **Webcam-over-gameplay:** on the seam between the two panels, covering
   neither your face nor the game.
@@ -47,7 +70,8 @@ will sit on the clip:
 
 **Captions in the wrong place on one clip?** Open it, press **Frame** in the
 player (or **R**), and move the **Captions** slider. A dashed line on the clip
-shows where they will land. They can go anywhere from a quarter of the way down
+shows where they will land. This overrides **Placement** for that one clip.
+They can go anywhere from a quarter of the way down
 to near the bottom, but not higher: the hook line sits across the top. The
 height stays with that clip through a trim or a caption fix, and **Back to
 automatic** returns it to the layout's own place.

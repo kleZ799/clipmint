@@ -1468,6 +1468,22 @@ covers with its own buttons. Lines break at the word limit, on punctuation, and
 before a pause. Scripts written without spaces (Japanese, Chinese, Thai) are
 joined without them.
 
+Three things can be put over a preset without unpicking it, all on the
+`LayoutSpec` (`caption_font`, `caption_color`, `caption_text_color`,
+`caption_position`) and carried into `autoedit.Options`. `look()` returns the
+preset with them applied: a face from `FONTS` (ten, OFL and Apache 2.0), the
+spoken word's and the rest of the line's colours as RRGGBB, and, when the
+text is dark, a white edge and a light box so it never sits black on black.
+A swapped face is resized by `fit()`: enough to set the same line width the
+preset was tuned for, at most 1.3× the preset's capital height. The widths and
+capital heights are measured from libass renders rather than from the font
+files, because libass sizes by a face's line height, not its em, and some
+faces (Bungee) declare a line far taller than their letters. `caption_y()`
+takes the placement: *top* at 27% (just under the hook line), *middle* at 50%,
+*bottom* at the layout's low place even on the stacked layout, *auto* as
+before. A height set by hand in the Frame panel still wins for that clip. Runs
+saved before v1.25.0 have none of these fields and render exactly as they did.
+
 **Hindi in Hinglish** (`hinglish.py`). Whisper writes Hindi in Devanagari, and
 it writes the English inside a Hinglish sentence that way too ("वीडियो",
 "गेम"). Hindi Shorts are read in Roman script, so `analyse()` passes every
@@ -1499,8 +1515,8 @@ the exact slice `hook_open` will replay (its own `REPLAY_LEAD` and
 spec has the cold open on. Checked on a real clip with a 1.9s cold open: the
 line is up from 0 to 4.5s and gone at 4.8. Captions off means no hook line.
 
-**Settings** live on `LayoutSpec` (`captions`, `cut_pauses`, `punch_ins`,
-`emoji`, `broll`), so a trim or a retry re-renders with the edit the run was
+**Settings** live on `LayoutSpec` (`captions`, the four `caption_*` fields,
+`cut_pauses`, `punch_ins`, `emoji`, `broll`), so a trim or a retry re-renders with the edit the run was
 made with. A manifest from before these fields existed reads back with all of
 them off, so re-cutting an old clip does not suddenly add captions. The prompt
 can set them ("comic captions", "keep the pauses", "no zooms", "add b-roll").
@@ -2351,7 +2367,11 @@ panel to `height × cam_panel_fraction`, prints the resolution, lists the parser
 `time_ranges` came back. It also draws a caption sample, in the real bundled
 typeface (served by `GET /api/fonts/{name}`), at the size and height the
 burned-in captions will have on that layout, and the uploaded logo in its
-corner.
+corner. The sample is sized with the same libass measurements the render
+uses (each font's `em`, the CSS size that matches libass's), and follows the
+chosen font, colours and placement. The font chips and swatches are built from
+`GET /api/options`, which also registers an `@font-face` per font, so the list
+lives only in `captions.FONTS`.
 
 **The Edit box** sends its switches with every preview and every job. The
 server applies them except where the prompt's words named the same thing
@@ -2808,7 +2828,7 @@ this workflow, scripted.
 `--onefile` is a single self-contained exe that unpacks itself each launch.
 
 **Bundled:** `webapp/static`, `assets/models` (the YuNet face detector),
-`assets/playbook`, `assets/fonts` (the four caption typefaces, OFL) and
+`assets/playbook`, `assets/fonts` (eleven caption typefaces, OFL and Apache 2.0) and
 `assets/emoji` (Twemoji PNGs, CC-BY 4.0), found at run time through
 `bundled.asset_dir()`, and `./bin` (ffmpeg + ffprobe) when present — which
 is what makes the published build need nothing installed. Hidden imports cover
@@ -3822,8 +3842,8 @@ rather than guessing from what the button last did.
 
 | Route | Purpose |
 |---|---|
-| `GET /api/options` | Aspect ratios, layouts, corners and caption styles for the UI controls |
-| `GET /api/fonts/{name}` | One of the bundled caption fonts, so the style picker and the preview show the real type. Only the files a caption preset names are served |
+| `GET /api/options` | Aspect ratios, layouts, corners, caption styles, and the caption fonts (with their measured widths), placements and colour swatches for the UI controls |
+| `GET /api/fonts/{name}` | One of the bundled caption fonts, so the style picker and the preview show the real type. Only the files a caption preset or `captions.FONTS` names are served |
 | `GET /api/brand` · `GET`/`POST`/`DELETE /api/brand/logo` · `POST /api/brand/corner` | The channel's logo: whether there is one and its corner, the image itself, upload (PNG or JPEG by magic bytes, ≤ 5 MB), removal, and which corner |
 | `PUT /api/jobs/{id}/clips/{file}/captions` | Re-burn a clip's captions from corrected text: retimed onto the heard words, rendered again from the same span with the same edit |
 | `POST /api/settings/pexels` | Store (or, empty, remove) the Pexels key B-roll is fetched with. Kept apart from the model keys: it chooses no provider |
