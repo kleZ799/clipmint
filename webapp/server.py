@@ -1076,16 +1076,47 @@ def _override_edit(spec: LayoutSpec, req: EditChoice) -> None:
     spec.validate()
 
 
+# How long a request waits for the model to read a prompt. Gemini retries a
+# busy spell for minutes on its own; the preview should not sit that long, so
+# it answers with what the keywords found and says the model is still on it.
+# The read carries on in the background and lands in the cache for next time.
+PREVIEW_READ_SECONDS = 15.0
+JOB_READ_SECONDS = 60.0
+
+
+async def _read_prompt(prompt: str, use_llm: bool, wait: float):
+    """The spec a prompt asks for, and whether the model is still reading it.
+
+    Never waits longer than `wait` for the model: past that, the keyword
+    reading is returned and the model's carries on into the cache.
+    """
+    if not use_llm or not (prompt or "").strip():
+        return await asyncio.to_thread(parse_layout_prompt, prompt, None, False), False
+    reading = asyncio.ensure_future(asyncio.to_thread(parse_layout_prompt, prompt, None, True))
+    done, _ = await asyncio.wait({reading}, timeout=wait)
+    if done:
+        return reading.result(), False
+    print(f"[prompt] the model is taking a while to read it; going on with the "
+          f"keywords for now", flush=True)
+    return await asyncio.to_thread(parse_layout_prompt, prompt, None, False), True
+
+
 @app.post("/api/layout/preview")
 async def layout_preview(req: LayoutPreviewRequest) -> dict:
     """Parse a layout prompt without running anything, so the UI can show
-    the user what their words actually did before they commit to a render."""
-    spec = await asyncio.to_thread(parse_layout_prompt, req.prompt, None, req.use_llm)
+    the user what their words actually did before they commit to a render.
+
+    `use_llm` false is the quick keyword reading the preview shows while
+    someone is still typing; true is the model's, once they stop. `reading`
+    says the model has not answered yet and is worth asking again.
+    """
+    spec, reading = await _read_prompt(req.prompt, req.use_llm, PREVIEW_READ_SECONDS)
     _override_aspect(spec, req.aspect_ratio)
     _override_kind(spec, req.content_kind)
     _override_edit(spec, req)
     return {"spec": spec.to_dict(), "summary": spec.describe(),
-            "notes": spec.notes, "warning": spec.warning()}
+            "notes": spec.notes, "warning": spec.warning(),
+            "reply": spec.reply, "reading": reading}
 
 
 @app.post("/api/resolve")
@@ -1136,7 +1167,7 @@ async def create_job(req: JobRequest) -> dict:
     if not source:
         raise HTTPException(400, "No source given")
 
-    spec = await asyncio.to_thread(parse_layout_prompt, req.prompt, None, req.use_llm)
+    spec, _ = await _read_prompt(req.prompt, req.use_llm, JOB_READ_SECONDS)
     _override_aspect(spec, req.aspect_ratio)
     _override_kind(spec, req.content_kind)
     _override_edit(spec, req)
@@ -1146,7 +1177,9 @@ async def create_job(req: JobRequest) -> dict:
         spec.num_clips = req.num_clips
         spec.validate()
 
-    job = STORE.create(source, spec, download_format=req.download_format,
+    # A quality named in the words ("720 is fine") wins over the control, the
+    # same way every other setting the words name does.
+    job = STORE.create(source, spec, download_format=spec.quality or req.download_format,
                        language=req.language)
     return job.snapshot()
 
