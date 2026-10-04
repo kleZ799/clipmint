@@ -66,7 +66,7 @@ the architecture, the hard problems, and the numbers.
 
 **[▶ Watch the 58-second tour](https://klez799.github.io/clipmint/#showcase)** · [or the mp4](assets/showcase/clipmint-showcase.mp4)
 
-<img src="assets/screenshots/01-create.png" alt="The create screen: a layout prompt, the Shape and Kind of video pickers with Stream or gaming chosen, and a live 9:16 preview on the right with a caption sample and the logo in its corner" width="880">
+<img src="assets/screenshots/01-create.png" alt="The create screen: a prompt typed like a message, give me 2 funny ones and 2 where I ask chat a question, around 30 sec each, 720p is fine, answered underneath with I'll make 4 clips: 2 funny ones and 2 where you ask chat a question, about 30 seconds each in 720p; Stream or gaming chosen, and the live 9:16 preview listing both groups" width="880">
 
 <img src="assets/screenshots/00-welcome.png" alt="The launch card: what the app is, who made it, links to the channel, repo, Discord and email, and a donate button" width="640">
 
