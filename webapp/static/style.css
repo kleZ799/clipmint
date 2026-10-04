@@ -2394,6 +2394,35 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 .capbar .chip.cap-clean.on { background: #141414; color: #ffd54a; }
 .capbar .chip.cap-comic.on { background: #3b1f6e; color: #ffd43b; }
 
+/* What can be put over a style: face, colours, place. */
+.cap-more { margin-top: 2px; }
+.cap-more.hidden { display: none; }
+.chipbar.wrap { flex-wrap: wrap; overflow: visible; }
+.fontbar .chip[data-font] span { font-size: 15px; line-height: 1; }
+.cap-colours { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.swatch {
+  position: relative;
+  width: 26px; height: 26px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform var(--fast), box-shadow var(--fast);
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+.swatch.auto {
+  width: auto; padding: 0 9px;
+  border-radius: var(--pill);
+  background: var(--raised-2);
+  color: var(--text);
+  font: 500 12px/1 inherit;
+}
+/* Any colour at all: the native picker, dressed as a swatch. */
+.swatch.pick { overflow: hidden; background: conic-gradient(#ff4d4d, #ffe14d, #4dff7c, #4dd2ff, #a64dff, #ff5cc8, #ff4d4d); }
+.swatch.pick input { position: absolute; inset: -8px; width: 200%; height: 200%; opacity: 0; cursor: pointer; }
+
 .linkish {
   border: 0;
   background: none;
@@ -2437,6 +2466,9 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 .pv-cap.cap-clean b { color: #ffd54a; }
 .pv-cap.cap-comic { font-family: "CM Comic", sans-serif; letter-spacing: .04em; -webkit-text-stroke: .09em #3b1f6e; paint-order: stroke fill; }
 .pv-cap.cap-comic b { color: #ffd43b; }
+/* Dark text chosen: a light edge, and on the boxed style a light box. */
+.pv-cap.dark-text { -webkit-text-stroke-color: #fff; text-shadow: none; }
+.pv-cap.cap-clean.dark-text { background: #f2f2f2; }
 
 /* ======================= why it ranked ======================= */
 .lib-sort {

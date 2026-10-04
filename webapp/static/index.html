@@ -286,6 +286,35 @@
                 <button class="chip cap cap-comic" data-cap="comic"><span>COMIC</span></button>
               </div>
             </div>
+            <!-- Put over the style: its face, colours and place. The fonts and
+                 swatches are filled in from /api/options. -->
+            <div class="cap-more" id="capMore">
+              <div class="ar-row">
+                <span class="ar-label">Font</span>
+                <div class="chipbar wrap fontbar" id="capFontBar">
+                  <button class="chip" data-font="">Style&rsquo;s own</button>
+                </div>
+              </div>
+              <div class="ar-row cap-colours">
+                <div>
+                  <span class="ar-label">Spoken word</span>
+                  <div class="swatches" id="capHiBar" data-field="caption_color"></div>
+                </div>
+                <div>
+                  <span class="ar-label">Other words</span>
+                  <div class="swatches" id="capTextBar" data-field="caption_text_color"></div>
+                </div>
+              </div>
+              <div class="ar-row">
+                <span class="ar-label">Placement</span>
+                <div class="chipbar" id="capPosBar">
+                  <button class="chip" data-pos="auto">Auto</button>
+                  <button class="chip" data-pos="top">Top</button>
+                  <button class="chip" data-pos="middle">Middle</button>
+                  <button class="chip" data-pos="bottom">Bottom</button>
+                </div>
+              </div>
+            </div>
             <!-- One line per string: translation matches whole text nodes. -->
             <label class="check"><input type="checkbox" id="edPauses" checked><span>Cut quiet pauses and &ldquo;um&rdquo;s. A pause with sound in it &mdash; a laugh, the game &mdash; stays <em class="said hidden" data-said="cut_pauses">set by your words</em></span></label>
             <label class="check"><input type="checkbox" id="edPunch" checked><span>Punch in on the lines said with emphasis <em class="said hidden" data-said="punch_ins">set by your words</em></span></label>

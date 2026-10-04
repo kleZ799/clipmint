@@ -1977,7 +1977,9 @@ async function refreshPreview() {
 // tag beside the control says so.
 
 const EDIT_KEY = "clipmint.edit";
-const EDIT_DEFAULT = { captions: "bold", cut_pauses: true, punch_ins: true,
+const EDIT_DEFAULT = { captions: "bold", caption_font: "", caption_color: "",
+                       caption_text_color: "", caption_position: "auto",
+                       cut_pauses: true, punch_ins: true,
                        emoji: false, broll: false, logo: true };
 const EDIT_BOXES = { cut_pauses: "edPauses", punch_ins: "edPunch",
                      emoji: "edEmoji", broll: "edBroll", logo: "edLogo" };
@@ -2006,6 +2008,28 @@ function drawEdit(shown) {
   const e = shown || editChoice;
   for (const b of $("capBar").querySelectorAll("[data-cap]")) {
     b.classList.toggle("on", b.dataset.cap === e.captions);
+  }
+  $("capMore").classList.toggle("hidden", !e.captions || e.captions === "off");
+  for (const b of $("capFontBar").querySelectorAll("[data-font]")) {
+    b.classList.toggle("on", b.dataset.font === (e.caption_font || ""));
+  }
+  for (const b of $("capPosBar").querySelectorAll("[data-pos]")) {
+    b.classList.toggle("on", b.dataset.pos === (e.caption_position || "auto"));
+  }
+  for (const bar of [$("capHiBar"), $("capTextBar")]) {
+    const chosen = (e[bar.dataset.field] || "").toUpperCase();
+    let matched = false;
+    for (const b of bar.querySelectorAll("[data-colour]")) {
+      const on = b.dataset.colour === chosen;
+      b.classList.toggle("on", on);
+      matched = matched || on;
+    }
+    // A colour from the picker lights the picker, in that colour.
+    const pick = bar.querySelector(".pick");
+    if (pick) {
+      pick.classList.toggle("on", !!chosen && !matched);
+      pick.style.background = chosen && !matched ? `#${chosen}` : "";
+    }
   }
   for (const [k, id] of Object.entries(EDIT_BOXES)) $(id).checked = !!e[k];
   document.querySelectorAll("[data-said]").forEach((el) =>
@@ -2037,6 +2061,67 @@ $("capBar").onclick = (ev) => {
   refreshPreview();
 };
 
+function setCaptionLook(field, value) {
+  if (wordsHold(field)) return;
+  editChoice[field] = value;
+  saveEditChoice();
+  drawEdit();
+  refreshPreview();
+}
+
+$("capFontBar").onclick = (ev) => {
+  const btn = ev.target.closest("[data-font]");
+  if (btn) setCaptionLook("caption_font", btn.dataset.font);
+};
+$("capPosBar").onclick = (ev) => {
+  const btn = ev.target.closest("[data-pos]");
+  if (btn) setCaptionLook("caption_position", btn.dataset.pos);
+};
+for (const bar of [$("capHiBar"), $("capTextBar")]) {
+  bar.onclick = (ev) => {
+    const btn = ev.target.closest("[data-colour]");
+    if (btn) setCaptionLook(bar.dataset.field, btn.dataset.colour);
+  };
+  // `change`, not `input`: the native picker fires input on every drag step,
+  // and each one would be a preview request.
+  bar.onchange = (ev) => {
+    if (ev.target.type === "color") {
+      setCaptionLook(bar.dataset.field, ev.target.value.replace("#", "").toUpperCase());
+    }
+  };
+}
+
+// The faces a style can be swapped to, and the swatches, come from the
+// server, so the list lives in one place (captions.FONTS). Each face is
+// loaded from the same file ffmpeg draws with and each chip is set in it.
+let captionFonts = {};
+const COLOUR_NAMES = { FFE14D: "Yellow", "4DFF7C": "Green", FF4D4D: "Red", "4DD2FF": "Blue",
+                       FF5CC8: "Pink", FF9A3C: "Orange", FFFFFF: "White", "000000": "Black" };
+
+async function loadCaptionLooks() {
+  let o;
+  try { o = await api("/api/options"); } catch (_) { return; }
+  const faces = o.caption_fonts || [];
+  captionFonts = Object.fromEntries(faces.map((f) => [f.value, f]));
+  const css = document.createElement("style");
+  css.textContent = faces.map((f) =>
+    `@font-face { font-family: "CMF ${f.value}"; src: url("/api/fonts/${f.file}") format("truetype"); font-display: swap; }`
+  ).join(" ");
+  document.head.appendChild(css);
+  $("capFontBar").insertAdjacentHTML("beforeend", faces.map((f) =>
+    `<button class="chip" data-font="${esc(f.value)}" style="font-family:'CMF ${esc(f.value)}',sans-serif"><span>${esc(f.label)}</span></button>`
+  ).join(""));
+  const swatches = (list) => `<button class="swatch auto" data-colour="">Style</button>`
+    + list.map((c) => `<button class="swatch" data-colour="${esc(c)}" style="background:#${esc(c)}" title="${esc(COLOUR_NAMES[c] || "#" + c)}"></button>`).join("")
+    + `<label class="swatch pick" title="Pick any colour"><input type="color" aria-label="Pick any colour"></label>`;
+  $("capHiBar").innerHTML = swatches(o.caption_highlights || []);
+  $("capTextBar").innerHTML = swatches(o.caption_text_colours || []);
+  I18N.apply($("capMore"));
+  drawEdit();
+  refreshPreview();
+}
+loadCaptionLooks();
+
 for (const [field, id] of Object.entries(EDIT_BOXES)) {
   $(id).onchange = () => {
     if (wordsHold(field)) return;
@@ -2054,15 +2139,39 @@ $("brollKey").onclick = () => {
 
 // The caption sample on the live preview: the real typeface, at the size and
 // the height the burned-in captions will have on this layout.
+// `face` is the style's own typeface measured the way captions.FONTS
+// measures every face, so a swap is sized as the render sizes it (fit()),
+// and `em` turns libass's size into the CSS font-size that draws the same.
 const CAPTION_SAMPLE = {
-  bold: { size: 0.084, html: "THIS IS <b>INSANE</b>" },
-  punch: { size: 0.112, html: "IS <b>INSANE</b>" },
-  clean: { size: 0.056, html: "this is <b>insane</b>" },
-  comic: { size: 0.104, html: "THIS IS <b>INSANE</b>" },
+  bold: { size: 0.084, face: { width: [11.26, 9.51], cap: 0.47, em: 0.639 },
+          html: "THIS IS <b>INSANE</b>" },
+  punch: { size: 0.112, face: { width: [6.50, 6.37], cap: 0.51, em: 0.578 },
+           html: "IS <b>INSANE</b>" },
+  clean: { size: 0.056, face: { width: [11.12, 9.31], cap: 0.47, em: 0.639 }, lower: true,
+           html: "this is <b>insane</b>" },
+  comic: { size: 0.104, face: { width: [5.80, 5.79], cap: 0.44, em: 0.568 },
+           html: "THIS IS <b>INSANE</b>" },
 };
 
+// captions.fit(), for the preview.
+function captionFit(own, face, upper) {
+  const side = upper ? 0 : 1;
+  const wide = own.width[side] / face.width[side];
+  const tall = 1.3 * own.cap / face.cap;
+  return Math.max(0.75, Math.min(wide, tall, 2.0));
+}
+
+function isDark(hex) {
+  const n = parseInt(hex, 16);
+  return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255) < 90;
+}
+
 function captionHeight(spec) {
-  if (spec.layout === "stacked") return Math.max(0.2, Math.min(0.8, spec.cam_panel_fraction));
+  if (spec.caption_position === "top") return 0.27;
+  if (spec.caption_position === "middle") return 0.5;
+  if (spec.layout === "stacked" && spec.caption_position !== "bottom") {
+    return Math.max(0.2, Math.min(0.8, spec.cam_panel_fraction));
+  }
   if (spec.aspect_ratio === "16:9") return 0.82;
   if (spec.aspect_ratio === "1:1" || spec.aspect_ratio === "4:5") return 0.78;
   return 0.70;
@@ -2140,7 +2249,14 @@ function drawCaptionSample(spec, w, h) {
   if (!sample) return;
   cap.innerHTML = sample.html;
   cap.style.top = `${captionHeight(spec) * 100}%`;
-  cap.style.fontSize = `${Math.max(7, Math.round(Math.min(w, h) * sample.size))}px`;
+  const face = captionFonts[spec.caption_font];
+  const size = face ? sample.size * captionFit(sample.face, face, !sample.lower) * face.em
+    : sample.size * sample.face.em;
+  cap.style.fontFamily = face ? `"CMF ${spec.caption_font}", sans-serif` : "";
+  cap.style.fontSize = `${Math.max(7, Math.round(Math.min(w, h) * size))}px`;
+  cap.style.color = spec.caption_text_color ? `#${spec.caption_text_color}` : "";
+  cap.querySelector("b").style.color = spec.caption_color ? `#${spec.caption_color}` : "";
+  cap.classList.toggle("dark-text", !!spec.caption_text_color && isDark(spec.caption_text_color));
 }
 
 function drawPexels() {
