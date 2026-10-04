@@ -944,7 +944,7 @@ class JobStore:
             return
 
         from shorts_generator.boundaries import report as report_cuts
-        from shorts_generator.highlights import get_highlights
+        from shorts_generator.highlights import get_highlights, pick, pool
         from shorts_generator.hook_open import budget as hook_budget
         from shorts_generator.judge import judge as judge_clips, pool_size as judge_pool
         from shorts_generator.local.llm import call_vision_llm, vision_images_per_request
@@ -1097,7 +1097,8 @@ class JobStore:
                                     video_meta=job.video_meta,
                                     source_path=source_path,
                                     chat=chat,
-                                    tuning=tuning)
+                                    tuning=tuning,
+                                    asks=job.spec.asks)
             all_highlights = result.get("highlights", [])
             content = result.get("content") or {}
             if not all_highlights:
@@ -1108,10 +1109,9 @@ class JobStore:
             # that can see, as a stranger scrolling past would meet them, and
             # re-ranked on that -- see shorts_generator/judge.py.
             self._update(job, frac=0.5, message="Watching the best moments like a stranger would")
-            pool = sorted(all_highlights, key=lambda h: int(h.get("score", 0)),
-                          reverse=True)[:judge_pool(job.spec.num_clips)]
+            looked = pool(all_highlights, judge_pool(job.spec.num_clips), job.spec.asks)
             try:
-                judge_clips(pool, source_path, call_vision_llm,
+                judge_clips(looked, source_path, call_vision_llm,
                             lambda h: clip_words(h, transcript),
                             kind=content.get("kind") or "",
                             images_per_request=vision_images_per_request())
@@ -1120,8 +1120,9 @@ class JobStore:
 
             # Best first, and it stays that way all the way to the grid: the
             # order the user sees is the order worth posting in.
-            top = sorted(all_highlights, key=lambda h: int(h.get("score", 0)),
-                         reverse=True)[:job.spec.num_clips]
+            # A mixed request ("2 funny, 2 that ask a question") fills each
+            # group from its own moments first -- see highlights.pick.
+            top = pick(all_highlights, job.spec.num_clips, job.spec.asks)
             print(f"[rank] {len(top)} clip(s) chosen, best first: "
                   + ", ".join(str(h.get("score", "?")) for h in top), flush=True)
             # Every cut, with what moved it. A run's framing decisions are

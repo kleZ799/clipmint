@@ -18,6 +18,7 @@ verdict on the whole clip - so a moment that needs eight seconds of setup before
 it pays off is worth less than a weaker moment that opens cold on its own hook.
 The model scores both, and `score` is the blend the rest of the app sorts on.
 """
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -296,7 +297,7 @@ Rules:
   gameplay
 
 Respond ONLY with valid JSON (no markdown, no explanation):
-{{"highlights":[{{"title":"string","start_time":float,"end_time":float,"score":int,"hook_score":int,"first_line":"string","hook_sentence":"string","virality_reason":"string","on_screen":"string"}}]}}"""
+{{"highlights":[{{"title":"string","start_time":float,"end_time":float,"score":int,"hook_score":int,"first_line":"string","hook_sentence":"string","virality_reason":"string","on_screen":"string","ask":int}}]}}"""
 
 
 # Bump whenever the ranking prompt -- or the shape of the transcript we hand
@@ -390,16 +391,41 @@ DEFAULT_DURATION_RULE = (
 )
 
 
-def brief_block(brief: str) -> str:
+def brief_block(brief: str, asks: Optional[List[Dict]] = None) -> str:
     """The user's own description of the short they want, if they gave one.
 
     Placed above the task and marked as outranking the generic criteria: the
     house virality list is a good default, but someone who says "only the
     funny fails" has told us something the list cannot know.
+
+    `asks` is a mixed request split into groups ("2 funny, 2 that ask a
+    question", see LayoutSpec.asks). Each highlight is then tagged with the
+    group it belongs to, so every group's count can be filled from its own
+    moments rather than all of them going to whichever kind scores highest.
     """
     brief = (brief or "").strip()
     if not brief:
         return ""
+    return _brief_text(brief) + asks_block(asks)
+
+
+def asks_block(asks: Optional[List[Dict]]) -> str:
+    """The groups of a mixed request, and how to tag a highlight with one."""
+    if not asks:
+        return ""
+    lines = "\n".join(f"  {i}. {a['count']} clip(s): {a['want']}"
+                       for i, a in enumerate(asks, 1))
+    return (
+        "\nThe user wants different kinds of clip, each with its own count:\n"
+        f"{lines}\n"
+        "Find candidates for EVERY group, not only the one that is easiest to "
+        "find, and give each highlight an \"ask\" field: the number of the "
+        "group it belongs to, or 0 when it fits none. A strong moment that "
+        "fits no group can still be returned with \"ask\": 0.\n"
+    )
+
+
+def _brief_text(brief: str) -> str:
     return (
         "\nWHAT THE USER ASKED FOR (outranks the generic criteria above where "
         f"they disagree):\n\"{brief}\"\n"
@@ -486,6 +512,9 @@ def _sanitize_highlights(raw_highlights: object, duration: float,
                                      or item.get("first_line") or "").strip(),
                 "virality_reason": str(item.get("virality_reason") or "").strip(),
                 "on_screen": str(item.get("on_screen") or "").strip()[:200],
+                # Which group of a mixed request it fits (asks_block); 0 for
+                # none, and for every highlight of a request without groups.
+                "ask": max(0, _coerce_int(item.get("ask"), default=0)),
             }
         )
 
@@ -649,6 +678,7 @@ def call_highlight_api(
     clip_seconds: Optional[List[float]] = None,
     brief: str = "",
     chat_note: str = "",
+    asks: Optional[List[Dict]] = None,
 ) -> Dict:
     # Ask for ~2× the user's target so dedupe has headroom, but cap so the model
     # doesn't have to generate a huge JSON payload (which times out gpt-5-mini).
@@ -663,7 +693,7 @@ def call_highlight_api(
         density=content_info.get("density", "medium"),
         num_clips_instruction=f"Generate at least {min_clips} highlights",
         duration_rule=duration_rule(clip_seconds),
-        user_brief=brief_block(brief),
+        user_brief=brief_block(brief, asks),
     )
     base_prompt = f"{system}\n{chat_note}\nTranscript:\n{transcript_text}"
     prompt = base_prompt
@@ -732,7 +762,8 @@ def dedupe_highlights(highlights: List[Dict]) -> List[Dict]:
 def _checkpoint_fingerprint(duration: float, chunk_count: int, num_clips: int,
                             clip_seconds: Optional[List[float]] = None,
                             kind: str = content_kinds.OTHER,
-                            chat: bool = False) -> str:
+                            chat: bool = False, brief: str = "",
+                            asks: Optional[List[Dict]] = None) -> str:
     """Identifies the run a saved checkpoint belongs to.
 
     Includes the requested clip length: asking for 30s clips after a run that
@@ -760,8 +791,18 @@ def _checkpoint_fingerprint(duration: float, chunk_count: int, num_clips: int,
     # Chat is marked only when there is one, so a video that never had a chat
     # keeps every chunk it was ranked on before chat was read at all -- while
     # a stream whose chat has just become readable is ranked again with it.
+    #
+    # What was asked for is part of the question too: chunks ranked for "the
+    # funny moments" are no answer to "the emotional ones", and only chunks
+    # ranked with a mixed request's groups carry the tags that fill them.
+    # Marked only when there is a brief, so a run without one keeps every
+    # chunk it was ranked on before this was added.
+    asked = ""
+    if (brief or "").strip() or asks:
+        text = json.dumps([(brief or "").strip(), asks or []], sort_keys=True)
+        asked = "|ask" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
     return (f"v{PROMPT_VERSION}|{duration / 60:.0f}|{chunk_count}|{num_clips}"
-            f"|{length}|{kind}" + ("|chat" if chat else ""))
+            f"|{length}|{kind}" + ("|chat" if chat else "") + asked)
 
 
 def _load_saved_content(path: Optional[Path], duration: float) -> Optional[Dict]:
@@ -868,6 +909,7 @@ def get_highlights(
     source_path: Optional[str] = None,
     chat=None,
     tuning: Optional[Dict[str, float]] = None,
+    asks: Optional[List[Dict]] = None,
 ) -> Dict:
     """Main entry point — returns {highlights: [...], content: {...}}, best first.
 
@@ -896,6 +938,9 @@ def get_highlights(
 
     `tuning` is what the channel's own view counts say each measured signal
     is worth (performance.tuning); empty means the rule book's weights.
+
+    `asks` is a mixed request's groups (LayoutSpec.asks); each highlight
+    comes back tagged with the one it fits, for pick() to fill them from.
     """
     llm_fn = llm_fn or call_muapi_llm
     duration = transcript.get("duration", 0)
@@ -922,7 +967,8 @@ def get_highlights(
         print(f"[highlights] long video — splitting into {len(chunks)} chunks", flush=True)
 
         fingerprint = _checkpoint_fingerprint(duration, len(chunks), num_clips, clip_seconds,
-                                              kind=content_info["kind"], chat=bool(chat))
+                                              kind=content_info["kind"], chat=bool(chat),
+                                              brief=brief, asks=asks)
         done = _load_checkpoint(checkpoint_path, fingerprint)
         if done:
             print(f"[highlights] resuming — {len(done)}/{len(chunks)} chunk(s) "
@@ -938,7 +984,7 @@ def get_highlights(
 
             text = build_transcript_text(chunk, chat=chat, offset=offset)
             print(f"[highlights] chunk {i + 1}/{len(chunks)} (offset {offset:.0f}s)", flush=True)
-            result = call_highlight_api(text, content_info, chunk["duration"], num_clips=num_clips, is_chunk=True, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note)
+            result = call_highlight_api(text, content_info, chunk["duration"], num_clips=num_clips, is_chunk=True, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note, asks=asks)
             ranked = []
             for h in result.get("highlights", []):
                 h["start_time"] = float(h["start_time"]) + offset
@@ -955,7 +1001,7 @@ def get_highlights(
         candidates = dedupe_highlights(all_highlights)
     else:
         text = build_transcript_text(transcript, chat=chat)
-        result = call_highlight_api(text, content_info, duration, num_clips=num_clips, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note)
+        result = call_highlight_api(text, content_info, duration, num_clips=num_clips, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note, asks=asks)
         candidates = dedupe_highlights(result.get("highlights", []))
 
     highlights = finalize(
@@ -970,3 +1016,45 @@ def get_highlights(
     print(f"[rank] {len(highlights)} candidate(s) after snapping · "
           f"{signals.summarise(highlights)}", flush=True)
     return {"highlights": highlights, "content": content_info}
+
+
+def _by_score(h: Dict) -> int:
+    return int(h.get("score", 0) or 0)
+
+
+def pick(highlights: List[Dict], n: int,
+         asks: Optional[List[Dict]] = None) -> List[Dict]:
+    """The `n` clips to cut, best first.
+
+    Without groups, simply the top `n`. With a mixed request, each group's
+    count is filled first from the best moments tagged with it; a group the
+    video could not fill hands its places to the best of the rest, so a run
+    never comes back short because one kind of moment was not in it.
+    """
+    ranked = sorted(highlights, key=_by_score, reverse=True)
+    if not asks:
+        return ranked[:n]
+    chosen: List[Dict] = []
+    for i, a in enumerate(asks, 1):
+        mine = [h for h in ranked if h.get("ask") == i and h not in chosen]
+        got = mine[:a["count"]]
+        if len(got) < a["count"]:
+            print(f"[rank] only {len(got)} of {a['count']} moment(s) fit "
+                  f"\"{a['want']}\"; the best of the rest fill in", flush=True)
+        chosen += got
+    chosen += [h for h in ranked if h not in chosen][:max(0, n - len(chosen))]
+    return sorted(chosen[:n], key=_by_score, reverse=True)
+
+
+def pool(highlights: List[Dict], size: int,
+         asks: Optional[List[Dict]] = None) -> List[Dict]:
+    """The candidates worth a second look before pick(), best first.
+
+    The top `size` overall, plus each group's own best few, so a group whose
+    moments score lower than another's is still looked at before it is filled.
+    """
+    ranked = sorted(highlights, key=_by_score, reverse=True)
+    out = ranked[:size]
+    for i, a in enumerate(asks or [], 1):
+        out += [h for h in ranked if h.get("ask") == i and h not in out][:a["count"] * 2]
+    return sorted(out, key=_by_score, reverse=True)
