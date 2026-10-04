@@ -853,6 +853,8 @@ def _parse_with_llm(prompt: str, spec: LayoutSpec, already: set) -> None:
     if asks:
         spec.asks = asks
         spec.num_clips = sum(a["count"] for a in asks)
+        spec.notes = [n for n in spec.notes if not n.startswith("clip count →")]
+        spec.notes.append(f"clip count → {spec.num_clips} (understood)")
         for a in asks:
             spec.notes.append(f"{a['count']} × {a['want']}")
     spec.reply = str(data.get("reply") or "")
