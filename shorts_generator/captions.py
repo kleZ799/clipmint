@@ -90,34 +90,46 @@ CHOICES = (OFF, *PRESETS)
 
 # Typefaces any style can be drawn in instead of its own. The style still
 # decides everything else -- case, words per line, the pop, the box -- so a
-# font is a change of face, not of look. `width` is how wide a run of
-# capitals and of lower case sets, in ems (the same sample for every face),
-# so a swapped face can be sized to fill the line its style was tuned for.
+# font is a change of face, not of look.
+#
+# The numbers are measured from libass's own renders, not from the font
+# files: libass sizes text by a face's line height, which some faces (Bungee)
+# set far taller than their letters, so the same Fontsize draws them at very
+# different sizes. `width` is how wide a run of capitals and of lower case
+# sets at Fontsize 1, `cap` how tall a capital stands, and `em` the CSS
+# font-size that matches Fontsize 1, so the preview draws what the render will.
 FONTS: Dict[str, Dict] = {
     "montserrat": {"label": "Montserrat", "font": "Montserrat Black",
-                   "file": "Montserrat-Black.ttf", "width": (17.61, 14.88)},
-    "anton": {"label": "Anton", "font": "Anton",
-              "file": "Anton-Regular.ttf", "width": (11.24, 11.04)},
+                   "file": "Montserrat-Black.ttf",
+                   "width": (11.26, 9.51), "cap": 0.47, "em": 0.639},
+    "anton": {"label": "Anton", "font": "Anton", "file": "Anton-Regular.ttf",
+              "width": (6.50, 6.37), "cap": 0.51, "em": 0.578},
     "bebas": {"label": "Bebas Neue", "font": "Bebas Neue",
-              "file": "BebasNeue-Regular.ttf", "width": (9.26, 9.26)},
+              "file": "BebasNeue-Regular.ttf",
+              "width": (7.10, 7.10), "cap": 0.56, "em": 0.767},
     "poppins": {"label": "Poppins", "font": "Poppins Black",
-                "file": "Poppins-Black.ttf", "width": (15.87, 14.00)},
+                "file": "Poppins-Black.ttf",
+                "width": (8.97, 7.94), "cap": 0.41, "em": 0.565},
     "archivo": {"label": "Archivo Black", "font": "Archivo Black",
-                "file": "ArchivoBlack-Regular.ttf", "width": (18.33, 14.89)},
+                "file": "ArchivoBlack-Regular.ttf",
+                "width": (13.54, 10.99), "cap": 0.53, "em": 0.739},
     "lilita": {"label": "Lilita One", "font": "Lilita One",
-               "file": "LilitaOne-Regular.ttf", "width": (14.37, 11.38)},
+               "file": "LilitaOne-Regular.ttf",
+               "width": (12.54, 9.92), "cap": 0.63, "em": 0.872},
     "luckiest": {"label": "Luckiest Guy", "font": "Luckiest Guy",
-                 "file": "LuckiestGuy-Regular.ttf", "width": (13.93, 13.87)},
-    "bangers": {"label": "Bangers", "font": "Bangers",
-                "file": "Bangers-Regular.ttf", "width": (10.21, 10.21)},
+                 "file": "LuckiestGuy-Regular.ttf",
+                 "width": (11.36, 11.32), "cap": 0.60, "em": 0.816},
+    "bangers": {"label": "Bangers", "font": "Bangers", "file": "Bangers-Regular.ttf",
+                "width": (5.80, 5.79), "cap": 0.44, "em": 0.568},
     "marker": {"label": "Permanent Marker", "font": "Permanent Marker",
-               "file": "PermanentMarker-Regular.ttf", "width": (16.88, 13.83)},
-    "bungee": {"label": "Bungee", "font": "Bungee",
-               "file": "Bungee-Regular.ttf", "width": (17.19, 17.19)},
+               "file": "PermanentMarker-Regular.ttf",
+               "width": (11.78, 9.65), "cap": 0.54, "em": 0.698},
+    "bungee": {"label": "Bungee", "font": "Bungee", "file": "Bungee-Regular.ttf",
+               "width": (6.64, 6.64), "cap": 0.30, "em": 0.386},
 }
-# The styles' own faces, measured the same way, for sizing a swap against.
-_OWN_WIDTH = {"Montserrat-ExtraBold.ttf": (17.41, 14.57),
-              **{f["file"]: f["width"] for f in FONTS.values()}}
+# Every bundled face by file, the styles' own included, for sizing a swap.
+_METRICS = {"Montserrat-ExtraBold.ttf": {"width": (11.12, 9.31), "cap": 0.47, "em": 0.639},
+            **{f["file"]: f for f in FONTS.values()}}
 
 # Where the captions sit, when not left to the layout. Top stays below the
 # hook line; bottom is the layout's own low place, clear of the apps' UI.
@@ -160,8 +172,25 @@ def options() -> List[Dict]:
 
 def font_options() -> List[Dict]:
     """The faces a style can be swapped to, for the interface to offer."""
-    return [{"value": k, "label": f["label"], "file": f["file"], "width": f["width"]}
+    return [{"value": k, "label": f["label"], "file": f["file"],
+             "width": f["width"], "cap": f["cap"], "em": f["em"]}
             for k, f in FONTS.items()]
+
+
+def fit(own_file: str, face: Dict, upper: bool) -> float:
+    """How much to scale a style's size by when it is drawn in `face`.
+
+    Enough to set the same width of line the style was tuned for, but never
+    so much that a condensed face stands more than a third taller than the
+    style's own capitals -- and never so little that the words shrink away.
+    """
+    own = _METRICS.get(own_file)
+    if not own:
+        return 1.0
+    side = 0 if upper else 1
+    wide = own["width"][side] / face["width"][side]
+    tall = 1.3 * own["cap"] / face["cap"]
+    return round(max(0.75, min(wide, tall, 2.0)), 3)
 
 
 def normalise_font(value: Optional[str]) -> str:
@@ -202,9 +231,7 @@ def caption_y(layout: str, aspect_ratio: str, cam_panel_fraction: float,
 def look(style: str, font: str = "", colour: str = "", text_colour: str = "") -> Dict:
     """A style's preset with the face and colours someone chose put over it.
 
-    A swapped face is sized to set the same width of line the style was
-    tuned for, within limits: a condensed face scaled to a wide one's width
-    would be taller than the frame wants. Dark text gets a light edge, and
+    A swapped face is sized by fit(). Dark text gets a light edge, and
     on the boxed style a light box, so it never sits black on black.
     """
     preset = dict(PRESETS.get(style) or {})
@@ -212,11 +239,8 @@ def look(style: str, font: str = "", colour: str = "", text_colour: str = "") ->
         return preset
     face = FONTS.get(normalise_font(font))
     if face and face["file"] != preset["file"]:
-        side = 0 if preset["upper"] else 1
-        own = _OWN_WIDTH.get(preset["file"], face["width"])[side]
-        scale = max(0.8, min(1.35, own / face["width"][side]))
         preset.update(font=face["font"], file=face["file"],
-                      size=round(preset["size"] * scale, 4))
+                      size=round(preset["size"] * fit(preset["file"], face, preset["upper"]), 4))
     colour, text_colour = normalise_colour(colour), normalise_colour(text_colour)
     if colour:
         preset["active"] = colour
