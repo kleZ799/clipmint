@@ -1903,8 +1903,13 @@ def _public(state: dict) -> dict:
 
 @app.get("/api/version")
 async def app_version() -> dict:
-    """The running build's version. Local only -- no network, never fails."""
-    return {"version": updater.APP_VERSION, "can_self_update": updater.can_self_update()}
+    """The running build's version. Local only -- no network, never fails.
+
+    The platform rides along so a screenshot of the corner watermark says
+    which of the two builds it came from, not just which number."""
+    platform = "mac" if updater.MAC else "linux" if updater.LINUX else "windows"
+    return {"version": updater.APP_VERSION, "platform": platform,
+            "can_self_update": updater.can_self_update()}
 
 
 @app.get("/api/update/check")
