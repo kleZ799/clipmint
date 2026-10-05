@@ -748,8 +748,10 @@ install it — download the new zip and replace the app in Applications.
 
 ### If it doesn't open, or opens and does nothing
 
-That part *is* the beta, and it is worth reporting. Two things help:
+That part *is* the beta, and it is worth reporting. Three things help:
 
+- A screenshot, if a window opened at all. The bottom-right corner of every
+  screen says which version and platform you are on.
 - `~/Movies/ClipMint/app.log` — the app writes startup errors here,
   including ones it has no window to show you in.
 - Running it from Terminal, so errors print where you can see them:
@@ -784,7 +786,8 @@ exercised under WSL, and the release workflow starts every published build
 and fetches the interface out of it — which proves it unpacks, imports,
 binds a port and serves. It does not prove a full render works on Fedora, or
 that your file manager opens where it should. If something is wrong, that is
-a bug here rather than something you did: [say so](https://github.com/kleZ799/clipmint/issues/new).
+a bug here rather than something you did: [say so](https://github.com/kleZ799/clipmint/issues/new),
+with a screenshot if you can; its bottom-right corner names the version.
 
 **1. Download.** Take `ClipMint-linux-x86_64` from the
 [latest release](https://github.com/kleZ799/clipmint/releases/latest). x86-64 only — there is no ARM build.
