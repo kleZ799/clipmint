@@ -4291,3 +4291,6 @@ loadLibrary();
 
   I18N.apply(document.body);
 })();
+
+// Read by index.html: the page arrived whole, so a later failure may retry.
+window.appReady = true;

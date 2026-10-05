@@ -27,6 +27,22 @@
     document.documentElement.setAttribute("data-theme", "dark");
   }
 })();
+/* A script that failed to arrive leaves a page that looks right and does
+   nothing, in a window with no reload button. Load the page again instead,
+   twice at most, so a server that is really down is not hammered. */
+function retryPage() {
+  try {
+    var n = +(sessionStorage.getItem("clipmint.retry") || 0);
+    if (n >= 2) return;
+    sessionStorage.setItem("clipmint.retry", n + 1);
+  } catch (e) { return; }
+  setTimeout(function () { location.reload(); }, 600);
+}
+addEventListener("load", function () {
+  if (window.I18N && window.appReady) {
+    try { sessionStorage.removeItem("clipmint.retry"); } catch (e) { /* fine */ }
+  }
+});
 </script>
 </head>
 <body>
@@ -990,9 +1006,9 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="ver-mark" id="verMark" aria-hidden="true"></div>
 
-<script src="/static/i18n.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/i18n.js" onerror="retryPage()"></script>
+<script src="/static/app.js" onerror="retryPage()"></script>
 </body>
 </html>
-<div class="ver-mark" id="verMark" aria-hidden="true"></div>

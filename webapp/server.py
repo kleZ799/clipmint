@@ -120,10 +120,24 @@ class JobRequest(EditChoice):
 
 # --- routes ---------------------------------------------------------------
 
+# The page's own stylesheet, written into it rather than linked. A link is a
+# second request, and when that one request fails the window has nothing to
+# retry it with: the app opened as bare black-on-white HTML, the sidebar
+# lying over the page, until it was closed and opened again. One response
+# either has the styles or does not arrive at all.
+STYLESHEET_LINK = '<link rel="stylesheet" href="/static/style.css">'
+
+
+def _page() -> str:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    return html.replace(STYLESHEET_LINK, f"<style>\n{css}\n</style>", 1)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
     return HTMLResponse(
-        (STATIC_DIR / "index.html").read_text(encoding="utf-8"),
+        _page(),
         headers={"Cache-Control": "no-cache"},
     )
 
