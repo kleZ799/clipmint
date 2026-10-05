@@ -2330,13 +2330,24 @@ reading is exactly what would be deleted.
 
 ## 12. The frontend
 
-`webapp/static/` — three files, ~3,500 lines, **no framework, no build step.**
+`webapp/static/` — four files, ~10,000 lines, **no framework, no build step.**
 
 | File | Lines | What |
 |---|---|---|
-| `index.html` | 444 | Full page markup + an inline SVG sprite sheet |
-| `app.js` | 1,514 | All behaviour, plain DOM, no dependencies |
-| `style.css` | 1,514 | Design system in CSS custom properties |
+| `index.html` | 1,014 | Full page markup + an inline SVG sprite sheet |
+| `app.js` | 4,296 | All behaviour, plain DOM, no dependencies |
+| `i18n.js` | 1,967 | The interface in six more languages, keyed by the English |
+| `style.css` | 2,757 | Design system in CSS custom properties |
+
+**The stylesheet is served inside the page.** `GET /` reads `index.html` and
+replaces its `<link rel="stylesheet">` with the contents of `style.css`
+(`_page()` in `server.py`). As a link it was a second request, and when that
+one request failed the desktop window showed bare black-on-white HTML with the
+sidebar lying over the page, and had no reload button to recover with. Now one
+response either carries the styles or doesn't arrive at all. The two scripts
+are still separate files; one that fails to load calls `retryPage()`, which
+reloads the page at most twice per session (`app.js` sets `window.appReady` at
+its end, and a complete load clears the count).
 
 ### 12.1 The design decision
 
