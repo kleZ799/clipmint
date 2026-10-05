@@ -760,13 +760,15 @@ a choice they made somewhere else in the app.
 - "caption_color": colour of the word being spoken, as RRGGBB
 - "caption_text_color": colour of the other caption words, as RRGGBB
 - "caption_position": "top" | "middle" | "bottom"
-- "cut_pauses", "punch_ins", "emoji", "broll", "hook_replay": true | false
-  (cut silences / zoom on emphasis / pop emoji / stock footage / open each
-  clip on a replay of its loudest moment)
+- "cut_pauses", "punch_ins", "emoji", "broll": true | false
+  (cut silences / zoom on emphasis / pop emoji / stock footage)
 - "reply": ALWAYS include this. One short, friendly sentence in the language
   they wrote in, saying what you are going to make, like a chat reply:
   "4 clips: 2 funny ones and 2 that ask a question, about 30 seconds each, in 720p."
-  If they only described the mood or kind of moment, say that back.
+  When they don't say how many, the app makes {default_clips} clips, so say
+  {default_clips}. If they only described the mood or kind of moment, say
+  that back. Say only what they asked for: "hooks that ask a question" is the
+  kind of moment wanted, not a setting.
 
 Respond with ONLY the JSON object. No markdown, no explanation.
 
@@ -775,8 +777,9 @@ What they typed:
 
 # Settings the model can set, beyond the edit fields, in the order applied.
 _LLM_FIELDS = ("layout", "aspect_ratio", "webcam_corner", "cam_panel_fraction",
-               "face_zoom", "num_clips", "clip_seconds", "content_kind", "quality",
-               "hook_replay")
+               "face_zoom", "num_clips", "clip_seconds", "content_kind", "quality")
+# Not "hook_replay": "hooks that ask a question" is a kind of moment, and the
+# model read it as the setting. The checkbox under Render decides that one.
 # The model's answer per prompt, so the preview, the job made from it and a
 # retry of that job pay for one call between them. Small and in memory:
 # prompts are typed by one person, and a restart costs one call.
@@ -791,7 +794,8 @@ def _ask_llm(prompt: str) -> Dict:
     from .local.llm import call_local_llm
 
     raw = call_local_llm(_LLM_PROMPT.format(
-        prompt=key, fonts=" | ".join(f'"{k}"' for k in caption_styles.FONTS)))
+        prompt=key, fonts=" | ".join(f'"{k}"' for k in caption_styles.FONTS),
+        default_clips=LayoutSpec.num_clips))
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end == -1:
@@ -905,7 +909,9 @@ def parse_layout_prompt(
     if spec.apply_kind():
         spec.notes.append(f"framing → follows the face, for a {content_kinds.LABELS[spec.content_kind]}")
 
-    if not spec.notes:
+    # A prompt that only describes the moments ("hooks that ask a question")
+    # sets nothing, and the reply already says what it understood.
+    if not spec.notes and not spec.reply:
         spec.notes.append("nothing recognised in the prompt — using defaults")
 
     return spec.validate()
