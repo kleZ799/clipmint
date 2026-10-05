@@ -3886,7 +3886,7 @@ rather than guessing from what the button last did.
 
 | Route | Purpose |
 |---|---|
-| `GET /api/version` | The running build's version and platform (`windows`, `mac`, `linux`). Local only, never touches the network, so the number is there when GitHub is not. The page writes it into the masthead, the sidebar, the About card and a watermark fixed in the bottom-right corner above every modal, so any screenshot someone sends says which build it came from |
+| `GET /api/version` | The running build's version and platform (`windows`, `mac`, `linux`). Local only, never touches the network, so the number is there when GitHub is not. The page writes it into the masthead, the sidebar, the welcome and credits card and a watermark fixed in the bottom-right corner above every modal, so any screenshot someone sends says which build it came from |
 | `GET /api/update/check` | Asks GitHub for the newest release. Returns `current` / `update` / `ahead` / `unavailable`, and never the download URL |
 | `POST /api/update/install` | Starts the download. Takes no arguments — the server resolves which file to fetch for itself |
 | `GET /api/update/progress` | Bytes done, total, and state: `downloading` / `verifying` / `ready` / `failed` |
