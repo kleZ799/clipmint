@@ -2316,6 +2316,25 @@ body.player-on .player-body { transform: none; }
 }
 @media (max-width: 700px) { .logo-ver { display: none; } }
 
+/* The build in the bottom-right corner of every screen, above every modal and
+   the player, so any screenshot someone sends carries it. The masthead pill
+   scrolls away and hides on narrow windows; this does neither. It never takes
+   a click, and it sits under the mini player's 20px gutter rather than on it. */
+.ver-mark {
+  position: fixed;
+  right: 10px;
+  bottom: 4px;
+  z-index: 1000;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 13px;
+  letter-spacing: .03em;
+  color: var(--text-3);
+  opacity: .9;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ============================ pause a run ============================ */
 .prow { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
 .phint { font-size: 12px; color: var(--text-3); }

@@ -1567,6 +1567,7 @@ async function showVersion() {
     $("wVer").textContent = "v" + d.version;
     $("gVer").textContent = "Version " + d.version;
     $("topVer").textContent = "v" + d.version;
+    $("verMark").textContent = "ClipMint v" + d.version + (d.platform ? " · " + d.platform : "");
   } catch (e) { /* the number is not worth an error */ }
 }
 showVersion();
