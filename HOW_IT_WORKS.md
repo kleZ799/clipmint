@@ -1633,6 +1633,15 @@ read carries on into the cache and the page asks again every 4s. If the call
 fails, the keyword reading stands — a prompt is a convenience, never a hard
 dependency.
 
+Asking again never starts a second read. `_reading` holds the read in flight
+for each prompt, and every request for that prompt waits on it, so the page's
+retries and every control click share one call. Model reads also run on their
+own two-thread pool (`_MODEL_READS`), not the shared one. Before v1.27.1 they
+used `asyncio.to_thread`. A busy Gemini filled the shared pool with copies of
+one read, the instant keyword fallback queued behind them, and the whole app
+froze on *Reading what you asked for*
+([#16](https://github.com/kleZ799/clipmint/issues/16)).
+
 ### 8.2 Parse order is load-bearing
 
 Each step **strips the text it matched**, so later steps can't misread the
@@ -2199,6 +2208,10 @@ spec = await asyncio.to_thread(parse_layout_prompt, req.prompt, None, req.use_ll
 written = await asyncio.to_thread(regenerate_seo, STORE, job, force)
 result = await asyncio.to_thread(_render)
 ```
+
+`to_thread` shares one pool (CPU count + 4 threads), so a call that can sit for
+minutes doesn't belong on it: enough of them and every other request waits.
+The model's reading of a prompt runs on its own pool for that reason (§8.1).
 
 ### 11.5b Trying again — by itself, then on request
 

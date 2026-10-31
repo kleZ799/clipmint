@@ -970,6 +970,14 @@ Know the distinction cold: **`async` is for IO concurrency on one thread;
 threads are for not blocking that thread.** They solve different problems and
 this codebase uses both.
 
+The catch: `to_thread` uses one shared pool of a few threads, and offloading
+moves the block rather than removing it. v1.27.1 fixed a freeze where a slow
+model call was started again on every retry and every click until it held
+every thread in the pool. Then even instant work had nowhere to run. The fix
+has two parts. **Deduplicate in-flight work:** a second request for the same
+prompt awaits the future already running. **Isolate slow work:** model reads
+get their own small pool, so they can't starve anything else.
+
 ### Progress without shared-memory bugs
 
 The worker thread mutates job state under a `threading.Lock`, and every mutation
