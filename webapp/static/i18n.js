@@ -6,8 +6,8 @@
 // "nav.create". Two reasons: the markup stays readable to anyone who does not
 // care about translation, and a string with no entry falls back to English on
 // its own instead of rendering a raw key at the user. The cost is that editing
-// English copy orphans its translations -- run `node tools/i18n-check.js` to
-// see which ones.
+// English copy orphans its translations: change the key in every table below,
+// or that string quietly goes back to English in every other language.
 //
 // English is deliberately absent. It is the source, so it is also the fallback,
 // and a fresh install gets it without having to load anything.
