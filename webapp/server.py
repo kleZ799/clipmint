@@ -8,11 +8,13 @@ Run it with:
 """
 import asyncio
 import contextlib
+import copy
 import json
 import os
 import re
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -1097,6 +1099,26 @@ def _override_edit(spec: LayoutSpec, req: EditChoice) -> None:
 PREVIEW_READ_SECONDS = 15.0
 JOB_READ_SECONDS = 60.0
 
+# Model reads get their own two threads. On the shared pool a busy Gemini
+# filled every thread with reads of the same prompt -- one per retry, one per
+# control click -- and then everything else queued behind them, the keyword
+# fallback included, so the whole app froze (issue #16).
+_MODEL_READS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="prompt-read")
+# The read in flight for each prompt, so asking again waits on that one
+# instead of starting another.
+_reading: dict = {}
+
+
+def _model_read(prompt: str) -> "asyncio.Future":
+    key = prompt.strip()
+    reading = _reading.get(key)
+    if reading is None:
+        reading = asyncio.get_running_loop().run_in_executor(
+            _MODEL_READS, parse_layout_prompt, prompt, None, True)
+        _reading[key] = reading
+        reading.add_done_callback(lambda _f: _reading.pop(key, None))
+    return reading
+
 
 async def _read_prompt(prompt: str, use_llm: bool, wait: float):
     """The spec a prompt asks for, and whether the model is still reading it.
@@ -1106,10 +1128,11 @@ async def _read_prompt(prompt: str, use_llm: bool, wait: float):
     """
     if not use_llm or not (prompt or "").strip():
         return await asyncio.to_thread(parse_layout_prompt, prompt, None, False), False
-    reading = asyncio.ensure_future(asyncio.to_thread(parse_layout_prompt, prompt, None, True))
+    reading = _model_read(prompt)
     done, _ = await asyncio.wait({reading}, timeout=wait)
     if done:
-        return reading.result(), False
+        # Several requests can share one read; each gets its own copy to change.
+        return copy.deepcopy(reading.result()), False
     print(f"[prompt] the model is taking a while to read it; going on with the "
           f"keywords for now", flush=True)
     return await asyncio.to_thread(parse_layout_prompt, prompt, None, False), True
