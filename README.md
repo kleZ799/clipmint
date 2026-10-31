@@ -126,8 +126,8 @@ minute and no card, and is the single best insurance for a long run.
 
 ### It speaks your language — and hears the right one
 
-The interface ships in English, Hindi, Spanish, Portuguese, French, German and
-Japanese, switchable in Settings. A fresh install is always English, and the
+The interface ships in English, Hindi, Spanish, Portuguese, French, German,
+Japanese and Russian, switchable in Settings. A fresh install is always English, and the
 browser's locale is deliberately ignored — a machine set to another language
 should not hand a first-run user an interface nobody chose.
 
@@ -1429,7 +1429,7 @@ The knobs that change output quality most, in order:
 | Provider | Settings | Gemini, Groq or OpenAI. Add a **free Groq key** as a fallback so a busy Gemini cannot end a run |
 | `LOCAL_WHISPER_MODEL` | `.env` | `base` is plenty for ranking. `small` reads better and hallucinates less — and on a GPU it is *faster* than `base`, so use it if you have one |
 | Spoken language | Render panel | English by default. Pinning it is the fix for whisper inventing text in another language |
-| Interface language | Settings | English, Hindi, Spanish, Portuguese, French, German, Japanese |
+| Interface language | Settings | English, Hindi, Spanish, Portuguese, French, German, Japanese, Russian |
 | Captions and the edit | Render panel, or the prompt | Caption style, font, colours and placement, pause cuts, punch-ins, emoji, B-roll and your logo, per run. Remembered per machine |
 
 ---

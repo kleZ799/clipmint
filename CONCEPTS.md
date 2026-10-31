@@ -1932,7 +1932,7 @@ Ordered by value, with the reasoning that makes each defensible:
    ranked clips. It would still need the per-clip path for trims and exact
    spans, so it is a speed-up, not a replacement.
 
-9. **Dubbing.** The interface speaks seven languages; the clips speak one.
+9. **Dubbing.** The interface speaks eight languages; the clips speak one.
    Translating the transcript and re-voicing it (ideally in the speaker's own
    voice) is the step after captions, and a large one: a TTS model, a
    voice-cloning model, and lip timing to keep honest.

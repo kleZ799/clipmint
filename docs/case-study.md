@@ -23,12 +23,12 @@ strong enough. I designed, built, shipped and support it alone.
 
 | | |
 |---|---|
-| Releases | 38 since v1.0.0 on 31 Aug 2026, each built by CI for Windows, macOS and Linux |
+| Releases | 44 since v1.0.0 on 31 Aug 2026, each built by CI for Windows, macOS and Linux |
 | Code | ~19,400 lines of Python, ~6,000 of JavaScript, ~2,700 of CSS |
 | Authorship | 94% of the lines in the tree by `git blame` (started as a fork of a 1,100-line CLI script) |
 | Install | One 224 MB file. No Python, no ffmpeg, nothing else to install |
 | Cost to the user | Free. Runs on Gemini's or Groq's free tier |
-| Interface | 7 languages |
+| Interface | 8 languages |
 
 ## Architecture
 

@@ -2336,7 +2336,7 @@ reading is exactly what would be deleted.
 |---|---|---|
 | `index.html` | 1,014 | Full page markup + an inline SVG sprite sheet |
 | `app.js` | 4,296 | All behaviour, plain DOM, no dependencies |
-| `i18n.js` | 1,967 | The interface in six more languages, keyed by the English |
+| `i18n.js` | 2,279 | The interface in seven more languages, keyed by the English |
 | `style.css` | 2,757 | Design system in CSS custom properties |
 
 **The stylesheet is served inside the page.** `GET /` reads `index.html` and
