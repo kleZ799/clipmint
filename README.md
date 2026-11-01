@@ -1605,11 +1605,11 @@ licence keeps their names on it. Everything else — the desktop application, th
 stream-aware ranking, the renderers, the job runner, the interface, the
 packaging — is mine.
 
-**The footage in the screenshots** is from *Big Buck Bunny* and a cycling
-sample, as bundled with scikit-video. *Big Buck Bunny* is © 2008 Blender
-Foundation, [peach.blender.org](https://peach.blender.org/), used under
-CC-BY 3.0. The clips were cut, captioned and edited by ClipMint itself; the
-words on them were written for the demo.
+**The footage in the screenshots** is from my own *Dying Light* stream on
+[my channel](https://www.youtube.com/@ParthBhadana799). The clips, captions,
+scores, titles and view counts are what ClipMint actually made of it and what
+YouTube actually counted; nothing was written for the demo. *Dying Light* is
+Techland's game.
 
 ---
 
