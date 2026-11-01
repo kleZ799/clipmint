@@ -26,7 +26,7 @@ said.
 
 Pick a style under **Render → Edit → Captions**:
 
-<img src="../assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words, Luckiest Guy as the font, green for the spoken word, Placement on Middle" width="880">
+<img src="../assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions, Luckiest Guy as the font, green for the spoken word, Placement on Middle" width="880">
 
 | Style | Looks like | Words at a time |
 |---|---|---|
@@ -218,7 +218,7 @@ later.
 Every clip card shows up to six bars under its title, and the model's own sentence
 on why the moment works:
 
-<img src="../assets/screenshots/03-clips.png" alt="Clips in a grid with burned-in captions, each card showing its score, the four bars and the reason it ranked" width="880">
+<img src="../assets/screenshots/03-clips.png" alt="Clips in a grid with burned-in captions, each card showing its score, the scorecard's bars and the reason it ranked" width="880">
 
 | Bar | Measures | From |
 |---|---|---|

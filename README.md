@@ -66,9 +66,9 @@ the architecture, the hard problems, and the numbers.
 
 **[▶ Watch the 58-second tour](https://klez799.github.io/clipmint/#showcase)** · [or the mp4](assets/showcase/clipmint-showcase.mp4)
 
-<img src="assets/screenshots/01-create.png" alt="The create screen: a prompt typed like a message, give me 2 funny ones and 2 where I ask chat a question, around 30 sec each, 720p is fine, answered underneath with I'll make 4 clips: 2 funny ones and 2 where you ask chat a question, about 30 seconds each in 720p; Stream or gaming chosen, and the live 9:16 preview listing both groups" width="880">
+<img src="assets/screenshots/01-create.png" alt="The create screen: a prompt typed like a message, give me 2 funny ones and 2 where I ask chat a question, around 30 sec each, 720p is fine, answered underneath with Got it! Making 4 clips: 2 funny ones and 2 where you ask chat a question, around 30 seconds each in 720p; Stream or gaming chosen, and the live 9:16 preview, with the logo in its corner, listing both groups" width="880">
 
-<img src="assets/screenshots/00-welcome.png" alt="The launch card: what the app is, who made it, links to the channel, repo, Discord and email, and a donate button" width="640">
+<img src="assets/screenshots/00-welcome.png" alt="The launch card: what the app is, who made it and the version, links to the channel, repo, Discord and email, and a donate button" width="640">
 
 </div>
 
@@ -145,7 +145,7 @@ Transcribes the audio locally with faster-whisper, then ranks every moment for
 what actually travels: hooks, revelations, opinion bombs, story peaks. You get
 told which stage it's on, because a three-hour VOD is not a two-second wait.
 
-<img src="assets/screenshots/02-progress.png" alt="A run on its last stage, Captions and edits, at 8 of 10, with the log open showing each clip listened to and then captioned, cut and punched in" width="880">
+<img src="assets/screenshots/02-progress.png" alt="A run on its last stage, Captions and edits, at 8 of 10 and 93 percent with about a minute left, the log open showing each clip listened to and then captioned, cut and punched in" width="880">
 
 ### How long a run takes
 
@@ -342,7 +342,7 @@ better cover line, not skip it. Open **Boost** on any clip to see the numbers
 and a grade: Top pick, Strong, Worth a look or Long shot. The library can sort
 each run by its strongest hook or its most energy as well as by rank.
 
-<img src="assets/screenshots/03-clips.png" alt="Finished clips in a grid, each with its rank and a score coloured by grade, burned-in captions on the thumbnail, the Hook, Moment, Energy and Pace bars, and the reason it ranked" width="880">
+<img src="assets/screenshots/03-clips.png" alt="Finished clips from a Dying Light stream in a grid, each with its rank and a score, comic captions burned in, its view count on YouTube, the Hook, Moment, Look, Energy and Pace bars, and the reason it ranked" width="880">
 
 ### Captions, jump cuts and punch-ins, done for you
 
@@ -379,7 +379,7 @@ The same pass does the edit an editor would do next:
   free [Pexels](https://www.pexels.com/api/) key in Settings, and it never
   runs on a stream, where the gameplay is the picture.
 
-<img src="assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions and Keep the pauses tagged set by your words because the prompt says so, then the Font row with Luckiest Guy chosen, green picked for the spoken word, Placement set to Middle, punch-ins ticked, emoji and B-roll off" width="880">
+<img src="assets/screenshots/12-edit.png" alt="The Edit box under Render: Comic captions, then the Font row with Luckiest Guy chosen, green picked for the spoken word, Placement set to Middle, pauses cut and punch-ins ticked, emoji and B-roll off, and the logo on" width="880">
 
 **Whisper got a name wrong?** Open the clip and press **Captions**. Type the
 line as it should read and burn it in again. Words you keep stay exactly where
@@ -392,7 +392,7 @@ only the text on screen changes.
 small and slightly see-through, in whichever corner you pick. A clip that
 gets reposted or screen-recorded still carries your name.
 
-<img src="assets/screenshots/14-logo-and-broll.png" alt="Settings: Your logo with its thumbnail, Upload and Remove and the corner picker, then B-roll with the Pexels key saved" width="880">
+<img src="assets/screenshots/14-logo-and-broll.png" alt="Settings: Your logo with its thumbnail, Upload a logo and Remove and the corner picker, then B-roll with the Pexels key saved" width="880">
 
 Pick them under **Render**, or say them in the prompt: *"comic captions, keep
 the pauses, add emoji"*. The words win over the switches, and the switches
@@ -437,9 +437,9 @@ see it, and hashtags that don't belong on that app. All of it is editable.
 the new title, so what is in the folder is always what goes into YouTube's title
 box.
 
-<img src="assets/screenshots/05-boost.png" alt="Boost on the top clip: a Top pick scorecard with its reason, the four bars with their numbers, three notes and what the edit did, then what the clip is filed under and five ranked title options" width="880">
+<img src="assets/screenshots/05-boost.png" alt="Boost on the top clip: a Worth a look scorecard with its reason, the five bars with their numbers, two notes and what the edit did, then what the clip is filed under and the title options, best first" width="880">
 
-<img src="assets/screenshots/07-reels.png" alt="Boost on the same clip, on the Instagram Reels tab: the caption with its character count and ranked caption options" width="880">
+<img src="assets/screenshots/07-reels.png" alt="Boost on the same clip, on the Instagram Reels tab: the caption with its character count, ready to copy" width="880">
 
 ### Post it to your channel, now or on a schedule
 
@@ -464,7 +464,7 @@ unticked with a note, and neither upload button sends one until you use
 AI for, so on a long stream they are the step most likely to meet a free
 tier's daily limit. A second provider's key in Settings covers that.
 
-<img src="assets/screenshots/11-upload-all.png" alt="Upload all on a run: scheduled, the first at 9 AM and then one a day, and each clip listed with its publish time and title, ready to edit" width="880">
+<img src="assets/screenshots/11-upload-all.png" alt="Upload all on a run: scheduled, the first at 8 PM and then one a day, Gaming as the category, and each clip listed with its publish time and title, ready to edit" width="880">
 
 <img src="assets/screenshots/09-youtube-upload.png" alt="Boost scrolled to Post it to your channel: going to Parth Bhadana, who can see it, the category, the made-for-kids question, and the Upload to YouTube button" width="880">
 
@@ -493,7 +493,7 @@ ClipMint reads the views, likes and comments of every clip that's on your
 channel, including ones you uploaded yourself, which it finds by title. Then it
 says what the numbers show:
 
-<img src="assets/screenshots/16-performance.png" alt="How your Shorts did: 26 clips on YouTube with a median of 7 views, a finding marked Looks real that clips with a title the AI actually wrote got a median of 42.5 views against 3.5 for the rest, a line listing what has no clear link yet, and a note that the ranking is unchanged" width="880">
+<img src="assets/screenshots/16-performance.png" alt="How your Shorts did: 37 clips on YouTube with a median of 12 views, a finding marked Looks real that clips with a title the AI actually wrote got a median of 31 views against 3.5 for the rest, two more marked Looks real, two marked Worth watching, a line listing what has no clear link yet, and a note that the ranking is unchanged" width="880">
 
 - **Every pattern is tested against chance.** With a few dozen Shorts, most
   differences are noise, and the panel says so: a finding is marked **Looks
@@ -637,9 +637,9 @@ source in a few seconds, and stays put through any later trim or caption fix.
   shaded, and the box is the game underneath it, for when the action is off to
   one side.
 
-<img src="assets/screenshots/15-frame.png" alt="The clip player with the Frame panel open: the whole source picture with the part the Short shows boxed in red and the rest dimmed, the webcam marked as found automatically, a slider for which moment to look at, a Captions slider, and a dashed line on the clip showing where the captions will land" width="880">
+<img src="assets/screenshots/15-frame.png" alt="The clip player with the Frame panel open: the whole source picture with the part the Short shows boxed in red, a slider for which moment to look at, a note that the frame follows the face until you place it, and a Captions slider" width="880">
 
-<img src="assets/screenshots/04-player-trim.png" alt="The clip player, its burned-in caption and emoji on screen, with the trim panel open showing in and out handles" width="880">
+<img src="assets/screenshots/04-player-trim.png" alt="The clip player, its burned-in comic caption on screen, with the trim panel open showing in and out handles" width="880">
 
 ---
 
