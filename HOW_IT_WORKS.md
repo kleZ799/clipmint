@@ -3690,6 +3690,15 @@ uploads alone (20 against 3.5, p = 0.008), so it is not just older Shorts from
 a better period. No ranking signal correlated with views above |ρ| = 0.25, so
 `tuning` was empty. That is the right outcome, not a failure.
 
+A check on 1 November 2026 matched 37 clips. The title finding held (31 against
+3.5, p = 0.0002), and two more passed, both negative: the hook score
+(ρ = −0.44, p = 0.012) and the overall score (ρ = −0.36, p = 0.044), so the
+clips the model rated higher got fewer views. Neither has a weight in
+`signals.BASE_WEIGHTS` (they are the model's numbers, not measured signals), so
+`tuning()` skips them and `tuning` stayed empty again. What a negative finding
+on the model's own scores should change is not settled here; for now the panel
+shows it and the ranking does not move.
+
 ## 17. Rough edges and known limits
 
 Everything in this section is true of the code as it stands. An earlier draft of

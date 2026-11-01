@@ -511,8 +511,12 @@ says what the numbers show:
 On the channel this was built with, the one thing that held up was the titles.
 Clips whose title the AI actually wrote got **ten times** the views of clips
 where it had fallen back to the first thing said. That held within the same
-week's uploads too, so it wasn't just older Shorts doing better. None of the
-ranking scores tracked views yet, so nothing was tuned.
+week's uploads too, so it wasn't just older Shorts doing better. By November,
+with 37 clips on the channel, it still held (a median of 31 views against 3.5),
+and two more patterns had turned up, both the wrong way round: clips with a
+higher hook score, and a higher overall score, got *fewer* views. Those are the
+model's own judgements rather than a measured signal, so the ranking can't
+retune them and nothing was tuned. They are reported so you can see them.
 
 It uses the same YouTube connection as uploading, with no new permission. It
 checks by itself at most every six hours, or when you press **Check now**. The

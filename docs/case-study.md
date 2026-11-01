@@ -112,6 +112,10 @@ clips with an AI-written title got a median of **42.5 views against 3.5** for
 fallback titles (p = 0.0002). No ranking signal passed, so the weights stayed
 where they were. The system correctly declined to tune itself on noise, and the
 finding pointed at the real fix: the title step was running out of AI quota.
+A later check at 37 clips kept the title finding and added two that run
+backwards: higher hook and overall scores went with fewer views. Those are the
+model's own numbers, which the tuner deliberately can't touch, so they are
+reported rather than acted on.
 
 ### 5. Shipping desktop software to people who will never open a terminal
 
