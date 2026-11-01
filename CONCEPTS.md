@@ -1930,8 +1930,8 @@ Ordered by value, with the reasoning that makes each defensible:
 
 7. **Rank titles against outcomes too.** Title options are scored by a rubric
    and a code check, both assumed. The same retention data as item 3 would say
-   which *angle* actually travels for this channel. The scorecard's four parts
-   (Hook, Moment, Energy, Pace) are shown with equal visual weight today; the
+   which *angle* actually travels for this channel. The scorecard's parts
+   (Hook, Moment, Look, Energy, Chat, Pace) are shown with equal visual weight today; the
    same data would say which of them actually predicts retention.
 
 8. **Word timings from the source transcript.** Each clip is transcribed again

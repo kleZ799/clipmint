@@ -2532,7 +2532,9 @@ and arrow-key navigation walks the *visible* list so it matches the screen.
 **Sort** reorders clips inside each run: *Ranked* (the order they were ranked
 in), or by one part of the scorecard, *Strongest hook* and *Most energy*, or
 *Shortest first*. It is remembered per machine. Each card carries the
-scorecard's four bars and the model's one-line reason (§7.8), and the score
+scorecard's bars (Hook, Moment, Energy and Pace, plus Look when the frames
+were checked and Chat when the stream's chat could be read) and the model's
+one-line reason (§7.8), and the score
 badge takes its grade's colour.
 
 ### 12.7 The player and trim editor
@@ -2570,7 +2572,7 @@ The **mini player** persists as you scroll away, and an `IntersectionObserver`
 drives the guide rail's active-section highlight.
 
 The **SEO panel** ("Boost") opens with **why the clip ranked where it did**:
-the grade, the score, the model's reason, the four parts with their numbers,
+the grade, the score, the model's reason, the scorecard's parts with their numbers,
 the scorecard's notes, and a line saying what the edit did (captions, pauses
 cut, punch-ins, emoji, B-roll). Then comes **What's in this clip**: the kind of
 video and genre from the clip's `scene`, what it was filed under and on what
