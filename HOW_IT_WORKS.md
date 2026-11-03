@@ -2537,6 +2537,16 @@ were checked and Chat when the stream's chat could be read) and the model's
 one-line reason (§7.8), and the score
 badge takes its grade's colour.
 
+Along the bottom of the thumbnail, the chips and the duration share one flex
+row (`.tbar`), so the duration always keeps its own space. `cardFlags()` lists
+the chips by priority: *no title yet*, the views (or *on YouTube*), the game
+it's filed under, *muted*, then what the edit did. The row is one chip tall
+and clips its overflow, so a chip that doesn't fit wraps onto a hidden second
+line and drops out whole. That keeps the order meaningful, and nothing gets
+squeezed onto two lines or slides under the duration. The game chip is capped
+at just over half the row, so a long name shortens with an ellipsis instead of
+disappearing. Hovering the row lists every chip.
+
 ### 12.7 The player and trim editor
 
 The player is a `<video>` with a custom control rail (Play, Sound, Trim,
