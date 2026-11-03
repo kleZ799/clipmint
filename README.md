@@ -51,7 +51,11 @@ browser rather than in a window of its own.
 &nbsp;·&nbsp; [GitHub](https://github.com/kleZ799)
 &nbsp;·&nbsp; [LinkedIn](https://www.linkedin.com/in/parth-bhadana-530014202/)
 &nbsp;·&nbsp; [Discord](https://discord.gg/jnMrGbBz3m)
+&nbsp;·&nbsp; [Feedback](#feedback)
 &nbsp;·&nbsp; [Buy me a coffee](https://buymeacoffee.com/parthbhadana)
+
+**Used it? [Tell me how it went](https://docs.google.com/forms/d/e/1FAIpQLSeKlnIdlDfNkQfgL9-qewYUmEx48OT7G8rERA9k3Sa9QHqp_g/viewform)**: two minutes, no account
+needed. I read every answer, and it decides what gets built next.
 
 **Engineer or hiring?** [The five-minute engineering case study](docs/case-study.md):
 the architecture, the hard problems, and the numbers.
@@ -928,6 +932,25 @@ change how it works.
 > ideas rather than the files — the AI/ML and computer-science concepts this project
 > actually uses, each anchored to a real decision in the code, plus the questions an
 > interviewer is likely to ask about it.
+
+---
+
+## Feedback
+
+Thousands of people have downloaded ClipMint and almost none have said how it
+went. Good or bad, that is what decides what gets built next.
+
+- **[The feedback form](https://docs.google.com/forms/d/e/1FAIpQLSeKlnIdlDfNkQfgL9-qewYUmEx48OT7G8rERA9k3Sa9QHqp_g/viewform)**: two minutes, no account, anonymous
+  unless you leave an email.
+- **[On GitHub](https://github.com/kleZ799/clipmint/issues/new/choose)**: leave a review, report a bug or suggest a
+  feature, with a template for each.
+- **In the app:** **Send feedback** in the sidebar, or the stars it shows after
+  a run. A star opens the form with that rating already filled in.
+
+The app asks on its own after your 1st, 4th and 10th runs that make clips,
+when you close the player, and stops the first time you pick a way to answer.
+It sends nothing itself: everything opens in your browser. See
+[PRIVACY.md](PRIVACY.md).
 
 ---
 
