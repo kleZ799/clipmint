@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 4 October 2026 (v1.26.0)_
+_Last updated: 4 November 2026 (v1.28.0)_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,
@@ -61,6 +61,10 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
 - **Your upload choices** (privacy, category, made-for-kids), kept in the app
   window's local storage so the form remembers them.
 - **Your caption style and edit choices**, kept the same way.
+- **Whether to ask you for feedback**: how many runs have made clips, and
+  whether you have already picked a way to give feedback, kept the same way,
+  so the app knows when to ask and when to stop. It never leaves your
+  computer.
 - **Your Pexels key**, if you add one for B-roll, in the settings file. It
   stays until you remove it in Settings.
 - **Your logo**, if you upload one, in the settings folder. It stays until
@@ -80,8 +84,16 @@ YouTube.
 
 ## Who your information is shared with
 
-- **The developer:** nobody. ClipMint has no server, and nothing is sent to
-  the developer.
+- **The developer:** nothing, unless you choose to send feedback. ClipMint
+  has no server, and the app itself never sends the developer anything.
+- **Feedback, only if you choose to give it.** The app asks how your clips
+  came out after some runs. If you tap a star or **Quick form**, a Google
+  Form opens in your browser with that rating and your operating system
+  (Windows, Mac or Linux) already filled in; nothing is sent until you press
+  **Submit** there. The form is anonymous unless you type an email, and the
+  answers go to the developer through Google Forms, under the
+  [Google Privacy Policy](https://policies.google.com/privacy). **On GitHub**
+  opens GitHub's issue page instead, where what you write is public.
 - **Google and YouTube:** your clips and their details go to YouTube when you
   upload, and to Google when you sign in.
 - **The AI provider you choose** (Google Gemini, Groq or OpenAI), using your
