@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Feedback form (no GitHub account needed)
+    url: https://docs.google.com/forms/d/e/1FAIpQLSeKlnIdlDfNkQfgL9-qewYUmEx48OT7G8rERA9k3Sa9QHqp_g/viewform
+    about: About two minutes. Anonymous unless you leave an email.
+  - name: Ideas and questions
+    url: https://github.com/kleZ799/clipmint/discussions
+    about: Talk it through with other people using ClipMint.
+  - name: Discord
+    url: https://discord.gg/jnMrGbBz3m
+    about: Chat, show your clips, get help.

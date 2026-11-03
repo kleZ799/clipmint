@@ -1,0 +1,15 @@
+name: Suggest something
+description: A feature, a setting, a different way of doing something.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like ClipMint to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter for you?
+      description: What you're making and where it gets stuck now. This is what decides how it gets built.

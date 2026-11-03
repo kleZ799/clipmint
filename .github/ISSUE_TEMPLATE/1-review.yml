@@ -1,0 +1,52 @@
+name: Leave a review
+description: Tell me how ClipMint went for you, good or bad.
+title: "Review: "
+labels: [feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking a minute. Honest is more useful than nice.
+        No GitHub account? The [feedback form](https://docs.google.com/forms/d/e/1FAIpQLSeKlnIdlDfNkQfgL9-qewYUmEx48OT7G8rERA9k3Sa9QHqp_g/viewform) asks the same things.
+  - type: dropdown
+    id: rating
+    attributes:
+      label: How good were the clips?
+      options:
+        - "5 - posted them as they were"
+        - "4 - good, small fixes"
+        - "3 - okay, needed real editing"
+        - "2 - mostly unusable"
+        - "1 - didn't get any clips out"
+    validations:
+      required: true
+  - type: dropdown
+    id: content
+    attributes:
+      label: What did you clip?
+      multiple: true
+      options:
+        - Stream / VOD
+        - Podcast or interview
+        - Gaming video
+        - Tutorial or talk
+        - Vlog
+        - Something else
+  - type: textarea
+    id: liked
+    attributes:
+      label: What worked?
+  - type: textarea
+    id: disliked
+    attributes:
+      label: What annoyed you or got in the way?
+  - type: textarea
+    id: wish
+    attributes:
+      label: One thing you'd add or change
+  - type: input
+    id: version
+    attributes:
+      label: Version and OS
+      description: The version is next to the logo, top left.
+      placeholder: v1.28.0 on Windows 11

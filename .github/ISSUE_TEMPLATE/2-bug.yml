@@ -1,0 +1,30 @@
+name: Something broke
+description: An error, a crash, a clip that came out wrong.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message
+      description: Paste it exactly if there was one. A screenshot works too.
+      render: text
+  - type: input
+    id: source
+    attributes:
+      label: The video
+      description: A YouTube link if it's public, or just what kind of file and how long.
+  - type: input
+    id: version
+    attributes:
+      label: Version and OS
+      description: The version is next to the logo, top left.
+      placeholder: v1.28.0 on Windows 11
+    validations:
+      required: true
