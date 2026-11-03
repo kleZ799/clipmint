@@ -44,6 +44,7 @@ engineering is.
     - 12b. [Indirection, and the things it must not reach](#12b-cs-indirection-and-the-things-it-must-not-reach)
     - 12c. [Software distribution and self-update](#12c-cs-software-distribution-and-self-update)
     - 12d. [Absence as a signal](#12d-cs-absence-as-a-signal)
+    - 12e. [Feedback, friction and who answers](#12e-product-feedback-friction-and-who-answers)
 13. [CS: internationalisation](#13-cs-internationalisation)
 14. [Questions you should expect](#14-questions-you-should-expect)
 15. [What you would do next](#15-what-you-would-do-next)
@@ -1735,6 +1736,44 @@ difference is entirely in what you do when the beats stop.
 **Where it lands in the code.** `webapp/notify.py` holds the lease and the
 three platform notifiers; `POST /api/attention` feeds it; the `finally` in
 `JobManager._run_forever` asks it one question, once, when a run has ended.
+
+## 12e. Product: feedback, friction and who answers
+
+**The problem.** 2,600 downloads, four GitHub issues. A download counter says
+how many people tried the app, not whether it worked for them, and the only
+channel back needed a GitHub account. Silence is not a verdict either way.
+
+**Friction is a funnel.** Every step between "I have an opinion" and "it was
+sent" loses people: noticing there is a channel, finding it, signing in,
+writing something. Response rate falls off with each one, so the design
+removes steps rather than adding persuasion. The app asks instead of waiting to
+be found; the form needs no account; a star tap opens it with the rating and
+OS already answered (a Google Forms *pre-fill* link), leaving one press of
+Submit.
+
+**When you ask decides what you hear.** Asking the moment a render finishes
+gets an answer about the wait, not the clips. The ask is held until the player
+closes, after the user has watched the best clip, so the rating is about the
+output. It repeats on the 1st, 4th and 10th run because the people still using
+it at run ten know things the first-run crowd cannot.
+
+**Selection bias.** People who answer are not a random sample: the delighted
+and the furious answer, the mildly disappointed uninstall quietly. Two
+mitigations here. The first ask comes to *everyone* who got clips, not only to
+people who go looking for a link, which widens the sample. And the lowest
+rating is labelled "didn't get any clips out", so a failure has somewhere
+honest to go. What it cannot reach is the person whose first run failed and
+never came back. That gap is why the bug template and the strip exist too.
+
+**Why not force it.** A modal that blocks the app until answered produces
+answers, but they are noise, typed to make it go away, and it costs users. A
+feedback system's output is only worth what its least-willing respondent puts
+in. So every ask can be dismissed, answering once stops them for good, and the
+app itself sends nothing, which keeps the privacy policy's promise intact.
+
+**Where it lands in the code.** `feedbackCountRun()` / `feedbackMaybeAsk()` in
+`webapp/static/app.js`; `feedback_url()` and `POST /api/open-feedback` in
+`webapp/server.py`; the issue templates in `.github/ISSUE_TEMPLATE/`.
 
 ## 13. CS: internationalisation
 
