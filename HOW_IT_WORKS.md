@@ -2679,6 +2679,39 @@ switch that looks broken and one that explains itself.
 - **Usage refreshes after every run** — including failed ones, which is exactly
   when knowing what's left matters most.
 
+### 12.10 Asking for feedback
+
+2,600 downloads had produced four GitHub issues, because the only way to say
+anything needed a GitHub account and nobody goes looking for a feedback link.
+So the app asks, and makes answering as short as it can be.
+
+**When.** `feedbackCountRun()` is called from `finish()` for each run that made
+clips, and the count lives in `localStorage` under `clipmint.feedback`. On the
+1st, 4th and 10th such run the ask becomes *due*, and `closePlayer()` shows it.
+That moment is chosen: the player opens on the best clip as soon as a run ends,
+so closing it means the user has just watched what the app made. An ask the
+instant a render finishes would come before they know the answer. Picking any
+way to answer sets `done` and it never asks again. The app cannot tell whether
+the form was submitted, and asking someone who just tried is how you lose them.
+
+**The strip.** Between asks, a row above the clips (`#fbStrip`) stays until the
+user answers; its x snoozes it for a week. People who had clips before this
+version are counted as having used it (`feedbackHadClips()`, from
+`loadLibrary()`), so the existing installs see the strip without waiting for
+another run.
+
+**One tap.** The dialog leads with five stars. A star calls
+`/api/open-feedback?rating=N`, and `feedback_url()` builds a Google Forms
+pre-fill link (`usp=pp_url` plus the rating's and the OS question's
+`entry.` IDs), so the person lands on a form with half of it already answered
+and only has to press Submit. The server builds the address, the same rule as
+`EXTERNAL_LINKS`: nothing the page sends can steer which site opens.
+
+**Nothing is sent by the app.** Both routes open the browser: the form, or
+GitHub's issue chooser, which offers review, bug and idea templates
+(`.github/ISSUE_TEMPLATE/`) and links back to the form for people without an
+account. That keeps the privacy policy's "no server" true.
+
 ---
 
 ## 13. Configuration and precedence
@@ -3955,6 +3988,7 @@ rather than guessing from what the button last did.
 | `GET`/`POST /api/cleanup` | Scan for, then delete, reclaimable source files |
 | `POST /api/reveal` | Show a path in the OS file manager |
 | `POST /api/open-upload` | Open YouTube's upload page (URL hardcoded, not client-steerable) |
+| `POST /api/open-feedback` | Open the feedback form with `?rating=1..5` and this OS pre-filled. The page sends a number, never a URL |
 
 ### Creating work
 
