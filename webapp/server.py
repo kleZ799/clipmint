@@ -834,6 +834,10 @@ EXTERNAL_LINKS = {
     "repo": "https://github.com/kleZ799/clipmint",
     "donate": "https://buymeacoffee.com/parthbhadana",
     "releases": "https://github.com/kleZ799/clipmint/releases/latest",
+    # Feedback: a form for people without a GitHub account, and the issue
+    # chooser (review / bug / idea templates) for people with one.
+    "feedback-form": "https://docs.google.com/forms/d/e/1FAIpQLSeKlnIdlDfNkQfgL9-qewYUmEx48OT7G8rERA9k3Sa9QHqp_g/viewform",
+    "feedback-github": "https://github.com/kleZ799/clipmint/issues/new/choose",
     # Uploading to YouTube. The API policies require the app to link each of
     # these (YouTube API Services Developer Policies, III.A.1 and III.A.2).
     "youtube-terms": "https://www.youtube.com/t/terms",
@@ -857,6 +861,40 @@ async def open_upload(what: str = "upload") -> dict:
     url = EXTERNAL_LINKS.get(what)
     if url is None:
         raise HTTPException(400, "Unknown link.")
+    ok = await asyncio.to_thread(webbrowser.open, url)
+    return {"opened": ok, "url": url}
+
+
+# The feedback form's question IDs, for opening it with answers already in.
+# They come from the published form: delete a question and Google simply
+# ignores its stale ID, so a mismatch costs the pre-fill, nothing more.
+FEEDBACK_RATING_FIELD = "entry.1388483266"
+FEEDBACK_OS_FIELD = "entry.873151512"
+
+
+def feedback_url(rating: int = 0) -> str:
+    """The feedback form, with the tapped rating and this OS already chosen."""
+    import sys
+    from urllib.parse import urlencode
+
+    params = {"usp": "pp_url"}
+    if 1 <= rating <= 5:
+        params[FEEDBACK_RATING_FIELD] = str(rating)
+    params[FEEDBACK_OS_FIELD] = {"win32": "Windows", "darwin": "Mac"}.get(sys.platform, "Linux")
+    return EXTERNAL_LINKS["feedback-form"] + "?" + urlencode(params)
+
+
+@app.post("/api/open-feedback")
+async def open_feedback(rating: int = 0) -> dict:
+    """Open the feedback form with the star the user tapped already chosen.
+
+    The page sends a number, never a URL, so this is as unsteerable as
+    open-upload. The app sends nothing anywhere itself: the form opens in the
+    browser and the person presses Submit, or doesn't.
+    """
+    import webbrowser
+
+    url = feedback_url(rating)
     ok = await asyncio.to_thread(webbrowser.open, url)
     return {"opened": ok, "url": url}
 

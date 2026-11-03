@@ -1526,6 +1526,124 @@ document.querySelectorAll("[data-open]").forEach((b) => {
 });
 $("wDonate").onclick = () => openExternal("donate");
 
+// ---------------------------------------------------------------- feedback
+//
+// Two ways in: a Google Form for anyone, and GitHub's issue chooser for people
+// with an account. The app sends nothing itself -- both open in the browser,
+// and only when the user picks one.
+//
+// It asks on its own, too, because almost nobody goes looking for a feedback
+// link. The moment is right after a run that made clips, when the user closes
+// the player: they have just watched what it made, so the answer is about
+// something real. It asks after the 1st, 4th and 10th such runs, and stops for
+// good the first time the user picks any way to answer. Between asks, a strip
+// above the clips stays put until they answer (its x hides it for a week).
+//
+// The stars are the shortest path there is: one tap opens the form with that
+// rating and this OS already chosen, so the person only has to press Submit.
+
+const FB_KEY = "clipmint.feedback";
+const FB_ASK_AT = [1, 4, 10];            // runs that made clips
+const FB_SNOOZE_MS = 7 * 24 * 3600e3;
+let feedbackDue = false;
+
+function fbState() {
+  try { return JSON.parse(localStorage.getItem(FB_KEY) || "{}") || {}; }
+  catch (_) { return {}; }
+}
+function fbSave(s) {
+  try { localStorage.setItem(FB_KEY, JSON.stringify(s)); } catch (_) { /* a nicety */ }
+}
+
+function openFeedback(prompted) {
+  closeWelcome();
+  $("fbTitle").textContent = I18N.t(prompted ? "How were your clips?" : "Send feedback");
+  $("feedback").classList.remove("hidden");
+  body.classList.add("confirm-on");
+  // Not on a star: a focused star looks already chosen, and Enter would
+  // send a 1 nobody meant.
+  $("fbClose").focus();
+}
+function closeFeedback() {
+  if ($("feedback").classList.contains("hidden")) return;
+  $("feedback").classList.add("hidden");
+  body.classList.remove("confirm-on");
+}
+
+// Any way of answering counts: the app never learns whether the form was
+// submitted, and asking again someone who just tried would be the fastest way
+// to lose them.
+function feedbackGiven() {
+  const s = fbState();
+  s.done = true;
+  fbSave(s);
+  feedbackDue = false;
+  closeFeedback();
+  showFeedbackStrip();
+  toast(I18N.t("Opened in your browser. Thank you!"));
+}
+
+async function openFeedbackForm(rating) {
+  try {
+    await api(`/api/open-feedback?rating=${rating || 0}`, json("POST", {}));
+    feedbackGiven();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function showFeedbackStrip() {
+  const s = fbState();
+  const on = ((s.runs || 0) >= 1 || s.had) && !s.done && !(s.snoozed && Date.now() - s.snoozed < FB_SNOOZE_MS);
+  $("fbStrip").classList.toggle("hidden", !on);
+}
+
+function feedbackHadClips() {
+  const s = fbState();
+  if (s.had) return;
+  s.had = true;
+  fbSave(s);
+  showFeedbackStrip();
+}
+
+// Called once per run that made clips.
+function feedbackCountRun() {
+  const s = fbState();
+  s.runs = (s.runs || 0) + 1;
+  if (!s.done && FB_ASK_AT.includes(s.runs)) feedbackDue = true;
+  fbSave(s);
+  showFeedbackStrip();
+}
+// Called when the player closes: the moment to ask, if it is due.
+function feedbackMaybeAsk() {
+  if (!feedbackDue) return;
+  feedbackDue = false;
+  if (fbState().done) return;
+  setTimeout(() => openFeedback(true), 400);
+}
+
+$("gFeedback").onclick = () => { body.classList.remove("drawer-on"); openFeedback(false); };
+$("wFeedback").onclick = () => openFeedback(false);
+$("fbClose").onclick = closeFeedback;
+$("feedback").addEventListener("click", (e) => { if (e.target === $("feedback")) closeFeedback(); });
+$("fbRate").querySelectorAll("[data-rate]").forEach((b) => {
+  b.onclick = () => openFeedbackForm(Number(b.dataset.rate));
+});
+$("fbForm").onclick = () => openFeedbackForm(0);
+// The GitHub row opens through the [data-open] handler above; this only
+// records the answer and closes the card behind it.
+$("feedback").querySelectorAll("[data-open]").forEach((b) => {
+  b.addEventListener("click", feedbackGiven);
+});
+$("fbStripGo").onclick = () => openFeedback(true);
+$("fbStripX").onclick = () => {
+  const s = fbState();
+  s.snoozed = Date.now();
+  fbSave(s);
+  showFeedbackStrip();
+};
+showFeedbackStrip();
+
 // Copied rather than handed to a mail client: plenty of Windows installs have
 // no default mail app, and a mailto: that opens nothing looks like a dead
 // button. The clipboard works everywhere and says so.
@@ -2630,6 +2748,7 @@ async function finish(s) {
   // clips land at the top of everything already made.
   await loadLibrary();
   if (!made) return;
+  feedbackCountRun();
 
   $("results").scrollIntoView({ behavior: "smooth", block: "start" });
   // The whole point of the wait: show the best clip playing, straight away.
@@ -2645,6 +2764,9 @@ async function loadLibrary() {
   try {
     const d = await api("/api/library");
     runs = d.runs || [];
+    // Clips made before this version count as having used the app, so the
+    // strip shows for people who installed long before it existed.
+    if (runs.length) feedbackHadClips();
   } catch (_) {
     runs = [];
   }
@@ -3028,6 +3150,7 @@ function closePlayer() {
   $("player").classList.remove("trim-on", "seo-on", "cap-on");
   closeFrame();
   vid.pause();
+  feedbackMaybeAsk();
 }
 $("pClose").onclick = closePlayer;
 $("player").addEventListener("click", (e) => { if (e.target === $("player")) closePlayer(); });
@@ -3082,6 +3205,10 @@ $("pScrub").addEventListener("pointerdown", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (!$("feedback").classList.contains("hidden")) {
+    if (e.key === "Escape") closeFeedback();
+    return;
+  }
   if (body.classList.contains("welcome-on")) {
     if (e.key === "Escape") closeWelcome();
     return;
