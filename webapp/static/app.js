@@ -2741,7 +2741,29 @@ function editFlags(c) {
   if (e.captions && e.captions !== "off") out.push("captions");
   if (e.removed_seconds) out.push(`−${Number(e.removed_seconds).toFixed(1)}s`);
   if ((e.broll || []).length) out.push("B-roll");
-  return out.map((f) => `<span>${esc(f)}</span>`).join("");
+  return out;
+}
+
+// The chips along the bottom of a card, most important first. They share one
+// row with the duration, and any that don't fit drop off the end whole, so
+// the order is the priority: what needs fixing, how it did, what it's filed
+// under, then what the edit did. Hovering the row lists all of them.
+function cardFlags(c, seo, filed) {
+  const f = [];
+  if (!seo) f.push({ text: "no title yet", cls: "need" });
+  if (c.performance) {
+    f.push({ text: `${fmtViews(c.performance.views)} ${I18N.t("views")}`, cls: "views" });
+  } else if (c.youtube) {
+    f.push({ text: "on YouTube" });
+  }
+  if (filed) f.push({ text: filed, cls: "subj" });
+  if (c.muted) f.push({ text: "muted" });
+  if (c.edited) f.push({ text: "trimmed" });
+  editFlags(c).forEach((text) => f.push({ text }));
+  if (c.saved_to) f.push({ text: "saved" });
+  if (!f.length) return "";
+  return `<div class="flag" title="${esc(f.map((x) => x.text).join(" · "))}">${
+    f.map((x) => `<span${x.cls ? ` class="${x.cls}"` : ""}>${esc(x.text)}</span>`).join("")}</div>`;
 }
 
 function clipCard(c) {
@@ -2763,16 +2785,9 @@ function clipCard(c) {
         <span class="rank">${rank ? `#${esc(rank)}` : ""}${
           c.score != null ? `<i class="${card ? `g-${esc(card.grade.key)}` : ""}"
             title="${card ? esc(card.grade.label) : ""}">★ ${esc(c.score)}</i>` : ""}</span>
-        <span class="dur">${c.duration != null ? clock(c.duration) : ""}</span>
-        <div class="flag">
-          ${c.edited ? `<span>trimmed</span>` : ""}
-          ${editFlags(c)}
-          ${c.muted ? `<span>muted</span>` : ""}
-          ${c.performance ? `<span class="views" title="${esc(I18N.t("Views on YouTube"))}">${fmtViews(c.performance.views)} ${esc(I18N.t("views"))}</span>`
-            : c.youtube ? `<span>on YouTube</span>` : ""}
-          ${c.saved_to ? `<span>saved</span>` : ""}
-          ${!seo ? `<span class="need">no title yet</span>` : ""}
-          ${filed ? `<span class="subj">${esc(filed)}</span>` : ""}
+        <div class="tbar">
+          ${cardFlags(c, seo, filed)}
+          <span class="dur">${c.duration != null ? clock(c.duration) : ""}</span>
         </div>
       </div>
       <div class="ct">${esc(title)}</div>
