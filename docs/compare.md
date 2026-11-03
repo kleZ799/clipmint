@@ -3,7 +3,8 @@
 An honest comparison of AI clip generators for turning long videos into
 YouTube Shorts, Instagram Reels and TikToks. Written by ClipMint's developer,
 so read it with that in mind; every competitor fact below was taken from that
-tool's own pricing page or repository on **2 October 2026**, with links, and
+tool's own pricing page or repository on **2 October 2026** (OpenClipper on
+**1 November 2026**), with links, and
 the places where another tool does more than ClipMint are listed too.
 
 ## The short answer
@@ -13,7 +14,8 @@ the places where another tool does more than ClipMint are listed too.
 - **You want nothing to install and don't mind a subscription:** Opus Clip, Klap
   or Vizard run in the browser.
 - **You need dubbing or posting to TikTok and Instagram from the app:** Clips
-  Kitty or OpenShorts do that today; ClipMint doesn't yet.
+  Kitty or OpenShorts do that today, and OpenClipper posts to TikTok; ClipMint
+  doesn't yet.
 
 ## Hosted clippers
 
@@ -42,6 +44,7 @@ nothing.
 | [Clips Kitty](https://github.com/mozzie49/clips-studio) | Local desktop app | AI dubbing into 19 languages, posting to several platforms, an AI edit chat, an MCP server, Twitch and Kick VODs |
 | [OpenShorts](https://www.openshorts.app/alternatives) | Self-hosted with Docker (MIT), or a hosted plan | A server you run yourself, or dubbing |
 | [ViralMint](https://viralmint.net/alternatives/opus-clip/) | Desktop app, AGPL-3.0 | A different take on the same local pipeline |
+| [OpenClipper](https://github.com/GrepCut/OpenClipper) | Windows desktop app (Rust and Tauri), MIT, by GrepCut | Posting straight to TikTok, a split view when two people won't fit one crop, 20+ caption presets, GPU vision on AMD and Intel cards, and an MCP server so an AI agent can pick the clips |
 
 ## What ClipMint does that most clippers don't
 
@@ -66,6 +69,8 @@ nothing.
 - No dubbing or translated voice.
 - Posts to YouTube only; Reels and TikTok captions are written for you, but you
   upload those yourself.
+- No split view for two people side by side; it follows whoever is talking
+  instead.
 - The Mac build has never been run on a real Mac, and the Linux build hasn't
   been tried on a real desktop. Windows is the tested build.
 - It needs a reasonably modern PC. A long video takes a while on a CPU; an
@@ -75,7 +80,8 @@ nothing.
 
 **Is there a free Opus Clip alternative with no watermark?**
 Yes. ClipMint is free with no watermark, no credits and no clip limit. Clips
-Kitty, OpenShorts (self-hosted) and ViralMint are free and open source too.
+Kitty, OpenShorts (self-hosted), ViralMint and OpenClipper are free and open
+source too.
 
 **Can I turn a podcast into Shorts without uploading it anywhere?**
 Yes. ClipMint transcribes on your computer, and the video never leaves it unless
