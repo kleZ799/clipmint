@@ -132,6 +132,13 @@ Then open any clip, press **Boost**, and scroll the **YouTube Shorts** tab to
 A progress bar follows the upload, even if you close the panel. When it
 finishes, the clip shows **On YouTube** with **Open in Studio** and **Watch**.
 
+**More than one channel:** *Settings → Channel profile → Add*, then connect the
+new profile's channel the same way. Each profile keeps its own sign-in (and its
+own logo), and uploads go to whichever profile is active. Switching waits until
+no run or upload is going. Removing a profile withdraws its sign-in at Google
+first. Upload records and view counts name their channel, so disconnecting one
+profile forgets only that channel's.
+
 **A whole run at once:** press **Upload all** on the run, beside **Rewrite
 titles**. Check or edit each clip's title, description and tags, untick any to
 skip, pick a first publish time and how far apart they go, and press **Upload**.
@@ -260,7 +267,7 @@ a checklist.
 | User keeps final control; values aren't altered (III.C.3) | Uploads exactly what's in the boxes. Anything YouTube would reject is refused with the reason, never trimmed |
 | Links YouTube's Terms and Google's Privacy Policy (III.A.1, III.A.2.c) | Settings → Post to your channel |
 | Privacy policy with the required contents (III.A.2) | `PRIVACY.md`, published at klez799.github.io/clipmint/privacy.html |
-| Easy revocation, with data deleted (III.D.2.b, III.E.4.g) | **Disconnect** revokes at Google and deletes the token, channel details, upload records and every clip's view counts; a link to Google's permissions page is in the app |
+| Easy revocation, with data deleted (III.D.2.b, III.E.4.g) | **Disconnect** revokes at Google and deletes the token, channel details, upload records and view counts for that channel (with several profiles, each channel's are its own); removing a profile does the same first; a link to Google's permissions page is in the app |
 | Keeps API data no longer than 30 days (III.E.4) | Channel details refreshed or dropped at 30 days; upload records and view counts swept at startup, view counts refreshed on every check (`webapp/youtube_stats.py`) |
 | Anything worked out from API data is explained, not passed off as YouTube's | The **How your Shorts did** panel says what it compared, how (clips two or more days old, tested against chance), and that it is ClipMint's reading of the numbers. Nothing derived is stored; it is recomputed from the kept numbers each time |
 | Identifies itself honestly (III.D.2.b.2) | App name `ClipMint` on the consent screen; the policy says who makes it |
