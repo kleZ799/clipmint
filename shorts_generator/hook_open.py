@@ -30,11 +30,19 @@ from . import accel, proc
 
 # How long the cold open runs. Long enough to register as a moment, short
 # enough that the viewer is inside the real clip before they could get bored
-# of the repeat.
-REPLAY_SECONDS = 1.9
+# of the repeat. It was 1.9s, and a tester read that as the video glitching
+# and restarting: too short to be a moment, so it looked like a skip.
+REPLAY_SECONDS = 2.5
 # How much of the run-in to include before the peak, so the sound lands
 # rather than starting mid-scream.
-REPLAY_LEAD = 0.7
+REPLAY_LEAD = 0.8
+# The hand-over from the cold open to the clip: a quick dip to white and back,
+# with the sound faded across it. A hard cut back to the start is what made
+# the cold open look like a glitch. A flash is the editing shorthand for
+# "jump back in time", so the replay reads as a preview put there on purpose.
+FLASH_OUT = 0.12
+FLASH_IN = 0.2
+FLASH_COLOUR = "white"
 # If the peak is already inside this many seconds of the start, the clip opens
 # on it as it is and no replay is added.
 ALREADY_UP_FRONT = 3.0
@@ -106,20 +114,25 @@ def apply(clip_path: str, highlight: Dict) -> Optional[float]:
     root, ext = os.path.splitext(clip_path)
     tmp = f"{root}.hook{ext or '.mp4'}"
 
+    out_at = max(0.0, (b - a) - FLASH_OUT)
+    flash_out = f"fade=t=out:st={out_at:.3f}:d={FLASH_OUT:.3f}:color={FLASH_COLOUR}"
+    flash_in = f"fade=t=in:st=0:d={FLASH_IN:.3f}:color={FLASH_COLOUR}"
     if _has_audio(clip_path):
         filt = (
             f"[0:v]split=2[va][vb];[0:a]asplit=2[aa][ab];"
-            f"[va]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v0];"
-            f"[aa]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a0];"
-            f"[vb]setpts=PTS-STARTPTS[v1];[ab]asetpts=PTS-STARTPTS[a1];"
+            f"[va]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS,{flash_out}[v0];"
+            f"[aa]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,"
+            f"afade=t=out:st={out_at:.3f}:d={FLASH_OUT:.3f}[a0];"
+            f"[vb]setpts=PTS-STARTPTS,{flash_in}[v1];"
+            f"[ab]asetpts=PTS-STARTPTS,afade=t=in:st=0:d={FLASH_IN:.3f}[a1];"
             f"[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
         )
         maps = ["-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "160k"]
     else:
         filt = (
             f"[0:v]split=2[va][vb];"
-            f"[va]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v0];"
-            f"[vb]setpts=PTS-STARTPTS[v1];"
+            f"[va]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS,{flash_out}[v0];"
+            f"[vb]setpts=PTS-STARTPTS,{flash_in}[v1];"
             f"[v0][v1]concat=n=2:v=1:a=0[v]"
         )
         maps = ["-map", "[v]"]
