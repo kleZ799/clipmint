@@ -264,6 +264,96 @@ async function checkSetup() {
   } catch (_) { /* an offline settings check is not worth blocking startup */ }
 }
 
+// ---------------------------------------------------------------- profiles
+//
+// One app, several channels. The server decides which profile is active; the
+// page only mirrors it, and reloads on a switch so every panel -- the YouTube
+// sign-in, the logo, the edit choices -- is read again for the new channel.
+
+let profState = { profiles: [], active: "main" };
+
+async function loadProfiles() {
+  try {
+    profState = await api("/api/profiles");
+  } catch (_) { return; }
+  if (profState.active !== PROFILE_ID
+      && sessionStorage.getItem("clipmint.followed") !== profState.active) {
+    // Switched somewhere else (or in an older page): follow the server, once
+    // -- storage that will not keep the value must not mean reloading forever.
+    sessionStorage.setItem("clipmint.followed", profState.active);
+    localStorage.setItem("clipmint.profile", profState.active);
+    location.reload();
+    return;
+  }
+  const sel = $("profSel");
+  sel.innerHTML = profState.profiles.map((p) =>
+    `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  sel.value = profState.active;
+  $("profDel").classList.toggle("hidden", profState.active === "main");
+}
+
+function profileDone(state, msg) {
+  localStorage.setItem("clipmint.profile", state.active);
+  toast(msg);
+  setTimeout(() => location.reload(), 500);
+}
+
+$("profSel").onchange = async () => {
+  const id = $("profSel").value;
+  $("profMsg").innerHTML = "";
+  try {
+    const d = await api(`/api/profiles/${encodeURIComponent(id)}/switch`, json("POST", {}));
+    const p = d.profiles.find((x) => x.id === d.active) || {};
+    profileDone(d, `Switched to ${p.name || "that profile"}.`);
+  } catch (e) {
+    $("profSel").value = profState.active;
+    $("profMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+};
+
+$("profAdd").onclick = async () => {
+  const name = $("profName").value.trim();
+  $("profMsg").innerHTML = "";
+  if (!name) { $("profMsg").innerHTML = `<div class="err">Give it a name first.</div>`; return; }
+  try {
+    const d = await api("/api/profiles", json("POST", { name }));
+    profileDone(d, `Made ${name}. Connect its channel and add its logo below.`);
+  } catch (e) {
+    $("profMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+};
+
+$("profRename").onclick = async () => {
+  const name = $("profName").value.trim();
+  $("profMsg").innerHTML = "";
+  if (!name) { $("profMsg").innerHTML = `<div class="err">Type the new name in the box first.</div>`; return; }
+  try {
+    profState = await api(`/api/profiles/${encodeURIComponent(profState.active)}`,
+                          json("PUT", { name }));
+    $("profName").value = "";
+    await loadProfiles();
+    toast("Renamed.");
+  } catch (e) {
+    $("profMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+};
+
+$("profDel").onclick = () => {
+  const p = profState.profiles.find((x) => x.id === profState.active) || {};
+  ask(`Remove ${p.name || "this profile"}?`,
+      "Its YouTube sign-in is withdrawn and its logo deleted. Your clips stay. The app goes back to Main.",
+      async () => {
+        try {
+          const d = await api(`/api/profiles/${encodeURIComponent(profState.active)}`,
+                              { method: "DELETE" });
+          localStorage.removeItem(`clipmint.edit.${profState.active}`);
+          profileDone(d, "Removed.");
+        } catch (e) {
+          $("profMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+        }
+      });
+};
+
 // ---------------------------------------------------------------- processor
 
 // What does the heavy work, and why. Shown under the live preview, asked once
@@ -2260,7 +2350,10 @@ $("format").onchange = () => {
 // the pauses") the words win, for as long as they are in the prompt, and a
 // tag beside the control says so.
 
-const EDIT_KEY = "clipmint.edit";
+// Kept per channel profile (see profiles.py): each channel has its own look.
+// Main keeps the key it always had, so nothing set before profiles is lost.
+const PROFILE_ID = localStorage.getItem("clipmint.profile") || "main";
+const EDIT_KEY = PROFILE_ID === "main" ? "clipmint.edit" : `clipmint.edit.${PROFILE_ID}`;
 const EDIT_DEFAULT = { captions: "bold", caption_font: "", caption_color: "",
                        caption_text_color: "", caption_position: "auto",
                        cut_pauses: true, punch_ins: true,
@@ -4465,6 +4558,7 @@ $("pMini").onclick = () => {
 // ---------------------------------------------------------------- boot
 
 keyLinkFor($("setProvider").value);
+loadProfiles();
 checkSetup();
 refreshUsage();
 loadProcessor();

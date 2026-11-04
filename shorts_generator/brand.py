@@ -11,7 +11,7 @@ belongs to the channel, not to any one run.
 from pathlib import Path
 from typing import Optional
 
-from . import user_config
+from . import profiles, user_config
 
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DEFAULT_CORNER = "top-right"
@@ -28,7 +28,8 @@ OPACITY = 0.85
 
 
 def _folder() -> Path:
-    return user_config.config_dir() / "brand"
+    # Each channel profile has its own mark, or none (see profiles).
+    return profiles.folder() / "brand"
 
 
 def logo_path() -> Optional[Path]:
@@ -41,7 +42,7 @@ def logo_path() -> Optional[Path]:
 
 
 def corner() -> str:
-    value = user_config.get(CORNER_KEY, DEFAULT_CORNER).strip().lower()
+    value = (user_config.get(profiles.key(CORNER_KEY)) or DEFAULT_CORNER).strip().lower()
     return value if value in CORNERS else DEFAULT_CORNER
 
 
@@ -49,7 +50,7 @@ def set_corner(value: str) -> str:
     value = (value or "").strip().lower()
     if value not in CORNERS:
         raise ValueError(f"The corner must be one of: {', '.join(CORNERS)}.")
-    user_config.save({CORNER_KEY: value})
+    user_config.save({profiles.key(CORNER_KEY): value})
     return value
 
 

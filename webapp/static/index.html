@@ -546,6 +546,24 @@ addEventListener("load", function () {
   </div>
 
   <div class="d-sec">
+    <h3>Channel profile</h3>
+    <label class="fld">
+      <span>Each profile has its own YouTube channel, logo and edit choices</span>
+      <select id="profSel"></select>
+    </label>
+    <div class="row-in">
+      <input type="text" id="profName" placeholder="New profile, e.g. the channel's name" maxlength="40">
+      <button class="btn ghost sm" id="profAdd">Add</button>
+    </div>
+    <div class="row-btns" style="margin-top:8px">
+      <button class="btn ghost sm" id="profRename">Rename</button>
+      <button class="btn ghost sm hidden" id="profDel"><svg><use href="#i-trash"/></svg>Remove</button>
+    </div>
+    <p class="hint">The API keys and your clips are shared by every profile. Switching reloads the page.</p>
+    <div id="profMsg"></div>
+  </div>
+
+  <div class="d-sec">
     <h3>Where clips are saved</h3>
     <div class="row">
       <input type="text" id="locPath" placeholder="Choose a folder" spellcheck="false">

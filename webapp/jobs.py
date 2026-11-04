@@ -469,16 +469,28 @@ class JobStore:
         with self._lock:
             return list(self._jobs.values())
 
-    def forget_youtube(self, only_expired: bool = False) -> int:
+    def forget_youtube(self, only_expired: bool = False, channel: Optional[str] = None,
+                       legacy: bool = True) -> int:
         """Drop what YouTube handed back about uploads from every clip.
 
         YouTube's policies cap how long that may be kept, and say it goes when
         the user disconnects. `only_expired` keeps anything younger than the
         cap, for the sweep made at startup. The same goes for each clip's view
         counts (youtube_stats.py), which are kept to the same rule.
+
+        `channel`, when given, limits it to that channel's records -- the one
+        being disconnected, when there are several profiles. A record from
+        before records named their channel counts as that channel's only when
+        `legacy` says so (it is Main's, which is where they were all made).
         """
         from .youtube_stats import expired as stats_expired
         from .youtube_upload import expired
+
+        def mine(rec: Dict) -> bool:
+            if channel is None:
+                return True
+            got = rec.get("channel_id") or ""
+            return got == channel if got else legacy
 
         dropped = 0
         with self._lock:
@@ -488,12 +500,13 @@ class JobStore:
             with self._lock:
                 for c in job.clips:
                     rec = c.get("youtube")
-                    if rec and (not only_expired or expired(rec)):
+                    if rec and mine(rec) and (not only_expired or expired(rec)):
                         del c["youtube"]
                         changed = True
                         dropped += 1
                     perf = c.get("performance")
-                    if perf is not None and (not only_expired or stats_expired(perf)):
+                    if (perf is not None and mine(perf)
+                            and (not only_expired or stats_expired(perf))):
                         del c["performance"]
                         changed = True
                 if changed:

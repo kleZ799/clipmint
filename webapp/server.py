@@ -425,6 +425,91 @@ async def set_pexels(req: PexelsRequest) -> dict:
     return {"saved": True, "pexels": bool(key)}
 
 
+# --- channel profiles -----------------------------------------------------
+
+class ProfileRequest(BaseModel):
+    name: str = ""
+
+
+def _profiles_state() -> dict:
+    from shorts_generator import profiles
+    return {"profiles": profiles.all_profiles(), "active": profiles.active_id()}
+
+
+def _switch_guard() -> None:
+    """A switch changes the sign-in and the logo underneath whatever is using
+    them, so it waits until nothing is."""
+    from . import youtube_upload
+    if any(j["status"] in ("queued", "running") for j in STORE.list()):
+        raise HTTPException(409, "A run is going. Switch profile when it has finished, "
+                                 "so its clips all get the same logo.")
+    if youtube_upload.busy():
+        raise HTTPException(409, "Clips are still uploading to this profile's channel. "
+                                 "Switch when they have gone.")
+
+
+@app.get("/api/profiles")
+async def list_profiles() -> dict:
+    return _profiles_state()
+
+
+@app.post("/api/profiles")
+async def create_profile(req: ProfileRequest) -> dict:
+    """A new profile, switched to straight away: it is made to be set up."""
+    from shorts_generator import profiles
+    _switch_guard()
+    try:
+        p = profiles.create(req.name)
+        profiles.switch(p["id"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    youtube_stats.reset()
+    return _profiles_state()
+
+
+@app.post("/api/profiles/{pid}/switch")
+async def switch_profile(pid: str) -> dict:
+    from shorts_generator import profiles
+    _switch_guard()
+    try:
+        profiles.switch(pid)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    youtube_stats.reset()
+    return _profiles_state()
+
+
+@app.put("/api/profiles/{pid}")
+async def rename_profile(pid: str, req: ProfileRequest) -> dict:
+    from shorts_generator import profiles
+    try:
+        profiles.rename(pid, req.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return _profiles_state()
+
+
+@app.delete("/api/profiles/{pid}")
+async def delete_profile(pid: str) -> dict:
+    """Remove a profile: its YouTube sign-in is withdrawn at Google first, and
+    its records go with it, exactly as disconnecting would."""
+    from shorts_generator import profiles
+    if pid == profiles.MAIN:
+        raise HTTPException(400, "Main is the profile everything else falls back to, so it stays.")
+    if not any(p["id"] == pid for p in profiles.all_profiles()):
+        raise HTTPException(404, "No such profile.")
+    _switch_guard()
+    was = profiles.active_id()
+    profiles.switch(pid)
+    try:
+        await youtube_disconnect()
+    finally:
+        profiles.switch(was if was != pid else profiles.MAIN)
+    profiles.remove(pid)
+    youtube_stats.reset()
+    return _profiles_state()
+
+
 # --- the channel's logo ---------------------------------------------------
 
 @app.get("/api/brand")
@@ -1066,8 +1151,15 @@ async def performance_check() -> dict:
 @app.post("/api/youtube/disconnect")
 async def youtube_disconnect() -> dict:
     """Give the permission back, and forget every upload record with it."""
+    from shorts_generator import profiles
     from . import youtube_upload
-    await asyncio.to_thread(STORE.forget_youtube)
+    # With several profiles, only this channel's records go: the others are
+    # still connected, and theirs are still allowed to be kept.
+    many = len(profiles.all_profiles()) > 1
+    channel = (await asyncio.to_thread(youtube_upload.status)).get("channel_id", "")
+    await asyncio.to_thread(STORE.forget_youtube, False,
+                            channel if many else None,
+                            profiles.active_id() == profiles.MAIN)
     youtube_stats.forget()
     return await asyncio.to_thread(youtube_upload.disconnect)
 

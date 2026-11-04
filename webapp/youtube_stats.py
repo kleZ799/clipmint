@@ -56,7 +56,9 @@ _state: Dict = {"state": "idle", "error": "", "matched": 0, "checked_at": "",
 
 
 def _state_path():
-    return user_config.config_dir() / "youtube_stats.json"
+    # Read from the active profile's channel, so kept with that profile.
+    from shorts_generator import profiles
+    return profiles.folder() / "youtube_stats.json"
 
 
 def _load_state() -> Dict:
@@ -193,7 +195,11 @@ def check(store) -> Dict:
             return dict(_state)
         _state.update(state="running", error="")
     try:
+        from shorts_generator import profiles
         token = yt._access_token()
+        channel = yt.status().get("channel_id", "")
+        # Numbers from before profiles carry no channel, and were read on Main.
+        legacy_here = profiles.active_id() == profiles.MAIN
         videos = _channel_uploads(token)
         jobs = store.jobs()
         found = match(jobs, videos)
@@ -208,9 +214,13 @@ def check(store) -> Dict:
                     matched += 1
                     perf = {**got, "video_id": m["video_id"], "matched": m["matched"],
                             "url": f"https://youtube.com/shorts/{m['video_id']}",
-                            "fetched_at": now}
+                            "fetched_at": now, "channel_id": channel}
                     store.replace_clip(job, c["file"], {"performance": perf})
-                elif c.get("performance"):
+                elif c.get("performance") and (
+                        (c["performance"].get("channel_id") or "") == channel
+                        or (not c["performance"].get("channel_id") and legacy_here)):
+                    # Only this channel's numbers: a clip posted on another
+                    # profile's channel is simply not on this one.
                     # Deleted or made private since: what was known is no
                     # longer true, so it goes rather than lingering.
                     store.replace_clip(job, c["file"], {"performance": None})
@@ -249,6 +259,13 @@ def expired(perf: Optional[Dict]) -> bool:
         return False
     when = _when(perf.get("fetched_at") or "")
     return when is None or datetime.now(timezone.utc) - when > timedelta(days=yt.KEEP_DAYS)
+
+
+def reset() -> None:
+    """After a profile switch: what is held in memory was about the other channel."""
+    with _lock:
+        if _state["state"] != "running":
+            _state.update(state="idle", error="", matched=0, checked_at="", videos=0)
 
 
 def forget() -> None:

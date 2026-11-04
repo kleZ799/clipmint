@@ -220,7 +220,9 @@ def set_client(text: str) -> Dict:
 # --- the stored sign-in ---------------------------------------------------
 
 def _token_path() -> Path:
-    return user_config.config_dir() / "youtube_token.json"
+    # One sign-in per channel profile: uploads go to the active one's channel.
+    from shorts_generator import profiles
+    return profiles.folder() / "youtube_token.json"
 
 
 def _load_token() -> Optional[Dict]:
@@ -732,6 +734,8 @@ def _run(uid: str, path: Path, meta: Dict, on_done: Optional[Callable[[Dict], No
             "privacy": asked.get("privacyStatus"),
             "publish_at": asked.get("publishAt", ""),
             "channel_title": (video.get("snippet") or {}).get("channelTitle", ""),
+            # Which channel, so disconnecting one profile forgets only its uploads.
+            "channel_id": (video.get("snippet") or {}).get("channelId", ""),
             "kept_private": False,
         }
 
@@ -841,6 +845,13 @@ def upload_status(uid: str) -> Optional[Dict]:
         # rather than looking stuck.
         out["ahead"] = next((n for n, item in enumerate(_queue) if item[0] == uid), None)
         return out
+
+
+def busy() -> bool:
+    """Whether any upload is queued or going. A profile switch waits for it:
+    the sign-in an upload was started under must not change under it."""
+    with _lock:
+        return any(st["state"] not in ("done", "error") for st in _uploads.values())
 
 
 def active_for(key: str) -> Optional[Dict]:
