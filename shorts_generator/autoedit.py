@@ -139,6 +139,10 @@ class Options:
     # Whether a cold open goes on the front afterwards (hook_open), so the
     # hook line can be put where the replayed slice will carry it.
     hook_replay: bool = False
+    # The clip's title across the top for the whole clip, in place of the
+    # hook line for its first seconds. Asked for by a tester who wanted "a
+    # sort of title at the front" and found no way to say so.
+    title_on_screen: bool = False
 
     @property
     def needs_words(self) -> bool:
@@ -148,7 +152,7 @@ class Options:
 
     @property
     def anything(self) -> bool:
-        return self.needs_words or bool(self.logo)
+        return self.needs_words or bool(self.logo) or self.title_on_screen
 
 
 def options_from_spec(spec, kind: Optional[str] = None) -> Options:
@@ -183,6 +187,7 @@ def options_from_spec(spec, kind: Optional[str] = None) -> Options:
         logo=str(logo) if logo else None,
         logo_corner=brand.corner(),
         hook_replay=bool(getattr(spec, "hook_replay", False)),
+        title_on_screen=bool(getattr(spec, "title_on_screen", False)),
     )
 
 
@@ -210,6 +215,9 @@ class Plan:
     # the new timeline -- which is where a cold open will replay from.
     hook: str = ""
     peak: Optional[float] = None
+    # Whether `hook` is the clip's title, kept up for the whole clip, rather
+    # than the hook line for its first seconds.
+    hook_is_title: bool = False
     # Where someone moved the captions to, as a fraction of the frame's
     # height (framing.caption_y), or None for the layout's own place.
     caption_y: Optional[float] = None
@@ -543,8 +551,17 @@ def analyse(path: str, highlight: Dict, opts: Options,
 
     plan.words = remap_words(spoken, plan.keeps) if plan.cut else spoken
     plan.caption_words = remap_words(shown, plan.keeps) if plan.cut else shown
-    if opts.captions != captions.OFF:
-        plan.hook = str((highlight.get("seo") or {}).get("hook_text") or "").strip()
+    if opts.captions != captions.OFF or opts.title_on_screen:
+        seo = highlight.get("seo") or {}
+        # The hook line rides with the captions; a title asked for by name is
+        # shown even with captions off.
+        plan.hook = str(seo.get("hook_text") or "").strip() if opts.captions != captions.OFF else ""
+        if opts.title_on_screen:
+            # Hashtags belong in the description, not burned into the picture.
+            title = re.sub(r"\s+", " ", re.sub(r"#\w+", "", str(
+                seo.get("title") or highlight.get("title") or ""))).strip(" |-")
+            if title:
+                plan.hook, plan.hook_is_title = title, True
         peak, start = highlight.get("hook_peak"), highlight.get("start_time")
         if peak is not None and start is not None:
             at = float(peak) - float(start)
@@ -730,6 +747,9 @@ def hook_windows(plan: Plan, opts: Options) -> List[Tuple[float, float]]:
     from . import hook_open
 
     length = plan.new_duration
+    if plan.hook_is_title:
+        # Up the whole time, so a cold open's replayed slice carries it too.
+        return [(0.0, length)]
     windows = [(0.0, min(captions.HOOK_SECONDS, length))]
     if opts.hook_replay and plan.peak is not None and plan.peak >= hook_open.ALREADY_UP_FRONT:
         a = max(0.0, plan.peak - hook_open.REPLAY_LEAD)
@@ -749,10 +769,17 @@ def render(plan: Plan, opts: Options) -> Dict:
     try:
         ass_name = fonts = None
         style = opts.captions
-        if style != captions.OFF and (plan.caption_words or plan.hook):
+        words = plan.caption_words
+        if style == captions.OFF and plan.hook_is_title:
+            # Captions off but a title asked for: the title alone, in the
+            # default style's face.
+            style, words = captions.DEFAULT, []
+        if style != captions.OFF and (words or plan.hook):
             y = plan.caption_height(opts)
-            script = captions.build_ass(plan.caption_words, style, plan.width, plan.height, y,
+            script = captions.build_ass(words, style, plan.width, plan.height, y,
                                         hook=plan.hook, hook_windows=hook_windows(plan, opts),
+                                        hook_chars=(captions.TITLE_CHARS if plan.hook_is_title
+                                                    else captions.HOOK_CHARS),
                                         font=opts.caption_font, colour=opts.caption_color,
                                         text_colour=opts.caption_text_color)
             if script:
@@ -799,7 +826,9 @@ def render(plan: Plan, opts: Options) -> Dict:
 
     removed = plan.duration - plan.new_duration if plan.cut else 0.0
     return {
-        "captions": style if ass_name else captions.OFF,
+        # What the user chose, not the face a title-only script borrowed.
+        "captions": opts.captions if ass_name else captions.OFF,
+        "title": bool(ass_name and plan.hook_is_title),
         "cuts": max(0, len(plan.keeps) - 1) if plan.cut else 0,
         "removed_seconds": round(removed, 2),
         "punch_ins": sum(1 for _, _, z in plan.zooms if z == _PUNCH_ZOOM),
@@ -864,6 +893,8 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
         bits = []
         if info["captions"] != captions.OFF:
             bits.append(f"{info['captions']} captions")
+        if info.get("title"):
+            bits.append("title across the top")
         if info["cuts"]:
             bits.append(f"{info['cuts']} pause(s) cut, {info['removed_seconds']:.1f}s shorter")
         if info["punch_ins"]:

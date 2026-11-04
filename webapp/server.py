@@ -89,6 +89,7 @@ class EditChoice(BaseModel):
     punch_ins: Optional[bool] = None
     emoji: Optional[bool] = None
     broll: Optional[bool] = None
+    title_on_screen: Optional[bool] = None
 
 
 class LayoutPreviewRequest(EditChoice):

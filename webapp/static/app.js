@@ -2212,9 +2212,10 @@ const EDIT_KEY = "clipmint.edit";
 const EDIT_DEFAULT = { captions: "bold", caption_font: "", caption_color: "",
                        caption_text_color: "", caption_position: "auto",
                        cut_pauses: true, punch_ins: true,
-                       emoji: false, broll: false, logo: true };
+                       emoji: false, broll: false, logo: true, title_on_screen: false };
 const EDIT_BOXES = { cut_pauses: "edPauses", punch_ins: "edPunch",
-                     emoji: "edEmoji", broll: "edBroll", logo: "edLogo" };
+                     emoji: "edEmoji", broll: "edBroll", logo: "edLogo",
+                     title_on_screen: "edTitle" };
 let editChoice = loadEditChoice();   // what the controls were set to
 let editSaid = [];                   // the fields the prompt's words decided
 let pexelsReady = false;             // whether a Pexels key is on file

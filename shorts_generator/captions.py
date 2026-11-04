@@ -43,6 +43,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 # How long the hook line stays up, and how long it may run before it is cut.
 HOOK_SECONDS = 2.6
 HOOK_CHARS = 60
+# A title kept up the whole clip may run longer: two lines at the top.
+TITLE_CHARS = 90
 
 from .bundled import asset_dir
 
@@ -344,7 +346,8 @@ def _ass_colour(hex_rgb: str, alpha: int = 0) -> str:
 def build_ass(words: List[Dict], style: str, width: int, height: int,
               y_frac: float, hook: str = "",
               hook_windows: Sequence[Tuple[float, float]] = (),
-              font: str = "", colour: str = "", text_colour: str = "") -> str:
+              font: str = "", colour: str = "", text_colour: str = "",
+              hook_chars: int = HOOK_CHARS) -> str:
     """An ASS script that captions `words` in `style`. "" when there is nothing
     to say.
 
@@ -363,7 +366,10 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
     words = [dict(w, text=_clean(w.get("word", ""), preset)) for w in words or []]
     words = [w for w in words if w["text"]]
     hook = re.sub(r"\s+", " ", (hook or "").replace("{", "(").replace("}", ")")
-                  .replace("\\", "/")).strip()[:HOOK_CHARS]
+                  .replace("\\", "/")).strip()
+    if len(hook) > hook_chars:
+        # On a word, not through one.
+        hook = hook[:hook_chars].rsplit(" ", 1)[0].rstrip(" ,;:-|")
     windows = [(a, b) for a, b in hook_windows if b - a > 0.2] if hook else []
     if not words and not windows:
         return ""
