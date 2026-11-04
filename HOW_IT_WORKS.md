@@ -72,7 +72,7 @@ produces a set of ranked vertical clips ready to upload as YouTube Shorts,
 Reels or TikToks, each packaged for the app it is going to.**
 
 It downloads the source with **yt-dlp**, transcribes it locally with
-**faster-whisper**, sends the transcript to an **LLM (Gemini, Groq or OpenAI)**
+**faster-whisper**, sends the transcript to an **LLM (Gemini, Groq, OpenRouter or OpenAI)**
 with a prompt tuned to find moments that travel (on a YouTube stream, with the
 chat replay's bursts marked in it, so it sees what the live audience reacted
 to), dedupes and scores the results,
@@ -269,6 +269,7 @@ shorts_generator/
 ├── broll.py                where stock footage fits (the LLM) and fetching it (Pexels)
 ├── scorecard.py            a clip's score split into Hook / Moment / Look / Energy / Pace + why
 ├── brand.py                the channel's logo: stored, validated, placed in a corner
+├── profiles.py             several channels: each its own sign-in, logo and look
 ├── bundled.py              finds assets/ in a checkout or a PyInstaller build
 ├── vision.py               what each clip shows, from four of its frames
 ├── faces.py                face detection: YuNet, with Haar as the fallback
@@ -569,9 +570,13 @@ the one that decides output quality.
 A stream, a vlog, a podcast and a tutorial are good for different reasons, and a
 ranking prompt written for one reads the others wrong. Told that every video is
 a game stream, the model goes looking for game narration in a travel vlog. So
-before anything is ranked, `resolve_content()` settles which of five kinds the
-video is — `stream`, `vlog`, `podcast`, `tutorial` or `other`
-(`content_kinds.py`).
+before anything is ranked, `resolve_content()` settles which of six kinds the
+video is — `stream`, `vlog`, `podcast`, `tutorial`, `sports` or `other`
+(`content_kinds.py`). Sports was added in v1.29.0, after a tester clipping UFC
+asked for it: there the moment is the action itself, and a ranker told to look
+for someone talking keeps choosing the commentators' chat over the knockout. Its
+rule book treats the commentary as a clue to where the action is (the voice
+jumping, the crowd erupting), and the judge weights the payoff frame most.
 
 **Told, or detected.** The *Kind of video* picker, or a word in the prompt
 ("my vlog", "podcast"), pins it. Otherwise one cheap call to
@@ -948,8 +953,13 @@ line. Some moments are a build and a payoff, and the payoff — a scream, a
 laugh, the thing going wrong — is what stops a scroll. Open on the build and the
 first second is someone talking quietly.
 
-So a clip whose loudest moment lands more than 3s in gets 1.9s of that moment
-played first, then the clip in full. One ffmpeg pass over the **rendered** clip,
+So a clip whose loudest moment lands more than 3s in gets 2.5s of that moment
+played first, then the clip in full. It was 1.9s with a hard cut back to the
+start, and a tester read that as the video glitching and restarting: too short
+to register as a moment, and nothing to say the jump back was meant. Now the
+teaser fades to white over its last 0.12s and the clip fades in from white over
+0.2s, with the sound faded across the same join (`fade` with `color=white`, and
+`afade`). A flash is editing shorthand for "back in time". One ffmpeg pass over the **rendered** clip,
 splitting and concatenating its own frames, so the teaser is guaranteed to match
 the layout exactly:
 
@@ -958,6 +968,8 @@ the layout exactly:
 [va]trim=start=A:end=B,setpts=PTS-STARTPTS[v0];  …
 [v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]
 ```
+
+(each half carries its `fade` and `afade` before the `concat`).
 
 It returns `None` — leaving the plain cut in place — when there is no audio
 envelope to find a peak in, when the peak is already at the front, or when
@@ -1011,7 +1023,8 @@ the picture, because on a gaming channel most of what decides whether a
 stranger stays is on screen.
 
 So after ranking, in `webapp/jobs.py`, the top `pool_size(num_clips)` candidates
-(twice the clips asked for, at least four more, at most 24) go to the vision
+(twice the clips asked for, at least four more, at most 24, or four more than
+the clips asked for when that is more than 24) go to the vision
 model as **four frames each** — `start+0.2`, `start+1.5`, the audio peak (or 60%
 through when the peak is too near an edge) and `end-1.5`, at 512px — with the
 opening line, everything said and the ranker's `on_screen` claim. It answers
@@ -1209,7 +1222,14 @@ move** — which means looking at more than the clip:
    detection counts how many others sit within a face-width of it, and the
    best-supported one plus its neighbours is the streamer (`_recurring_face`).
    A face in the game appears in one or two samples and loses the vote. Only
-   detections near the configured `corner` take part.
+   detections near the corner take part. When the prompt names no corner
+   (`webcam_corner="auto"`, the default since v1.29.0) each of the four is
+   tried and the biggest cluster wins, ties going to the one furthest from the
+   middle, since the corner regions overlap and a centred face is in all of
+   them (`_best_corner_cluster`). It was bottom-left unless told otherwise,
+   which turned every other overlay into a centre crop. The corner it was
+   found in comes back as `cam["corner"]`, and the gameplay crop is nudged
+   away from that side, left or right.
 3. **The overlay's border is found, not guessed** (`_overlay_bounds`). Two maps
    over the samples: the 20th-percentile Sobel gradient (an edge present in
    ~80% of samples) and the per-pixel standard deviation (how much the picture
@@ -1533,6 +1553,15 @@ the exact slice `hook_open` will replay (its own `REPLAY_LEAD` and
 spec has the cold open on. Checked on a real clip with a 1.9s cold open: the
 line is up from 0 to 4.5s and gone at 4.8. Captions off means no hook line.
 
+**The title instead** (`title_on_screen`, v1.29.0). A tester wanted "a sort of
+title at the front" and the prompt had no way to ask. With it on, `plan()` puts
+the clip's SEO title in the hook's place (hashtags stripped), `hook_is_title`
+makes `hook_windows()` return the whole clip as one window, which already
+covers the cold open's slice, and `build_ass()` cuts it on a word at
+`TITLE_CHARS` (90) rather than the hook's 60. Asked for by name, it shows with
+captions off too: `render()` borrows the default style's face for a script with
+no words, and the run record still says captions were off.
+
 **Settings** live on `LayoutSpec` (`captions`, the four `caption_*` fields,
 `cut_pauses`, `punch_ins`, `emoji`, `broll`), so a trim or a retry re-renders with the edit the run was
 made with. A manifest from before these fields existed reads back with all of
@@ -1615,7 +1644,7 @@ produce:
 - **`asks`**: a mixed request as groups with their own counts,
   `[{"count": 2, "want": "funny moments"}, {"count": 2, "want": "moments that
   ask the viewer a question"}]`. Kept only with two or more groups (one group
-  is what the brief already says), capped at ten clips by trimming the last
+  is what the brief already says), capped at `MAX_CLIPS` (30) by trimming the last
   group, and `num_clips` becomes their sum.
 - **`reply`**: one sentence in the user's language saying what it will make,
   shown under the box like a chat answer.
@@ -1675,10 +1704,10 @@ front-to-back shifts each later cut onto the wrong characters — see
 LayoutSpec(
     layout="stacked",              # stacked | facetrack | center
     aspect_ratio="9:16",           # 9:16 | 4:5 | 1:1 | 16:9
-    webcam_corner="bottom-left",
+    webcam_corner="auto",          # or a corner the words named
     cam_panel_fraction=0.42,       # clamped 0.15–0.75
     face_zoom=5.0,                 # clamped 2.0–12.0
-    num_clips=10,                  # clamped 1–10
+    num_clips=10,                  # clamped 1–30 (MAX_CLIPS)
     match_source_quality=True,
     time_ranges=[],                # [[start, end], …] → skips transcribe + rank
     clip_seconds=None,             # [min, max] → becomes a prompt instruction
@@ -2339,6 +2368,16 @@ saves re-transcribing hours of audio.
 It refuses to run while a job is in flight (409), since the source that job is
 reading is exactly what would be deleted.
 
+**Deleting a whole run** (`DELETE /api/jobs/{id}`, `JobStore.delete`) is the
+other half, asked for by a tester who paused a run, gave up on it and had to
+find what it left by hand. It removes the run's folder, only when that folder is
+inside the clips folder or holds the run's own `job.json`, and the run's
+download with everything named after it (the `.srt`, the ranking checkpoint,
+`.part` pieces), only when the download is in the app's own `output/` folder and
+no other run was made from it. A video picked from the user's disk is never the
+app's to delete. A clip open in the player is locked on Windows; then the
+delete says so instead of reporting success over a half-deleted folder.
+
 ---
 
 ## 12. The frontend
@@ -2647,8 +2686,11 @@ where captions go, so the emoji move with them.
 
 Reads `/api/settings` and `/api/usage` to render:
 
-- Provider switcher (Gemini / OpenAI) — offering a switch rather than asking for
-  a key that's already on disk
+- **Channel profile** — pick, add, rename, remove (`profiles.py`). Switching
+  reloads the page, so every panel below is read again for that channel
+- Provider switcher (the first other provider with a key on disk) — offering a
+  switch rather than asking for a key that's already on disk
+- Spare Gemini keys, and an OpenRouter model box that takes any model ID
 - Model picker, with each Gemini model's **free-tier daily allowance shown next
   to it**. The allowance differs enormously (20/day on one, 1000 on another), and
   picking wrong is the difference between a working afternoon and a paid API. The
@@ -2865,7 +2907,7 @@ four minutes, more requests to Google will not help either. Somewhere else will,
 because its capacity has nothing to do with Google's. So there is a ladder:
 
 ```
-gemini  →  groq  →  openai
+gemini (key 1 → key 2 → …)  →  groq  →  openrouter  →  openai
 ```
 
 **Free before paid**, so failing over cannot quietly start spending money.
@@ -2894,6 +2936,26 @@ a failed run.
 
 The switch is process-sticky — no point asking the spent provider again on every
 remaining chunk — and `reset_fallback()` clears it at the start of each new job.
+A run also remembers every provider it has given up on (`_given_up`), so two
+free tiers that are both failing cannot hand the run back and forth for ever:
+each is tried once, then the real error surfaces.
+
+**OpenRouter** joined in v1.29.0, the same way Groq did: the `openai` client with
+`base_url` at `openrouter.ai/api/v1`. Its default model is `openrouter/free`,
+OpenRouter's own router across whichever free models are up, so it never bills.
+It sends no `response_format`, because the router may land on a model without a
+JSON mode, and every caller already digs the object out of plain text.
+
+**Spare Gemini keys** (`GEMINI_EXTRA_KEYS`, one per line) come before any other
+provider. Each Google project has its own free day, so a second key is a second
+day's worth. `call_gemini_llm()` tries the keys in order: a per-day 429 or a
+refused key raises `_KeySpent` out of the retry loop, the key is marked spent
+for today (`_spent_keys`, keyed by Pacific day, model and the key's last eight
+characters), and the next is tried. Only when every key is spent does it raise
+`DailyQuotaExceeded` and mark the model exhausted in the ledger. With spares
+configured, that ledger mark is not trusted on its own, since it may predate a
+spare added since; a spent key answers its 429 at once, so checking costs one
+fast request.
 
 Two Gemini-specific details:
 
@@ -3292,6 +3354,16 @@ anything new. Both halves are needed: suspending only the current process would
 let the remaining clips start, and gating only the next one would leave the
 current ffmpeg running.
 
+Stopping is the other control, added in v1.29.0. `proc.cancel()` resumes and
+kills every registered child and sets a flag that makes `run()` and `popen()`
+refuse to start another (`Cancelled`). The in-app stages have no child to kill,
+so the job runner checks too: `_update()`, which every stage reports progress
+through, raises `Cancelled` on the worker thread once Stop was pressed (never on
+a request thread printing into the same log). `_attempt` never retries it, and
+the worker records the run as `interrupted` rather than `error`, so it can be
+carried on or deleted. Measured: Stop during a CPU transcription unwound the
+run in about a second.
+
 Two edges worth naming. A child started in the gap between the gate check and
 registration is suspended immediately on registration, so a pause cannot be
 raced. And a job that *ends* while paused clears the gate on its way out —
@@ -3659,6 +3731,28 @@ not be altered without consent, and a silently shortened title is exactly that.
 Scheduling sets `privacyStatus: private` with `publishAt`, which is how YouTube
 schedules: a private video it makes public at that time.
 
+### Several channels — `profiles.py`
+
+Two testers asked to run more than one channel from one app. A profile owns
+what belongs to a channel: the sign-in (`youtube_token.json`), the logo and its
+corner (`brand/`), the last views check (`youtube_stats.json`), and in the page
+the edit choices (a `localStorage` key per profile). Main is the settings folder
+itself and its settings keep their plain names, so nothing set up before
+profiles moves; every other profile has `profiles/<id>/` and settings named
+`KEY__<id>`. The API keys and the clips stay shared: the keys pay for the work
+whichever channel it is for, and a clip belongs to no channel until uploaded.
+
+Records now say which channel they are about: the upload record stores
+`channel_id`, and so do view counts. That matters at the two places a channel's
+data is dropped. A views check clears only the numbers of the channel it read,
+and a disconnect forgets only that channel's records, with pre-profile records
+(no `channel_id`) counted as Main's. Without it, checking the second channel
+would have wiped the first channel's numbers as "not on this channel".
+
+A switch is refused while a run or an upload is going (409): the run would get
+half its clips with one logo, and an upload would refresh its token from
+another channel's file mid-stream.
+
 ### Keeping what YouTube hands back no longer than allowed
 
 Policy III.E.4 caps stored API data at 30 days:
@@ -3957,6 +4051,9 @@ and CPU, and `webapp/__main__.py` prints a warning when you do.
 | `POST /api/jobs/{id}/pause` | Suspend the processes doing the work and hold back the next one |
 | `POST /api/jobs/{id}/resume` | Let them continue |
 
+| `POST /api/jobs/{id}/stop` | End a queued or running run now, keeping what it made. It is left `interrupted`: resumable or deletable |
+| `DELETE /api/jobs/{id}` | Delete a run that is not going: its folder, and its download when the app made it and no other run uses it. Returns `freed_bytes` |
+
 The job snapshot carries `paused`, so a reloaded page agrees with the worker
 rather than guessing from what the button last did.
 
@@ -3978,6 +4075,8 @@ rather than guessing from what the button last did.
 | `GET /api/fonts/{name}` | One of the bundled caption fonts, so the style picker and the preview show the real type. Only the files a caption preset or `captions.FONTS` names are served |
 | `GET /api/brand` · `GET`/`POST`/`DELETE /api/brand/logo` · `POST /api/brand/corner` | The channel's logo: whether there is one and its corner, the image itself, upload (PNG or JPEG by magic bytes, ≤ 5 MB), removal, and which corner |
 | `PUT /api/jobs/{id}/clips/{file}/captions` | Re-burn a clip's captions from corrected text: retimed onto the heard words, rendered again from the same span with the same edit |
+| `POST /api/settings/gemini-spares` | Replace the spare Gemini keys (one per line; empty removes them). Only their count is ever sent back |
+| `GET`/`POST /api/profiles` · `POST /api/profiles/{id}/switch` · `PUT`/`DELETE /api/profiles/{id}` | Channel profiles: list and active, create (and switch to), switch, rename, remove. A switch waits for runs and uploads (409); removing one disconnects its YouTube first |
 | `POST /api/settings/pexels` | Store (or, empty, remove) the Pexels key B-roll is fetched with. Kept apart from the model keys: it chooses no provider |
 | `GET /api/settings` | Whether a key exists, which provider, where it came from, ffmpeg presence, available Gemini models with free-tier limits. **Never returns the key itself** |
 | `POST /api/settings` | Save a key / switch provider / pick a model / set a self-imposed daily cap. Gemini models are probe-tested before storing |
@@ -3997,7 +4096,7 @@ rather than guessing from what the button last did.
 | `POST /api/resolve` | Classify a pasted link: single video, or a channel to pick from |
 | `POST /api/upload` | Accept a dropped video file, return a path to run from |
 | `POST /api/layout/preview` | Parse a layout prompt without running anything — powers the live preview. Takes `aspect_ratio` and `content_kind` picks and `use_llm` (false for the quick keyword reading). Returns the model's `reply`, and `reading: true` when it has not answered within 15s |
-| `POST /api/jobs` | Enqueue a job. Returns immediately with an id. `content_kind` (`stream`, `vlog`, `podcast`, `tutorial`, `other`) beats the prompt's words; omit it or send `auto` to leave it to them |
+| `POST /api/jobs` | Enqueue a job. Returns immediately with an id. `content_kind` (`stream`, `vlog`, `podcast`, `tutorial`, `sports`, `other`) beats the prompt's words; omit it or send `auto` to leave it to them |
 
 ### Following work
 
@@ -4036,7 +4135,7 @@ rather than guessing from what the button last did.
 | `POST /api/youtube/client` | Save the user's Desktop app client from its JSON or a path to it; an empty `client` goes back to the bundled one. Rejects a Web application client |
 | `POST /api/youtube/connect` | Open Google's consent page in the real browser, with PKCE and a loopback redirect |
 | `GET /api/youtube/callback` | Where Google sends the browser back. Checks `state`, exchanges the code, checks the granted scopes, and renders a page saying what happened |
-| `POST /api/youtube/disconnect` | Revoke at Google, delete the token, and forget every clip's upload record and view counts |
+| `POST /api/youtube/disconnect` | Revoke at Google, delete the token, and forget the upload records and view counts of the active profile's channel (all of them, with one profile) |
 | `GET /api/performance` | Whether YouTube is connected, the last views check, and `performance.analyse()` over every clip: findings, the ranking check, the tuning |
 | `POST /api/performance/check` | Read every clip's views from the channel again, in the background. 409 when not connected |
 | `POST …/clips/{file}/youtube` | Upload one clip in the background with the `title`, `description`, `tags`, `privacy`, `publish_at`, `made_for_kids` and `category` sent. Validated first; returns the upload's status with its `id` |
