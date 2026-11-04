@@ -683,8 +683,13 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
             break
 
     # Layout intent. Checked most-specific first.
-    if re.search(r"\bno (web)?cam\b|\bwithout (a )?(web)?cam\b|\bhide (the )?(web)?cam\b"
-                 r"|\bgameplay only\b|\bjust (the )?gameplay\b|\bno face\b", p):
+    # "no web cam", "no facecam" and "I don't have a webcam" all used to slip
+    # past this, leaving the webcam search to run on every clip of a video
+    # that had none: slow, and then a crop the person had asked not to get.
+    _cam = r"(?:web[\s-]?|face[\s-]?)?cam(?:era)?s?"
+    if re.search(rf"\bno {_cam}\b|\bwithout (?:a |the |my )?{_cam}\b"
+                 rf"|\bhide (?:the |my )?{_cam}\b|\b(?:don'?t|do not|doesn'?t) (?:have|use) (?:a |any )?{_cam}\b"
+                 rf"|\b{_cam} off\b|\bgameplay only\b|\bjust (the )?gameplay\b|\bno face\b", p):
         spec.layout = "center"
         spec.notes.append("layout → gameplay only, no webcam panel")
         resolved.add("layout")
