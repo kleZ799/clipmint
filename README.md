@@ -86,7 +86,7 @@ the architecture, the hard problems, and the numbers.
 | **Edits them** | Cuts quiet pauses and "um"s, punches in on emphasis, adds emoji, stock B-roll and your logo if you want. Framed wrong? Drag the frame, or move the captions, yourself |
 | **Explains them** | A score split into Hook, Moment, Look, Energy and Pace, with the reason each clip ranked where it did |
 | **Packages them** | Ranked titles, descriptions and tags for Shorts, captions for Reels and TikTok, all editable |
-| **Posts them** | Straight to your YouTube channel, one clip or a whole run, now or on a schedule |
+| **Posts them** | Straight to your YouTube channel, one clip or a whole run, now or on a schedule. Several channels? Each gets a profile with its own sign-in and logo |
 | **Learns from them** | Reads how each posted clip did, tells you what is working on your channel, and tunes the ranking when the evidence is strong |
 | **Stays on your PC** | Free, no account, no watermark; it runs on your GPU if you have one |
 
@@ -100,7 +100,7 @@ Type *"webcam at the top, vertical for Shorts, 5 clips"* and the frame updates a
 you type. Want one exact moment instead? Say *"cut 14:45 to 15:30"* and it skips
 the ranking entirely. The chips are shortcuts for phrases it already understands.
 
-### Streams, vlogs, podcasts, tutorials — it knows which
+### Streams, vlogs, podcasts, tutorials, sports — it knows which
 
 A stream, a vlog, a podcast and a tutorial are good for different reasons, so
 they are not ranked by the same rules. The app works out which one it is looking
@@ -113,6 +113,8 @@ and description, and picks the moments that kind of video is known for:
 - **Podcast or interview:** the hot take, the confession, the argument while
   it is still heated, opened on the answer rather than the question.
 - **Tutorial:** one complete tip, or a common mistake and its fix.
+- **Sports or fights:** the knockout, the goal, the buzzer-beater, on screen,
+  with the commentary as a clue to where it is rather than the clip itself.
 
 Or tell it: **Kind of video** under the prompt, or just *"my vlog"* in it. A
 vlog or podcast is framed on the face from the start.
@@ -124,9 +126,15 @@ busy. A real run reached chunk 9 of 12 and started getting `503 UNAVAILABLE`,
 with an 11.9 GB download and a 29-minute transcription already paid for.
 
 Retrying Google does not fix Google being busy. So there is a fallback ladder:
-**Gemini → Groq → OpenAI**, free before paid, switching on a spent quota *or* on
+**Gemini → Groq → OpenRouter → OpenAI**, free before paid, switching on a spent quota *or* on
 the retry budget running out. A [free Groq key](https://console.groq.com) takes a
 minute and no card, and is the single best insurance for a long run.
+[OpenRouter](https://openrouter.ai/keys) is one key in front of models from every
+lab; it defaults to its free router, so it costs nothing either.
+
+Got more than one Gemini key? Paste the spares under **Settings → Model**, one
+per line. Each Google project has its own free day, so when one key's runs out
+the run carries on with the next before it ever leaves Gemini.
 
 ### It speaks your language — and hears the right one
 
@@ -199,6 +207,12 @@ suspends the work where it stands — ffmpeg is stopped, not asked politely to
 finish the current clip — and the CPU comes back immediately. Resume picks up
 where it left off; nothing is lost and nothing is re-done. It holds
 transcription and face tracking too, on the CPU or the GPU.
+
+Given up on a run? **Stop** ends it now and keeps what it made, so it can
+still be carried on. **Delete** (on the "didn't finish" bar, and on every run
+in Your clips) removes the run's clips, its folder and the video it
+downloaded, so nothing is left to find and delete by hand. A video you picked
+from your own files is never touched.
 
 ### Use the GPU — or don't
 
@@ -368,6 +382,11 @@ stranger what they are about to see before the moment arrives. When the clip
 opens on a replay of its loudest moment, the line is on that too, so it is up
 from the very first frame.
 
+Want the title on screen instead? Tick **Keep the clip's title across the top**
+under the edit, or write *"title at the top"* in the prompt, and the clip's
+title stays up for the whole clip, hashtags left off. It shows with captions
+off too.
+
 The same pass does the edit an editor would do next:
 
 - **Dead air goes.** Quiet pauses and "um"s are cut. A pause with sound in it
@@ -395,6 +414,11 @@ only the text on screen changes.
 **Your logo**, uploaded once in Settings, goes in the corner of every clip,
 small and slightly see-through, in whichever corner you pick. A clip that
 gets reposted or screen-recorded still carries your name.
+
+Running more than one channel? **Settings → Channel profile**: each profile
+has its own YouTube sign-in, logo (or none) and corner, views data and edit
+choices. Switch, and uploads go to that channel. The API keys and the clips
+are shared, and everything set up before profiles is the **Main** profile.
 
 <img src="assets/screenshots/14-logo-and-broll.png" alt="Settings: Your logo with its thumbnail, Upload a logo and Remove and the corner picker, then B-roll with the Pexels key saved" width="880">
 
@@ -1192,8 +1216,9 @@ Cut and stack in one ffmpeg pass, straight to 1080×1920 h264 with `+faststart`.
 Two things happen on the way out. Audio is normalised to **-14 LUFS**, the
 target all three platforms mix toward — a Short that plays quieter than the one
 before it in the feed reads as lower production value before a word of it is
-heard. And a clip whose loudest moment lands late opens with **a second of that
-moment first**, then plays in full: the payoff arrives before the viewer has
+heard. And a clip whose loudest moment lands late opens with **two and a half
+seconds of that moment first**, then a quick white flash back to the start, and
+plays in full: the payoff arrives before the viewer has
 decided whether to stay. It skips itself when the peak is already at the front,
 where a replay would just be a stutter, and the length it adds is reserved
 before the cut is chosen — so 30-second clips are still 30 seconds with it on.
@@ -1367,18 +1392,19 @@ of render time. These short phrases work instantly, even with no AI key:
 | `30 second clips` | the length every clip is cut to — enforced in code, not requested of the model |
 | `no hook repeat` | turn off the cold open that puts the payoff first |
 | `webcam at the top` | the stacked layout |
-| `my webcam is bottom right` | which corner to hunt for your overlay |
+| `my webcam is bottom right` | which corner to hunt for your overlay. Left out, all four are searched |
 | `square, bigger webcam` | 1:1, panel at 55% |
-| `gameplay only, no webcam` | plain centre crop |
+| `gameplay only, no webcam` | plain centre crop. So do `no facecam`, `I don't have a webcam` and `camera off` |
 | `follow my face` | face-tracking crop |
-| `3 clips` | how many to make |
+| `3 clips` | how many to make, up to 30. Ten if you don't say |
 | `cut 14:45 to 15:30` | **exact span, no AI ranking** |
-| `my vlog` / `podcast` / `tutorial` | what kind of video it is: decides what counts as a good moment, and frames a vlog or podcast on the face |
+| `my vlog` / `podcast` / `tutorial` / `ufc` | what kind of video it is: decides what counts as a good moment, and frames a vlog or podcast on the face. Naming a sport picks sports |
 | `comic captions` / `no captions` | the caption style — bold, punch, clean or comic — or none |
 | `keep the pauses` / `cut the pauses` | whether quiet pauses and "um"s are cut |
 | `no zooms` | no punch-ins |
 | `add emoji` / `add b-roll` | turn on emoji pops or stock B-roll |
 | `no logo` | leave your logo off this run |
+| `title at the top` / `title card` | keep the clip's title on screen the whole time |
 | `720p` / `1080p` / `best quality` | the download and render quality |
 
 Combine them freely — `cut 14:45 to 15:30, gameplay only, square` does all three.
@@ -1424,11 +1450,11 @@ The knobs that change output quality most, in order:
 
 | Knob | Where | What it does |
 |---|---|---|
-| Kind of video | The picker under the prompt, or `--kind` on the CLI | Stream, vlog, podcast, tutorial or other. **The single biggest lever** — each kind is ranked by its own rules. Leave it on *Work it out* and the app decides |
+| Kind of video | The picker under the prompt, or `--kind` on the CLI | Stream, vlog, podcast, tutorial, sports or other. **The single biggest lever** — each kind is ranked by its own rules. Leave it on *Work it out* and the app decides |
 | `CRITERIA_BY_KIND` | `shorts_generator/highlights.py` | The rules each kind of video is ranked by. Edit one to change what the app thinks is worth clipping in that kind of video |
 | Growth playbook | `assets/playbook/short-form-algorithms.md`, or your own `playbook.md` in the settings folder | What the packaging writer knows about how Shorts, Reels and TikTok rank videos. Raise the `reviewed:` date when you change it |
 | `DESCRIPTION_OPTIONS` / `CAPTION_OPTIONS` | `shorts_generator/seo.py` | Descriptions and Reels captions written per clip to choose from, `2` each |
-| `corner` | `local/gaming_layout.py` | Which corner your webcam overlay sits in. `bottom-left` by default |
+| `corner` | `local/gaming_layout.py` | Which corner your webcam overlay sits in. `auto` by default: all four are searched and the face that keeps coming back wins |
 | `CAM_PANEL_FRACTION` | `local/gaming_layout.py` | Webcam panel height, `0.42` by default |
 | `FACE_CONTEXT_MULTIPLE` | `local/gaming_layout.py` | Webcam zoom. Lower is tighter on your face |
 | `MAX_CLIP_SECONDS` | `shorts_generator/highlights.py` | Hard reject above 90s. The prompt separately targets 18–35s, because the completion bar gets stricter the longer a clip runs |
@@ -1437,7 +1463,8 @@ The knobs that change output quality most, in order:
 | `SPIKE_RATIO` / `REACTION_LAG` | `shorts_generator/chat.py` | How far over its usual pace chat has to jump to count as a reaction (`2×`), and how long after a moment its reaction is still counted (`12s`) |
 | `MIN_MESSAGES` / `MIN_PER_MINUTE` | `shorts_generator/chat.py` | How busy a chat has to be before it is used at all: `150` messages and `3` a minute. Below that, a burst is three people saying hello at once |
 | `TARGET_BY_KIND` | `shorts_generator/boundaries.py` | Clip length per content type, when the prompt names no length of its own |
-| `REPLAY_SECONDS` | `shorts_generator/hook_open.py` | How long the hook cold open runs, `1.9s` by default |
+| `REPLAY_SECONDS` / `FLASH_OUT` / `FLASH_IN` | `shorts_generator/hook_open.py` | How long the hook cold open runs (`2.5s`), and the white flash it hands over to the clip through (`0.12s` out, `0.2s` in) |
+| `MAX_CLIPS` | `shorts_generator/layout_spec.py` | The most clips one run may be asked for, `30`. The default stays `10` |
 | `PRESETS` | `shorts_generator/captions.py` | The four caption styles: font, size, colours, words per line. Add a fifth by adding an entry and its font to `assets/fonts` |
 | `FONTS` / `HIGHLIGHTS` | `shorts_generator/captions.py` | The fonts any style can be swapped to, and the colour swatches offered. A new font needs its file in `assets/fonts` and its widths measured from a libass render, not from the font file |
 | `_GAP` / `_QUIET_SHARE` | `shorts_generator/autoedit.py` | How long a pause has to be before it is cut (`0.55s`, `0.9s` on a stream), and how quiet it has to be (under `30%` of speech level) |
@@ -1453,11 +1480,12 @@ The knobs that change output quality most, in order:
 | `STAGE_ATTEMPTS` / `CLIP_ATTEMPTS` | `webapp/jobs.py` | How many times a stage, or one clip's render, is tried before a run gives up, `3` each |
 | Processor | Under the live preview, or `PROCESSOR` in `.env` | `auto` (default), `gpu` or `cpu` — what encodes video and runs transcription. `LOCAL_WHISPER_DEVICE`, if set, still pins transcription |
 | `SCORE_THRESHOLD` | `shorts_generator/faces.py` | How sure YuNet must be to count a face, `0.7`. Raise it if a crop keeps catching faces in the game |
-| Provider | Settings | Gemini, Groq or OpenAI. Add a **free Groq key** as a fallback so a busy Gemini cannot end a run |
+| Provider | Settings | Gemini, Groq, OpenRouter or OpenAI. Add a **free Groq key** as a fallback so a busy Gemini cannot end a run, and spare Gemini keys to use in turn |
+| Channel profile | Settings | Which channel's sign-in, logo and edit choices are in use. Add one per channel |
 | `LOCAL_WHISPER_MODEL` | `.env` | `base` is plenty for ranking. `small` reads better and hallucinates less — and on a GPU it is *faster* than `base`, so use it if you have one |
 | Spoken language | Render panel | English by default. Pinning it is the fix for whisper inventing text in another language |
 | Interface language | Settings | English, Hindi, Spanish, Portuguese, French, German, Japanese, Russian |
-| Captions and the edit | Render panel, or the prompt | Caption style, font, colours and placement, pause cuts, punch-ins, emoji, B-roll and your logo, per run. Remembered per machine |
+| Captions and the edit | Render panel, or the prompt | Caption style, font, colours and placement, pause cuts, punch-ins, emoji, B-roll, your logo and an on-screen title, per run. Remembered per profile |
 
 ---
 
@@ -1559,15 +1587,16 @@ shorts_generator/
 ├── captions.py            # burned-in captions: four styles, ten fonts, fixable afterwards
 ├── broll.py               # where stock footage fits, and fetching it from Pexels
 ├── brand.py               # the channel's logo
+├── profiles.py            # several channels: each its own sign-in, logo and look
 ├── scorecard.py           # a clip's score split into Hook / Moment / Energy / Pace
-├── content_kinds.py       # stream / vlog / podcast / tutorial / other
+├── content_kinds.py       # stream / vlog / podcast / tutorial / sports / other
 ├── vision.py              # what each clip shows, from its frames
 ├── seo.py                 # Shorts, Reels and TikTok packaging, all ranked
 ├── playbook.py            # the growth playbook: bundled, fetched daily, overridable
 └── local/
     ├── downloader.py      # yt-dlp + download cache
     ├── transcriber.py     # faster-whisper + .srt cache
-    ├── llm.py             # Gemini / Groq / OpenAI, text and vision, with backoff
+    ├── llm.py             # Gemini / Groq / OpenRouter / OpenAI, spare keys, text and vision
     ├── clipper.py         # face-following crop on a planned camera path
     ├── speaker.py         # with two people in shot, which one is talking
     └── gaming_layout.py   # webcam-over-gameplay stack (streams)
