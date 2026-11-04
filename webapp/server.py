@@ -1335,6 +1335,7 @@ async def library() -> dict:
             "source_title": snap["source_title"],
             "shorts_dir": snap["shorts_dir"],
             "restored": snap["restored"],
+            "status": snap["status"],
             "clips": clips,
         })
     return {"runs": runs, "count": sum(len(r["clips"]) for r in runs)}
@@ -2012,6 +2013,31 @@ async def resume_job(job_id: str) -> dict:
     from shorts_generator import proc
     proc.resume()
     return {"paused": False}
+
+
+@app.post("/api/jobs/{job_id}/stop")
+async def stop_job(job_id: str) -> dict:
+    """End a run now. What it made so far stays, to resume or delete later."""
+    job = _job_or_404(job_id)
+    try:
+        STORE.stop(job)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return job.snapshot()
+
+
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str) -> dict:
+    """Delete a whole run: its clips, its folder and the video it downloaded.
+
+    The video the user picked from their own disk is never touched; only a
+    download in the app's own folder that no other run was made from.
+    """
+    job = _job_or_404(job_id)
+    try:
+        return await asyncio.to_thread(STORE.delete, job)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
 
 # --- updates --------------------------------------------------------------

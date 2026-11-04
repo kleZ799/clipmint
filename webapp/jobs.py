@@ -19,6 +19,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import threading
 import time
 import traceback
@@ -162,6 +163,26 @@ def rename_to_title(folder: Path, current: str, title: str) -> str:
     return dest.name
 
 
+def _inside(path: Path, root: Path) -> bool:
+    """Whether `path` is strictly inside `root` (never `root` itself)."""
+    try:
+        p = path.resolve()
+        return p != root and root in p.parents
+    except OSError:
+        return False
+
+
+def _folder_bytes(folder: Path) -> int:
+    total = 0
+    for f in folder.rglob("*"):
+        try:
+            if f.is_file():
+                total += f.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
 def _fmt_clock(seconds: float) -> str:
     total = int(round(seconds))
     h, rem = divmod(total, 3600)
@@ -271,6 +292,9 @@ class Job:
     finished_at: Optional[float] = None
     # "full" runs every stage; "clips" re-renders only the clips that failed.
     mode: str = "full"
+    # Someone pressed Stop. The worker unwinds at its next step and the run is
+    # left "interrupted": it can be resumed later or deleted.
+    stop_requested: bool = False
     _version: int = 0
 
     @property
@@ -351,6 +375,7 @@ class Job:
             "created_at": self.created_at,
             "status": self.status,
             "stage": self.stage,
+            "message": self.message,
             "source": self.source,
             "source_path": self.source_path,
             "download_format": self.download_format,
@@ -490,6 +515,7 @@ class JobStore:
             if job.status != "error":
                 raise ValueError("That run finished. Retry its failed clips instead.")
             job.mode = "full"
+            job.stop_requested = False
             job.status, job.stage, job.progress = "queued", "queued", 0.0
             job.error = None
             job.message = "Queued — trying again"
@@ -517,6 +543,7 @@ class JobStore:
                 raise ValueError("That run is too old to carry on: it does not record "
                                  "what it was made from. Start it again from the video.")
             job.mode = "full"
+            job.stop_requested = False
             job.status, job.stage, job.progress = "queued", "queued", 0.0
             job.error = None
             job.message = "Queued — carrying on where it stopped"
@@ -524,6 +551,84 @@ class JobStore:
             job._version += 1
         self._queue.put(job.id)
         return job
+
+    def stop(self, job: Job) -> Job:
+        """End a run that is queued or going, keeping what it already made.
+
+        A queued run just never starts. A running one has its programs ended
+        now and unwinds at its next step (see _update). Either way it is left
+        "interrupted", so it can be carried on later or deleted.
+        """
+        from shorts_generator import proc
+        with self._lock:
+            if job.status not in ("queued", "running"):
+                raise ValueError("That run is not going.")
+            job.stop_requested = True
+            running = job.status == "running"
+            if not running:
+                job.status, job.message = "interrupted", "Stopped before it started"
+            job._version += 1
+        if running:
+            proc.cancel()
+        else:
+            self._persist(job)
+        return job
+
+    def delete(self, job: Job) -> Dict:
+        """Throw a whole run away: its clips, its folder, and the download.
+
+        For the run someone gave up on part way, which otherwise leaves a
+        folder of half the clips and a multi-gigabyte download to be found and
+        deleted by hand. The downloaded video goes only when no other run was
+        made from it, and only from the app's own download folder: a video the
+        user picked from their own disk is theirs, never the app's to delete.
+        """
+        with self._lock:
+            if job.status in ("queued", "running"):
+                raise ValueError("Stop that run first.")
+            others = [j for j in self._jobs.values() if j.id != job.id]
+        freed = 0
+
+        folder = Path(job.out_dir)
+        try:
+            root = user_config.shorts_dir().resolve()
+        except Exception:
+            root = None
+        # Only a folder this app made: inside the clips folder, or holding the
+        # run's own manifest. Never a path that merely happens to be recorded.
+        if folder.is_dir() and ((root and _inside(folder, root))
+                                or (folder / MANIFEST_NAME).exists()):
+            before = _folder_bytes(folder)
+            shutil.rmtree(folder, ignore_errors=True)
+            # A clip open in the player is locked on Windows and stays behind.
+            left = _folder_bytes(folder) if folder.exists() else 0
+            freed += before - left
+            if left:
+                raise ValueError("Some of that run's files are open in another program "
+                                 "(or in the player here), so they could not be deleted. "
+                                 "Close them and try again.")
+
+        src = Path(job.source_path) if job.source_path else None
+        try:
+            downloads = user_config.source_dir().resolve()
+        except Exception:
+            downloads = None
+        if (src and downloads and _inside(src, downloads)
+                and not any(o.source_path and Path(o.source_path) == src for o in others)):
+            # The video, and what was made from it beside it: the transcript,
+            # the ranking checkpoint, half-finished download pieces.
+            for f in downloads.iterdir():
+                if f.is_file() and (f == src or f.name.startswith(src.stem + ".")):
+                    try:
+                        size = f.stat().st_size
+                        f.unlink()
+                        freed += size
+                    except OSError:
+                        pass
+
+        with self._lock:
+            self._jobs.pop(job.id, None)
+        return {"deleted": job.id, "freed_bytes": freed}
 
     def retry_clips(self, job: Job) -> Job:
         """Render again only the clips in a run that failed to render."""
@@ -539,6 +644,7 @@ class JobStore:
                                  "PC, so they can't be rendered again. Run it again from "
                                  "the start instead.")
             job.mode = "clips"
+            job.stop_requested = False
             job.status, job.stage, job.progress = "queued", "render", 0.0
             job.error = None
             job.message = f"Queued — rendering {len(failed)} clip(s) again"
@@ -662,7 +768,9 @@ class JobStore:
         # Worth restoring even with no clips yet: the download, the transcript
         # and the ranking checkpoint it already paid for are all still on
         # disk, so carrying on costs only what was left.
-        unfinished = str(manifest.get("status") or "") in ("queued", "running")
+        # "interrupted" is a run someone stopped on purpose: unfinished too.
+        status = str(manifest.get("status") or "")
+        unfinished = status in ("queued", "running", "interrupted")
         if not clips and not unfinished:
             return None
 
@@ -682,6 +790,8 @@ class JobStore:
             stage=str(manifest.get("stage") or "queued") if unfinished else "done",
             progress=0.0 if unfinished else 1.0,
             message=(
+                str(manifest.get("message") or "Stopped")
+                if status == "interrupted" else
                 "Interrupted — the app closed while "
                 + _STAGE_LABELS.get(str(manifest.get("stage") or ""), "working").lower()
                 if unfinished else f"{len(clips)} clip(s) ready"
@@ -700,7 +810,16 @@ class JobStore:
 
     def _update(self, job: Job, *, stage: Optional[str] = None,
                 frac: Optional[float] = None, message: Optional[str] = None) -> None:
-        """Advance a job's reported state. `frac` is progress *within* the stage."""
+        """Advance a job's reported state. `frac` is progress *within* the stage.
+
+        Also where a stopped run notices: every stage reports through here,
+        transcription and ranking included, which run in this process and so
+        have no child for proc.cancel() to end. Only on the worker thread --
+        the request threads that print into the same log must not be the ones
+        to unwind.
+        """
+        if job.stop_requested and threading.get_ident() == self._worker.ident:
+            raise proc.Cancelled("stopped")
         moved = False
         with self._lock:
             if stage:
@@ -782,20 +901,30 @@ class JobStore:
         while True:
             job_id = self._queue.get()
             job = self.get(job_id)
-            if job is None:
-                continue
+            if job is None or job.stop_requested:
+                continue        # deleted, or stopped while it waited its turn
             with self._lock:
                 job.started_at = time.time()
                 job.finished_at = None
             try:
                 self._execute(job)
             except Exception as e:
-                with self._lock:
-                    job.status = "error"
-                    job.error = str(e)
-                    job.message = f"Failed: {e}"
-                    job.log.append(traceback.format_exc())
-                    job._version += 1
+                # Whatever it surfaced as -- a stage wraps what it catches --
+                # an error after Stop was pressed is the stop, not a failure.
+                if isinstance(e, proc.Cancelled) or job.stop_requested:
+                    with self._lock:
+                        job.status = "interrupted"
+                        job.message = "Stopped. Resume it, or delete it and its files."
+                        job.log.append("--- stopped ---")
+                        job._version += 1
+                    self._persist(job)
+                else:
+                    with self._lock:
+                        job.status = "error"
+                        job.error = str(e)
+                        job.message = f"Failed: {e}"
+                        job.log.append(traceback.format_exc())
+                        job._version += 1
             finally:
                 with self._lock:
                     job.finished_at = time.time()
@@ -851,7 +980,8 @@ class JobStore:
             try:
                 return fn(*args, **kwargs)
             except Exception as e:
-                if attempt == STAGE_ATTEMPTS or _is_permanent(e):
+                if (isinstance(e, proc.Cancelled) or attempt == STAGE_ATTEMPTS
+                        or _is_permanent(e)):
                     raise
                 wait = 5 * 3 ** (attempt - 1)
                 why = (str(e).strip().splitlines() or [e.__class__.__name__])[0][:160]

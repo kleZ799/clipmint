@@ -418,6 +418,9 @@ addEventListener("load", function () {
         <button class="btn ghost sm" id="pauseBtn" title="Pause the work and give your CPU back">
           <svg><use href="#i-pause"/></svg><span id="pauseLabel">Pause</span>
         </button>
+        <button class="btn ghost sm" id="stopBtn" title="End this run now. What it made so far is kept, to resume or delete">
+          <svg><use href="#i-close"/></svg><span>Stop</span>
+        </button>
         <span class="phint" id="pauseHint">Rendering uses every core it can. Pause if you need the machine.</span>
       </div>
       <div class="prow hidden" id="retryRow">

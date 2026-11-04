@@ -170,11 +170,54 @@ def wait_if_paused() -> None:
 
 
 def clear() -> None:
-    """Drop any pause state. Called when a job ends, so the next one is free."""
+    """Drop any pause or stop state. Called when a job ends, so the next one is free."""
     with _lock:
         _children.clear()
     _paused.clear()
+    _cancelled.clear()
     _resume.set()
+
+
+# --- stopping -------------------------------------------------------------
+#
+# Asked for by a tester who paused a run, gave up on it, and then had to find
+# and delete its files by hand. A stop ends what is running now and refuses to
+# start anything else, so the job unwinds at its next step instead of
+# rendering the remaining clips first.
+
+class Cancelled(Exception):
+    """The run was stopped on purpose. Never retried, never a failure."""
+
+
+_cancelled = threading.Event()
+
+
+def cancel() -> None:
+    """End every child now, lift any pause, and start nothing more."""
+    _cancelled.set()
+    with _lock:
+        children = list(_children)
+    for child in children:
+        if child.poll() is None:
+            try:
+                _resume_pid(child.pid)      # a suspended process cannot exit
+            except Exception:
+                pass
+            try:
+                child.kill()
+            except Exception:
+                pass
+    _paused.clear()
+    _resume.set()
+
+
+def is_cancelled() -> bool:
+    return _cancelled.is_set()
+
+
+def raise_if_cancelled() -> None:
+    if _cancelled.is_set():
+        raise Cancelled("stopped")
 
 
 # --- running things -------------------------------------------------------
@@ -189,6 +232,7 @@ def run(cmd, *, check: bool = False, capture_output: bool = False,
     quietly let the remaining four begin.
     """
     wait_if_paused()
+    raise_if_cancelled()
 
     popen_kwargs = _hidden(dict(kwargs))
     if capture_output:
@@ -214,6 +258,8 @@ def run(cmd, *, check: bool = False, capture_output: bool = False,
             if proc in _children:
                 _children.remove(proc)
 
+    # Killed by a stop: say so, rather than as an ffmpeg failure to retry.
+    raise_if_cancelled()
     result = subprocess.CompletedProcess(cmd, proc.returncode, out, err)
     if check and proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd, out, err)
@@ -326,6 +372,7 @@ def popen(cmd, **kwargs) -> subprocess.Popen:
     here rather than reaching for subprocess directly.
     """
     wait_if_paused()
+    raise_if_cancelled()
     child = subprocess.Popen(cmd, **_hidden(dict(kwargs)))
     with _lock:
         _children.append(child)

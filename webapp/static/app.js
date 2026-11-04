@@ -1979,6 +1979,58 @@ $("pauseBtn").onclick = async () => {
   }
 };
 
+// Stop: end the run now. What it made is kept, and the "didn't finish" bar
+// then offers to carry on or to delete it with its files.
+$("stopBtn").onclick = () => {
+  if (!jobId) return;
+  const id = jobId;
+  ask("Stop this run?",
+      "It ends now. The clips it already made and the download are kept, so you can carry on later — or delete the run and its files.",
+      async () => {
+        $("stopBtn").disabled = true;
+        try {
+          await api(`/api/jobs/${encodeURIComponent(id)}/stop`, json("POST", {}));
+          toast("Stopping…");
+        } catch (e) {
+          toast(e.message, true);
+        } finally {
+          $("stopBtn").disabled = false;
+        }
+      });
+};
+
+let stoppedId = null;
+function stopped(s) {
+  if (stoppedId === s.id) return;
+  stoppedId = s.id;
+  if (es) { es.close(); es = null; }
+  $("go").disabled = !source;
+  $("go").textContent = "Generate shorts";
+  $("progress").classList.add("hidden");
+  setTimeout(() => loadbar(null), 600);
+  toast("Stopped.");
+  checkInterrupted();
+  loadLibrary();
+}
+
+// Delete a whole run and the files it left: clips, folder and the download.
+function deleteRun(id, what, after) {
+  ask("Delete this run and its files?",
+      `${what ? what + ": " : ""}its clips, its folder and the video it downloaded are deleted from this PC. A video you picked from your own files is left alone. This can't be undone.`,
+      async () => {
+        try {
+          const d = await api(`/api/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
+          const mb = Math.round((d.freed_bytes || 0) / 1e6);
+          toast(mb ? `Deleted. ${mb >= 1000 ? (mb / 1000).toFixed(1) + " GB" : mb + " MB"} freed.` : "Deleted.");
+          if (after) after();
+          loadLibrary();
+          if (typeof loadCleanup === "function") loadCleanup();
+        } catch (e) {
+          toast(e.message, true);
+        }
+      });
+}
+
 function setSource(src, name) {
   source = { source: src, name: name || src };
   $("srcName").textContent = source.name;
@@ -2664,6 +2716,7 @@ function onUpdate(s) {
   // the button has to agree with what the worker is actually doing.
   if (s.paused !== undefined && s.paused !== paused) renderPauseState(s.paused);
   $("pauseBtn").classList.toggle("hidden", s.status !== "running");
+  $("stopBtn").classList.toggle("hidden", !["running", "queued"].includes(s.status));
   $("stageLabel").textContent = s.message || s.stage_label;
   $("pct").textContent = Math.round(s.progress * 100) + "%";
   $("barFill").style.transform = `scaleX(${Math.max(0, Math.min(1, s.progress))})`;
@@ -2688,6 +2741,7 @@ function onUpdate(s) {
     if (stuck) el.scrollTop = el.scrollHeight;
   }
   if (s.status === "done" || s.status === "error") { renderPauseState(false); finish(s); }
+  if (s.status === "interrupted") { renderPauseState(false); stopped(s); }
 }
 
 // ---------------------------------------------------------------- the clock
@@ -2757,10 +2811,12 @@ async function checkInterrupted() {
       </div>
       <div class="rb-act">
         <button class="btn primary sm" id="rbGo">Resume</button>
+        <button class="btn ghost sm" id="rbDel"><svg><use href="#i-trash"/></svg>Delete it</button>
         <button class="btn ghost sm" id="rbNo">Dismiss</button>
       </div>`;
     bar.classList.remove("hidden");
     $("rbNo").onclick = () => bar.classList.add("hidden");
+    $("rbDel").onclick = () => deleteRun(j.id, what, () => checkInterrupted());
     $("rbGo").onclick = async () => {
       $("rbGo").disabled = true;
       try {
@@ -3026,6 +3082,10 @@ function renderClips() {
             <button class="btn ghost sm" data-openrun="${esc(r.id)}"
               title="${esc(r.shorts_dir || "")}">
               <svg><use href="#i-folder"/></svg>Folder</button>
+            ${["running", "queued"].includes(r.status) ? "" : `
+            <button class="btn ghost sm" data-delrun="${esc(r.id)}"
+              title="Delete this run: its clips, its folder and the video it downloaded">
+              <svg><use href="#i-trash"/></svg>Delete</button>`}
           </div>
         </div>
         <div class="clips">${cards}</div>
@@ -3070,6 +3130,10 @@ function renderClips() {
   });
   $("clips").querySelectorAll("[data-seorun]").forEach((b) => {
     b.onclick = () => writeSeoForRun(b.dataset.seorun, b, +b.dataset.missing === 0);
+  });
+  $("clips").querySelectorAll("[data-delrun]").forEach((b) => {
+    const r = runs.find((x) => x.id === b.dataset.delrun) || {};
+    b.onclick = () => deleteRun(b.dataset.delrun, r.source_title || "");
   });
   $("clips").querySelectorAll("[data-openrun]").forEach((b) => {
     b.onclick = async () => {
