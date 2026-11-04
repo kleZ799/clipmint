@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 4 November 2026 (v1.28.0)_
+_Last updated: 5 November 2026 (v1.29.0)_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,
@@ -43,11 +43,13 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
 
 - **Your Google sign-in token** (`youtube_token.json`), which lets ClipMint
   upload without asking you to sign in every time. It stays until you
-  disconnect.
+  disconnect. If you add **channel profiles**, each profile's token, logo and
+  view-check note are kept in its own folder (`profiles/<id>` in the settings
+  folder), and the profile's name in the settings file.
 - **Your channel's name and ID.** ClipMint refreshes these from YouTube at
   least every 30 days, or deletes them.
 - **A record of each upload**: the video's ID, when it was uploaded and its
-  privacy setting, saved with that clip so the app can show "On YouTube" and
+  privacy setting and which channel it went to, saved with that clip so the app can show "On YouTube" and
   open it in Studio. ClipMint deletes these once they are 30 days old, the
   next time it starts.
 - **How each of your clips did on YouTube**: its video's ID, views, likes,
@@ -65,6 +67,8 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
   whether you have already picked a way to give feedback, kept the same way,
   so the app knows when to ask and when to stop. It never leaves your
   computer.
+- **Spare Gemini keys and an OpenRouter key**, if you add them, in the
+  settings file beside your other API keys. They stay until you remove them.
 - **Your Pexels key**, if you add one for B-roll, in the settings file. It
   stays until you remove it in Settings.
 - **Your logo**, if you upload one, in the settings folder. It stays until
@@ -96,13 +100,16 @@ YouTube.
   opens GitHub's issue page instead, where what you write is public.
 - **Google and YouTube:** your clips and their details go to YouTube when you
   upload, and to Google when you sign in.
-- **The AI provider you choose** (Google Gemini, Groq or OpenAI), using your
+- **The AI provider you choose** (Google Gemini, Groq, OpenRouter or OpenAI), using your
   own API key: the clip's transcript text, a few still frames from each clip,
   the source video's title and description, and what you type in the
   **What to make** box, so it can understand what you asked for, pick moments
   and write titles. The box is read once you stop typing, not on every key. When a clip is spoken in Hindi, its words are also sent so
   the captions can be written in Roman script. Nothing from your Google account or YouTube channel is ever
-  sent to an AI provider.
+  sent to an AI provider. OpenRouter passes each request on to the model
+  you picked there (by default, whichever of its free models is up), under
+  [OpenRouter's privacy policy](https://openrouter.ai/privacy) and that
+  model maker's; free models may be run by providers who keep prompts.
 - **Pexels**, only if you add a Pexels key and tick **B-roll**: a search of
   one to three words for each cutaway (for example "city at night"), sent
   with your own key, and the stock video it finds downloaded to your
@@ -118,7 +125,10 @@ ClipMint does not sell or rent anything to anyone.
 - **In the app:** Settings → **Post to your channel** → **Disconnect**.
   ClipMint gives its permission back to Google and immediately deletes the
   sign-in token, the channel details, every upload record and every clip's
-  view counts.
+  view counts. With several channel profiles, this is done for the profile
+  you are on, and only that channel's records go. Removing a profile
+  (Settings → **Channel profile** → **Remove**) does the same for it first,
+  then deletes its folder.
 - **At Google:** remove ClipMint at
   [security.google.com/settings/security/permissions](https://security.google.com/settings/security/permissions).
   The next time ClipMint tries to use the permission, it finds it withdrawn and
