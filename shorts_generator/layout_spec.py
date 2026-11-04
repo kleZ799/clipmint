@@ -90,7 +90,10 @@ EDIT_FIELDS = ("captions", "caption_font", "caption_color", "caption_text_color"
 
 
 QUALITIES = ("best", "1080", "720")
-MAX_CLIPS = 10
+# Ten is the default (see LayoutSpec.num_clips); this is how many one run
+# may be asked for. It was ten as well, and a tester asked why it could not
+# go higher: someone posting three a day wants more than a week's worth.
+MAX_CLIPS = 30
 
 
 def _clean_asks(asks) -> List[Dict]:
@@ -138,8 +141,8 @@ class LayoutSpec:
     webcam_corner: str = AUTO_CORNER
     cam_panel_fraction: float = 0.42
     face_zoom: float = 5.0
-    # Ten is the ceiling and the default: one run should hand back a full
-    # week's posting slate, ranked, rather than three clips and another wait.
+    # Ten by default: one run should hand back a full week's posting slate,
+    # ranked, rather than three clips and another wait. Up to MAX_CLIPS on request.
     num_clips: int = 10
     # Render at the best size the source actually supports rather than the
     # platform-minimum preset. Off means always use ASPECT_PRESETS.
@@ -231,7 +234,7 @@ class LayoutSpec:
         self.cam_panel_fraction = max(0.15, min(0.75, float(self.cam_panel_fraction)))
         # Below 2x the crop is inside the face; above 12x the webcam is a speck.
         self.face_zoom = max(2.0, min(12.0, float(self.face_zoom)))
-        self.num_clips = max(1, min(10, int(self.num_clips)))
+        self.num_clips = max(1, min(MAX_CLIPS, int(self.num_clips)))
         self.content_kind = content_kinds.normalise(self.content_kind)
         self.layout_set = bool(self.layout_set)
         self.captions = caption_styles.normalise(self.captions)
@@ -627,8 +630,9 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
     # as a request for 9:16.
     m = re.search(r"\b(\d{1,2})\s*(clips?|shorts?|videos?)\b", p)
     if m:
-        spec.num_clips = int(m.group(1))
-        spec.notes.append(f"clip count → {spec.num_clips}")
+        spec.num_clips = min(MAX_CLIPS, int(m.group(1)))
+        spec.notes.append(f"clip count → {spec.num_clips}"
+                          + (f" (the most one run makes)" if int(m.group(1)) > MAX_CLIPS else ""))
         resolved.add("num_clips")
         p = p[:m.start()] + " " + p[m.end():]
 
@@ -745,7 +749,7 @@ a choice they made somewhere else in the app.
   e.g. "2 funny shorts and 2 that ask a question" ->
   [{{"count": 2, "want": "funny moments"}}, {{"count": 2, "want": "moments that ask the viewer a question"}}].
   "want" is a short plain-English description of that kind of moment.
-- "num_clips": how many clips in total, 1-10 (the sum of "asks" when there are groups)
+- "num_clips": how many clips in total, 1-30 (the sum of "asks" when there are groups)
 - "clip_seconds": [min, max] length of each clip in seconds, between 5 and 90.
   "30 sec" is about [25, 35]; "short ones" is about [15, 30]; "about a minute" is [50, 70]
 - "content_kind": what the SOURCE video is, only if they say so:

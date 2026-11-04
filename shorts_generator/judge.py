@@ -209,5 +209,11 @@ def judge(
 
 
 def pool_size(num_clips: int) -> int:
-    """How many of the top candidates are worth a look for `num_clips` slots."""
-    return min(24, max(num_clips * 2, num_clips + 4))
+    """How many of the top candidates are worth a look for `num_clips` slots.
+
+    Twice the slots up to 24, so ten clips get twenty looks as they always
+    did. Past that, a few more than the slots: a 30-clip run must at least
+    look at every clip it will cut, but doubling it would spend sixty frames'
+    worth of a vision quota on moments that mostly will not be chosen.
+    """
+    return min(max(24, num_clips + 4), max(num_clips * 2, num_clips + 4))

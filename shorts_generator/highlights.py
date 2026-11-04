@@ -684,7 +684,10 @@ def call_highlight_api(
     # doesn't have to generate a huge JSON payload (which times out gpt-5-mini).
     target = max(num_clips * 2, 5)
     natural_max = max(2 if is_chunk else 3, int(duration / 90))
-    min_clips = min(target, natural_max, 8)
+    # Eight a request is plenty for ten clips. A run asking for more than ten
+    # needs more candidates out of each chunk, or a one-hour video could never
+    # fill twenty slots however good it was.
+    min_clips = min(target, natural_max, 8 if num_clips <= 10 else 15)
     system = HIGHLIGHT_SYSTEM_PROMPT.format(
         virality_criteria=CRITERIA_BY_KIND.get(content_info.get("kind"), VIRALITY_CRITERIA),
         cold_open_rules=COLD_OPEN_RULES,
