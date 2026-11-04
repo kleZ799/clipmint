@@ -407,6 +407,11 @@ _KIND_WORDS = [
     (r"\bvlogs?\b|\birl\b|\bday in (?:the|my) life\b|\btravel video\b", content_kinds.VLOG),
     (r"\bpodcasts?\b|\binterviews?\b|\bdebate\b", content_kinds.PODCAST),
     (r"\btutorials?\b|\bhow[\s-]?to\b|\bexplainer\b|\blecture\b", content_kinds.TUTORIAL),
+    # Names of sports only. "fight" and "match" turn up in ordinary prompts
+    # ("the bit where they fight", "match the source quality").
+    (r"\bsports?\b|\bufc\b|\bmma\b|\bboxing\b|\bfootball\b"
+     r"|\bsoccer\b|\bbasketball\b|\bnba\b|\bnfl\b|\bcricket\b|\btennis\b|\bf1\b"
+     r"|\bwrestling\b|\bwwe\b", content_kinds.SPORTS),
 ]
 
 _CORNER_WORDS = [
@@ -753,7 +758,7 @@ a choice they made somewhere else in the app.
 - "clip_seconds": [min, max] length of each clip in seconds, between 5 and 90.
   "30 sec" is about [25, 35]; "short ones" is about [15, 30]; "about a minute" is [50, 70]
 - "content_kind": what the SOURCE video is, only if they say so:
-  "stream" | "vlog" | "podcast" | "tutorial" | "other"
+  "stream" | "vlog" | "podcast" | "tutorial" | "sports" | "other"
 - "aspect_ratio": "9:16" | "4:5" | "1:1" | "16:9"
 - "layout": "stacked" (webcam panel on top, gameplay below) | "facetrack" (one
   frame, crop follows the speaker's face) | "center" (plain centre crop, no webcam)

@@ -60,6 +60,8 @@ PART_WEIGHTS = {
     content_kinds.VLOG: (0.40, 0.30, 0.30),
     content_kinds.PODCAST: (0.50, 0.10, 0.40),
     content_kinds.TUTORIAL: (0.40, 0.25, 0.35),
+    # The payoff is the whole sports clip: a knockout either shows or it doesn't.
+    content_kinds.SPORTS: (0.30, 0.50, 0.20),
     content_kinds.OTHER: (0.40, 0.30, 0.30),
 }
 

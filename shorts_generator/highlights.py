@@ -42,6 +42,7 @@ Choose one:
 - tutorial: showing how to do something, step by step
 - lecture: teaching or explaining a topic
 - commentary: one person reacting to or discussing something they are watching or reading
+- sports: a match, fight, race or game broadcast (UFC, boxing, football, basketball...), its highlights, or a watch-along of one
 - other: none of these
 The transcript samples come from the start, middle and end of the video, and the
 listing is the video's own title and description. Game audio (narration, character
@@ -195,6 +196,36 @@ Hard rules for tutorials:
   without saying what it achieves
 """
 
+SPORTS_VIRALITY_CRITERIA = """
+This transcript is SPORTS: a fight, match, race or game, as a broadcast with
+commentators, a highlights package, or someone watching along. What is said is
+mostly commentary on what is happening, and the crowd is part of the audio.
+
+A sports Short is the PLAY ITSELF. People watch it for the knockout, the goal,
+the buzzer-beater, not for talk about it, so the commentary is a clue to where
+the moment is, not the moment. The commentator's voice jumping ("OH! HE'S
+DOWN!", "WHAT A GOAL"), the crowd erupting and a sudden run of short shouted
+lines are where the action is.
+
+Virality signals to prioritize (ranked by impact):
+1. THE DECISIVE MOMENT - a knockout, submission, goal, game-winner, crash or
+   upset, with the second or two of build-up that makes it land
+2. THE TURNAROUND - a comeback, a reversal, the underdog taking over
+3. SKILL NOBODY EXPECTED - a move, save or finish that looks impossible
+4. RAW EMOTION AFTER - a celebration, a breakdown, a heated reaction, words
+   between opponents, a walk-off
+5. CONTROVERSY - a disputed call, a late hit, a referee moment people argue about
+6. THE CALL - a commentator line that is famous or quotable on its own
+
+Hard rules for sports:
+- The action must be IN the clip. Commentary about something the clip does
+  not show is worth nothing to a stranger, however excited it sounds
+- Keep the build-up short: the rally or exchange that leads to the moment,
+  never the minutes before it
+- SKIP stoppages, replays of something already in the clip, ad breaks, studio
+  analysis, pre-fight hype and anthem or walkout filler
+"""
+
 COLD_OPEN_RULES = """
 HOW A CLIP MUST START - this decides whether it gets shown to anyone at all:
 
@@ -247,6 +278,7 @@ CRITERIA_BY_KIND = {
     content_kinds.VLOG: VLOG_VIRALITY_CRITERIA,
     content_kinds.PODCAST: PODCAST_VIRALITY_CRITERIA,
     content_kinds.TUTORIAL: TUTORIAL_VIRALITY_CRITERIA,
+    content_kinds.SPORTS: SPORTS_VIRALITY_CRITERIA,
     content_kinds.OTHER: VIRALITY_CRITERIA,
 }
 

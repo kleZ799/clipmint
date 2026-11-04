@@ -11,10 +11,12 @@ So the ranker is told which it is looking at. The user can say so (the picker,
 or "this is a vlog" in the prompt); otherwise it is worked out from the
 transcript and the video's own listing.
 
-Five kinds on purpose. The content-type detector distinguishes more than this
+Six kinds on purpose. The content-type detector distinguishes more than this
 (interview from podcast, lecture from tutorial), but those pairs are good for
-the same reasons, and a separate prompt per label would be five copies of one
-rule book drifting apart.
+the same reasons, and a separate prompt per label would be copies of one rule
+book drifting apart. Sports earned its own after a tester clipping UFC asked:
+the moment there is the action itself, and a ranker told to look for someone
+talking keeps choosing the commentator's chat over the knockout.
 """
 from typing import Optional
 
@@ -23,9 +25,10 @@ STREAM = "stream"
 VLOG = "vlog"
 PODCAST = "podcast"
 TUTORIAL = "tutorial"
+SPORTS = "sports"
 OTHER = "other"
 
-KINDS = (STREAM, VLOG, PODCAST, TUTORIAL, OTHER)
+KINDS = (STREAM, VLOG, PODCAST, TUTORIAL, SPORTS, OTHER)
 
 # How each kind is named to a person: in the layout summary, and in the log.
 LABELS = {
@@ -33,6 +36,7 @@ LABELS = {
     VLOG: "vlog",
     PODCAST: "podcast or interview",
     TUTORIAL: "tutorial",
+    SPORTS: "sports or fight",
     OTHER: "other video",
 }
 
@@ -52,6 +56,9 @@ _FROM_CONTENT_TYPE = {
     "tutorial": TUTORIAL,
     "lecture": TUTORIAL,
     "explainer": TUTORIAL,
+    "sports": SPORTS,
+    "fight": SPORTS,
+    "match": SPORTS,
 }
 
 
