@@ -1191,8 +1191,8 @@ same message.
 
 ### Provider fallback, and the ceiling on retrying
 
-Gemini → Groq → OpenAI. A **fallback chain**, with usage accounting to know when
-to switch.
+Gemini (each spare key in turn) → Groq → OpenRouter → OpenAI. A **fallback
+chain**, with usage accounting to know when to switch.
 
 The idea worth carrying away: **retrying has a ceiling.** Exponential backoff
 handles a *blip*. It does nothing for a provider that is genuinely saturated —
@@ -1218,7 +1218,15 @@ Two implementation details worth being able to defend:
 - **The recursion terminates.** `_next_provider()` returns `None` when no
   configured provider remains, which is what stops the dispatch calling itself
   forever. Any fallback that re-enters its own entry point needs a provable
-  base case, and "the list ran out" is that case.
+  base case, and "the list ran out" is that case. Once two free tiers could
+  each fail over to the other, "the list ran out" was no longer enough: the
+  run now keeps a set of providers it has given up on and never returns to
+  one, which turns a possible cycle back into a walk down a finite list.
+- **Spare keys are capacity, not a different provider.** Several Gemini keys
+  share Google's *capacity*, so they do nothing for a 503, but each project has
+  its own *quota*, so they do everything for a per-day 429. The same
+  classification as below decides which response applies: a spent key moves to
+  the next key, a busy Google moves to another company.
 
 ### Failing over on the right signal
 
@@ -1549,6 +1557,17 @@ and a gate on what starts next. Either alone leaves half the work going, and
 the race between them — a child started in the instant after the gate was
 checked — has to be closed deliberately rather than assumed away.
 
+**Cancellation** is the same split again (v1.29.0's Stop). The pre-emptive half
+kills the registered children and refuses to start more; the cooperative half
+is a check at a point every stage already passes through, the progress update,
+which raises a dedicated `Cancelled` exception on the worker thread. Two rules
+make it safe: the exception is never retried (a retry layer that treats "stop"
+as a transient failure undoes the stop), and anything that surfaces after the
+stop was asked for is recorded as a stop, since a stage may wrap the exception
+in its own. The result is cooperative cancellation's usual trade: no work is
+torn mid-write, at the cost of ending at the next checkpoint rather than at
+once.
+
 And suspension only reaches *processes*. Work done inside the app itself — here
 Whisper's transcription and the face-tracking pass — has no process to suspend,
 so it needs **cooperative** pausing instead: a checkpoint in its loop that
@@ -1774,6 +1793,17 @@ app itself sends nothing, which keeps the privacy policy's promise intact.
 **Where it lands in the code.** `feedbackCountRun()` / `feedbackMaybeAsk()` in
 `webapp/static/app.js`; `feedback_url()` and `POST /api/open-feedback` in
 `webapp/server.py`; the issue templates in `.github/ISSUE_TEMPLATE/`.
+
+**What the first answers did.** Four came in within a day, and v1.29.0 is all
+of them. Two lessons worth keeping. *Small samples still find bugs*: one
+answer each was enough to find that the webcam was only ever searched for
+bottom-left and that the cold open read as a glitch, because a bug report is an
+existence proof, not an estimate. Preferences are the opposite: "more
+providers" and "several channels" each came from two of four, which says they
+are worth building, not how many people want them. And *a stated need is
+sometimes a missing control*: "I wanted a title but the prompt wouldn't allow
+it" was not asking for better titles, it was asking for a switch that did not
+exist.
 
 ## 13. CS: internationalisation
 
