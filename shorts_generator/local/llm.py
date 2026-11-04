@@ -1,16 +1,20 @@
-"""Local LLM backend — OpenAI or Gemini, selected by LLM_PROVIDER."""
+"""Local LLM backend — Gemini, Groq, OpenRouter or OpenAI, selected by LLM_PROVIDER."""
 import re
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from .. import usage
 from ..config import (
     current_model,
     current_provider,
+    gemini_keys,
     require_gemini_key,
     require_groq_key,
     require_openai_key,
+    require_openrouter_key,
 )
+
+PROVIDERS = ("gemini", "groq", "openrouter", "openai")
 
 # Models whose name says they are not for ranking text.
 _NON_TEXT = ("image", "tts", "embed", "robotics", "computer-use", "transcribe",
@@ -148,6 +152,48 @@ def call_groq_llm(prompt: str) -> str:
     return response.choices[0].message.content or ""
 
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# OpenRouter shows these on its own dashboard, so a user can see which of
+# their requests came from this app.
+_OPENROUTER_HEADERS = {"X-Title": "ClipMint",
+                       "HTTP-Referer": "https://klez799.github.io/clipmint/"}
+
+
+def _openrouter_client():
+    from openai import OpenAI  # type: ignore
+    return OpenAI(api_key=require_openrouter_key(), base_url=OPENROUTER_BASE_URL,
+                  default_headers=_OPENROUTER_HEADERS)
+
+
+def call_openrouter_llm(prompt: str) -> str:
+    """OpenRouter backend: one key in front of models from every lab.
+
+    Same Chat Completions API as OpenAI and Groq, so the same client. No
+    response_format here: the free router hands the request to whichever free
+    model is up, and not all of them accept a JSON mode. Every caller already
+    pulls the JSON object out of plain text, as it does for OpenAI.
+    """
+    try:
+        import openai  # noqa: F401  # type: ignore
+    except ImportError as e:
+        raise RuntimeError(
+            "openai is required to talk to OpenRouter (it speaks the same API). "
+            "Install it with:\n    pip install -r requirements-local.txt"
+        ) from e
+
+    model = current_model("openrouter")
+    response = _openrouter_client().chat.completions.create(
+        model=model,
+        temperature=0.2,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    usage.record("openrouter", model)
+    text = response.choices[0].message.content or ""
+    if not text.strip():
+        raise RuntimeError(f"OpenRouter ({model}) returned no text")
+    return text
+
+
 def _is_daily_quota(msg: str) -> bool:
     """Tell a per-day cap apart from a per-minute one.
 
@@ -176,7 +222,57 @@ def call_gemini_llm(prompt: str, contents: Optional[list] = None) -> str:
         ) from e
 
     model = current_model("gemini")
-    client = genai.Client(api_key=require_gemini_key())
+    keys = gemini_keys() or [require_gemini_key()]
+    while True:
+        index = _first_live_key(keys, model)
+        try:
+            return _call_gemini_with(genai.Client(api_key=keys[index]), model,
+                                     prompt, contents)
+        except _KeySpent as spent:
+            _spent_keys.add(_key_mark(keys[index], model))
+            if _first_live_key(keys, model, strict=True) is None:
+                if spent.daily:
+                    usage.mark_exhausted("gemini", model)
+                    raise DailyQuotaExceeded(
+                        f"Gemini's free-tier daily quota for {model} is used up"
+                        + (f" on all {len(keys)} keys" if len(keys) > 1 else "")
+                        + ". It resets at midnight US Pacific."
+                    ) from spent.__cause__
+                raise spent.__cause__
+            nxt = _first_live_key(keys, model)
+            print(f"[llm] Gemini key {index + 1} of {len(keys)} {spent.why} — "
+                  f"trying key {nxt + 1}", flush=True)
+
+
+# Extra keys are spares for the main one. A key that is spent for today, or
+# that Google refuses outright, is passed over for the rest of the day; the
+# mark carries the day so a run left open overnight starts on key 1 again.
+_spent_keys: Set[str] = set()
+
+
+def _key_mark(key: str, model: str) -> str:
+    return f"{usage.quota_day()}|{model}|{key[-8:]}"
+
+
+def _first_live_key(keys: List[str], model: str, strict: bool = False) -> Optional[int]:
+    """The first key not passed over today. With nothing left, the last key
+    (strict=False, so a call still gets made and reports the real error) or
+    None (strict=True, so the caller knows to stop)."""
+    for i, k in enumerate(keys):
+        if _key_mark(k, model) not in _spent_keys:
+            return i
+    return None if strict else len(keys) - 1
+
+
+class _KeySpent(Exception):
+    """This key cannot be used again today; another one might."""
+
+    def __init__(self, why: str, daily: bool):
+        super().__init__(why)
+        self.why, self.daily = why, daily
+
+
+def _call_gemini_with(client, model: str, prompt: str, contents: Optional[list]) -> str:
     # Gemini 3.x spends part of the output budget on internal reasoning before
     # emitting any JSON, so 8192 truncates long-chunk responses mid-object.
     config = {
@@ -212,17 +308,16 @@ def call_gemini_llm(prompt: str, contents: Optional[list] = None) -> str:
             msg = str(e)
 
             if _is_daily_quota(msg):
-                usage.mark_exhausted("gemini", model)
-                raise DailyQuotaExceeded(
-                    f"Gemini's free-tier daily quota for {model} is used up. "
-                    f"It resets at midnight US Pacific."
-                ) from e
+                raise _KeySpent("has used today's free quota", daily=True) from e
 
-            permanent = any(t in msg for t in (
-                "API_KEY_INVALID", "API key not valid", "PERMISSION_DENIED",
-                "UNAUTHENTICATED", "401", "403",
-                "INVALID_ARGUMENT", "NOT_FOUND", "404",
-            ))
+            # A refused key is that key's problem, so another key may work.
+            # A bad request or a missing model would fail on every key alike.
+            if any(t in msg for t in ("API_KEY_INVALID", "API key not valid",
+                                      "PERMISSION_DENIED", "UNAUTHENTICATED",
+                                      "401", "403")):
+                raise _KeySpent("was refused by Google", daily=False) from e
+
+            permanent = any(t in msg for t in ("INVALID_ARGUMENT", "NOT_FOUND", "404"))
             if permanent or attempt == attempts - 1:
                 raise
 
@@ -259,6 +354,7 @@ def call_gemini_llm(prompt: str, contents: Optional[list] = None) -> str:
 # Once a run has switched providers there is no point asking the spent one
 # again on every remaining chunk, so the choice sticks for the process.
 _fallback_provider: Optional[str] = None
+_given_up: Set[str] = set()
 
 
 def _openai_is_configured() -> bool:
@@ -275,11 +371,20 @@ def _groq_is_configured() -> bool:
         return False
 
 
-# Who to try when the preferred provider gives up, in order. Groq before
-# OpenAI because Groq's free tier costs nothing and OpenAI's does not exist:
-# falling back should not quietly start spending money.
+def _openrouter_is_configured() -> bool:
+    try:
+        return bool(require_openrouter_key())
+    except RuntimeError:
+        return False
+
+
+# Who to try when the preferred provider gives up, in order. The free ones
+# before OpenAI, because OpenAI has no free tier: falling back should not
+# quietly start spending money. OpenRouter after Groq because its default is
+# the free router, which is slower and less predictable than Groq's own model.
 _LADDER = (
     ("groq", _groq_is_configured),
+    ("openrouter", _openrouter_is_configured),
     ("openai", _openai_is_configured),
 )
 
@@ -293,8 +398,11 @@ def _switch_to(provider: str, why: str) -> None:
 
 def _next_provider(why: str) -> Optional[str]:
     """Move to the first configured fallback, or None if there is none."""
+    # Never back to one this run already gave up on, or two failing free
+    # tiers would hand the run back and forth for ever.
+    _given_up.add(_fallback_provider or current_provider())
     for name, configured in _LADDER:
-        if configured():
+        if name not in _given_up and configured():
             _switch_to(name, why)
             return name
     return None
@@ -308,7 +416,9 @@ def _switch_to_openai(why: str) -> None:
 # Groq's text model cannot see. This one can, and takes at most five images
 # per request, which is why the vision batch size asks who it is talking to.
 GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-_IMAGES_PER_REQUEST = {"gemini": 20, "openai": 20, "groq": 5}
+# OpenRouter's limit is whichever model the request lands on; five is what the
+# smallest of the free vision models take.
+_IMAGES_PER_REQUEST = {"gemini": 20, "openai": 20, "groq": 5, "openrouter": 5}
 
 
 def _as_gemini_parts(parts: list) -> list:
@@ -333,6 +443,8 @@ def _openai_compatible_vision(parts: list, provider: str) -> str:
     from openai import OpenAI  # type: ignore
     if provider == "groq":
         client, model = OpenAI(api_key=require_groq_key(), base_url=GROQ_BASE_URL), GROQ_VISION_MODEL
+    elif provider == "openrouter":
+        client, model = _openrouter_client(), current_model("openrouter")
     else:
         client, model = OpenAI(api_key=require_openai_key()), current_model("openai")
     response = client.chat.completions.create(
@@ -347,9 +459,21 @@ def _openai_compatible_vision(parts: list, provider: str) -> str:
 
 def _gemini_is_configured() -> bool:
     try:
-        return bool(require_gemini_key()) and not usage.is_exhausted("gemini", current_model("gemini"))
+        return bool(require_gemini_key()) and not _gemini_spent_today()
     except RuntimeError:
         return False
+
+
+def _gemini_spent_today() -> bool:
+    """Whether today's Gemini quota is known to be gone on every key.
+
+    The ledger's mark is per model, not per key. With spare keys it may have
+    been written before a spare was added, so trust it only with one key; with
+    several, a spent key answers its 429 at once and the next one is tried.
+    """
+    if not usage.is_exhausted("gemini", current_model("gemini")):
+        return False
+    return len(gemini_keys()) <= 1
 
 
 def vision_images_per_request() -> int:
@@ -367,9 +491,9 @@ def call_vision_llm(parts: list) -> str:
     """
     images = sum(1 for p in parts if not isinstance(p, str))
     first = _fallback_provider or current_provider()
-    order = [first] + [p for p in ("gemini", "openai", "groq") if p != first]
+    order = [first] + [p for p in ("gemini", "openai", "groq", "openrouter") if p != first]
     configured = {"gemini": _gemini_is_configured, "openai": _openai_is_configured,
-                  "groq": _groq_is_configured}
+                  "groq": _groq_is_configured, "openrouter": _openrouter_is_configured}
     last: Optional[Exception] = None
     for name in order:
         if not configured.get(name, lambda: False)():
@@ -391,6 +515,7 @@ def reset_fallback() -> None:
     """Forget a previous switch, so a new run re-checks the preferred provider."""
     global _fallback_provider
     _fallback_provider = None
+    _given_up.clear()
 
 
 def call_local_llm(prompt: str) -> str:
@@ -415,14 +540,23 @@ def call_local_llm(prompt: str) -> str:
 
     if provider == "openai":
         return call_openai_llm(prompt)
-    if provider == "groq":
-        return call_groq_llm(prompt)
+    if provider in ("groq", "openrouter"):
+        call = call_groq_llm if provider == "groq" else call_openrouter_llm
+        try:
+            return call(prompt)
+        except Exception as e:
+            # The free tiers are the likeliest to be busy or rate limited, and
+            # a run that has paid for a transcription should not end on that.
+            if not _next_provider(f"{provider} failed ({str(e).splitlines()[0][:60]})"):
+                raise
+            return call_local_llm(prompt)
     if provider != "gemini":
         raise RuntimeError(
-            f"Unknown LLM_PROVIDER={provider!r}. Use 'gemini', 'groq' or 'openai'."
+            f"Unknown LLM_PROVIDER={provider!r}. Use 'gemini', 'groq', "
+            f"'openrouter' or 'openai'."
         )
 
-    if usage.is_exhausted("gemini", current_model("gemini")):
+    if _gemini_spent_today():
         if _next_provider("today's Gemini quota is already spent"):
             return call_local_llm(prompt)
         raise DailyQuotaExceeded(

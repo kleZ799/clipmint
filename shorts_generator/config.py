@@ -59,6 +59,18 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 # thing no amount of retrying against Google can achieve.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+# OpenRouter is one key in front of hundreds of models from every lab, some of
+# them free. "openrouter/free" is OpenRouter's own router across the free ones,
+# so the default never bills anyone; any model ID from openrouter.ai/models
+# works in its place, paid ones spending the user's OpenRouter credit.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+
+# More Gemini keys, one per line or comma-separated, tried in order once the
+# main key's day is spent. Each Google project has its own free allowance, so
+# a second key is a second day's worth of runs.
+GEMINI_EXTRA_KEYS = os.getenv("GEMINI_EXTRA_KEYS", "")
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
 LOCAL_WHISPER_MODEL = os.getenv("LOCAL_WHISPER_MODEL", "base")
 LOCAL_WHISPER_DEVICE = os.getenv("LOCAL_WHISPER_DEVICE", "auto")  # auto / cpu / cuda
@@ -119,6 +131,8 @@ def current_model(provider: str) -> str:
         return user_config.get("OPENAI_MODEL", OPENAI_MODEL)
     if provider == "groq":
         return user_config.get("GROQ_MODEL", GROQ_MODEL)
+    if provider == "openrouter":
+        return user_config.get("OPENROUTER_MODEL", OPENROUTER_MODEL)
     return user_config.get("GEMINI_MODEL", GEMINI_MODEL)
 
 
@@ -166,6 +180,17 @@ def require_groq_key() -> str:
     )
 
 
+def require_openrouter_key() -> str:
+    from . import user_config
+    key = user_config.get("OPENROUTER_API_KEY", OPENROUTER_API_KEY)
+    if key:
+        return key
+    raise RuntimeError(
+        "OPENROUTER_API_KEY is not set. Get one at https://openrouter.ai/keys "
+        "— the free models need no credit." + _where_we_looked("OPENROUTER_API_KEY")
+    )
+
+
 def require_gemini_key() -> str:
     from . import user_config
     key = user_config.get("GEMINI_API_KEY", GEMINI_API_KEY)
@@ -175,3 +200,23 @@ def require_gemini_key() -> str:
         "GEMINI_API_KEY is not set. Local mode needs a Gemini key when "
         "LLM_PROVIDER=gemini." + _where_we_looked("GEMINI_API_KEY")
     )
+
+
+def gemini_keys() -> list:
+    """Every Gemini key to try, the main one first, without repeats.
+
+    Empty when there is no main key: the extras are spares for it, not a
+    replacement, so they never stand in for setting one up.
+    """
+    from . import user_config
+    import re
+
+    main = user_config.get("GEMINI_API_KEY", GEMINI_API_KEY).strip()
+    if not main:
+        return []
+    keys = [main]
+    extra = user_config.get("GEMINI_EXTRA_KEYS", GEMINI_EXTRA_KEYS) or ""
+    for k in re.split(r"[\s,;]+", extra):
+        if k and k not in keys:
+            keys.append(k)
+    return keys

@@ -213,6 +213,16 @@ GROQ_MODEL_OPTIONS = [
     {"value": "openai/gpt-oss-20b", "note": "20B — fastest, weakest ranking"},
 ]
 
+# OpenRouter's free line-up changes month to month, so the first entry is its
+# own router across whichever free models are up today. Any model ID from
+# openrouter.ai/models can be typed in instead, paid ones included.
+OPENROUTER_MODEL_OPTIONS = [
+    {"value": "openrouter/free", "note": "picks a free model for you, the default"},
+    {"value": "google/gemma-4-31b-it:free", "note": "Google's open model, can see images"},
+    {"value": "nvidia/nemotron-3-ultra-550b-a55b:free", "note": "the biggest free model, text only"},
+    {"value": "openrouter/auto", "note": "paid, the best model for each request"},
+]
+
 
 @app.get("/api/settings")
 async def get_settings() -> dict:
@@ -224,8 +234,11 @@ async def get_settings() -> dict:
     from shorts_generator import usage, user_config
     from shorts_generator.config import current_model, current_provider
 
+    from shorts_generator.config import gemini_keys
+
     provider = current_provider()
-    from_env = bool(os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY"))
+    from_env = bool(os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+                    or os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
     return {
         "has_key": user_config.has_llm_key(),
         "provider": provider,
@@ -238,6 +251,7 @@ async def get_settings() -> dict:
         "keys": {
             "gemini": bool(user_config.get("GEMINI_API_KEY")),
             "groq": bool(user_config.get("GROQ_API_KEY")),
+            "openrouter": bool(user_config.get("OPENROUTER_API_KEY")),
             "openai": bool(user_config.get("OPENAI_API_KEY")),
             # Not a model: the stock-footage library B-roll is drawn from.
             "pexels": bool(user_config.get("PEXELS_API_KEY")),
@@ -256,9 +270,11 @@ async def get_settings() -> dict:
         # so the choice is made with the number in view.
         "gemini_models": _gemini_model_options(),
         "groq_models": GROQ_MODEL_OPTIONS,
-        "model_pinned": bool(os.getenv("GEMINI_MODEL", "").strip())
-        if provider == "gemini" else bool(os.getenv("GROQ_MODEL", "").strip())
-        if provider == "groq" else bool(os.getenv("OPENAI_MODEL", "").strip()),
+        "openrouter_models": OPENROUTER_MODEL_OPTIONS,
+        "model_pinned": bool(os.getenv(f"{provider.upper()}_MODEL", "").strip()),
+        # Spare Gemini keys, counted rather than shown: a key is a secret.
+        "gemini_spare_keys": max(0, len(gemini_keys()) - 1),
+        "gemini_spares_pinned": bool(os.getenv("GEMINI_EXTRA_KEYS", "").strip()),
     }
 
 
@@ -274,8 +290,14 @@ async def get_usage() -> dict:
     provider = current_provider()
     snap["provider"] = provider
     snap["model"] = current_model(provider)
-    # Whether a spent Gemini day would actually be survivable.
-    snap["fallback_ready"] = bool(user_config.get("OPENAI_API_KEY"))
+    # Whether a spent Gemini day would actually be survivable, and on what:
+    # the first configured provider in the order the fallback ladder tries.
+    fallback = next((name for name, key in (
+        ("Groq", "GROQ_API_KEY"), ("OpenRouter", "OPENROUTER_API_KEY"),
+        ("OpenAI", "OPENAI_API_KEY"),
+    ) if name.lower() != provider and user_config.get(key)), None)
+    snap["fallback_ready"] = bool(fallback)
+    snap["fallback_to"] = fallback
 
     # A provider that is set up but unused today still has a budget worth
     # showing — the whole point of a meter is to read it *before* spending.
@@ -300,9 +322,10 @@ async def set_settings(req: SettingsRequest) -> dict:
     # the "gemini or else openai" shape silently files Groq's key under
     # OpenAI's name, which is the kind of bug that only shows up as a
     # confusing auth failure much later.
-    prefixes = {"gemini": "GEMINI", "openai": "OPENAI", "groq": "GROQ"}
+    prefixes = {"gemini": "GEMINI", "openai": "OPENAI", "groq": "GROQ",
+                "openrouter": "OPENROUTER"}
     if provider not in prefixes:
-        raise HTTPException(400, "Provider must be 'gemini', 'groq' or 'openai'.")
+        raise HTTPException(400, "Provider must be 'gemini', 'groq', 'openrouter' or 'openai'.")
     prefix = prefixes[provider]
 
     key = (req.api_key or "").strip()
@@ -336,6 +359,32 @@ async def set_settings(req: SettingsRequest) -> dict:
     path = user_config.save(values)
     return {"saved": True, "config_path": str(path),
             "has_key": user_config.has_llm_key()}
+
+
+class GeminiSparesRequest(BaseModel):
+    # One key per line (or comma-separated). Empty removes them all.
+    keys: str = ""
+
+
+@app.post("/api/settings/gemini-spares")
+async def set_gemini_spares(req: GeminiSparesRequest) -> dict:
+    """Spare Gemini keys, tried in order when the main key's day runs out.
+
+    Replaces the whole list rather than adding to it: the keys are never sent
+    back to the page, so there is no list there to edit one entry of.
+    """
+    from shorts_generator import user_config
+    from shorts_generator.config import gemini_keys
+
+    keys = [k for k in re.split(r"[\s,;]+", req.keys or "") if k]
+    bad = [k for k in keys if not re.fullmatch(r"[A-Za-z0-9_\-]{20,120}", k)]
+    if bad:
+        raise HTTPException(400, "That doesn't look like a list of Gemini keys. Paste one "
+                                 "key per line, each from aistudio.google.com/apikey.")
+    if keys and not user_config.get("GEMINI_API_KEY"):
+        raise HTTPException(400, "Save a main Gemini key first. These are spares for it.")
+    user_config.save({"GEMINI_EXTRA_KEYS": "\n".join(dict.fromkeys(keys))})
+    return {"saved": True, "spares": max(0, len(gemini_keys()) - 1)}
 
 
 @app.get("/api/fonts/{name}")

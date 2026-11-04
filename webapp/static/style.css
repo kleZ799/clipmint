@@ -2553,6 +2553,10 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 }
 .linkish:hover { text-decoration: underline; }
 .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+/* A text box with its button beside it, the box taking the room. */
+.row-in { display: flex; gap: 8px; align-items: center; }
+.row-in input { flex: 1; min-width: 0; }
+.row-in .btn { flex: none; }
 
 /* The caption sample on the live preview, where the real one will sit. */
 .pv-cap {

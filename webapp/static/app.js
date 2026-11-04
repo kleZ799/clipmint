@@ -315,40 +315,91 @@ function drawModels(d) {
   // Groq gets a picker too. Its models differ by size rather than by daily
   // allowance, so they carry a written note instead of a number — hiding the
   // control entirely, as this used to, left no way to choose one at all.
-  const groq = d.provider === "groq";
-  const models = (groq ? d.groq_models : d.gemini_models) || [];
-  if (!["gemini", "groq"].includes(d.provider) || !models.length) {
+  // OpenRouter's are written notes too, and it also takes any model ID typed
+  // in, since its catalogue is hundreds long and changes every month.
+  const noted = d.provider === "groq" || d.provider === "openrouter";
+  const models = { gemini: d.gemini_models, groq: d.groq_models,
+                   openrouter: d.openrouter_models }[d.provider] || [];
+  drawSpares(d);
+  $("modelOtherFld").hidden = d.provider !== "openrouter" || !!d.model_pinned;
+  if (!models.length) {
     fld.hidden = true; hint.textContent = ""; return;
   }
 
   fld.hidden = false;
+  $("modelLabel").textContent = I18N.t({
+    gemini: "Gemini model — free requests per day differ a lot",
+    groq: "Groq model",
+    openrouter: "OpenRouter model",
+  }[d.provider]);
   // A model we have no confirmed number for says so, rather than showing a
   // guess with the same confidence as a checked one.
   sel.innerHTML = models.map((m) => {
-    const note = groq ? m.note
-                      : (m.daily_free ? `${m.daily_free}/day free` : "limit unknown");
+    const note = noted ? m.note
+                       : (m.daily_free ? `${m.daily_free}/day free` : "limit unknown");
     return `<option value="${esc(m.value)}">${esc(m.value)} — ${esc(note)}</option>`;
   }).join("");
   if (models.some((m) => m.value === d.model)) sel.value = d.model;
   else sel.insertAdjacentHTML("afterbegin",
-    `<option value="${esc(d.model)}" selected>${esc(d.model)} — limit unknown</option>`);
+    `<option value="${esc(d.model)}" selected>${esc(d.model)} — ${noted ? "your choice" : "limit unknown"}</option>`);
 
   if (d.model_pinned) {
     sel.disabled = true;
-    hint.textContent = `${groq ? "GROQ_MODEL" : "GEMINI_MODEL"} in your `
+    hint.textContent = `${d.provider.toUpperCase()}_MODEL in your `
       + "environment is deciding this one.";
     return;
   }
   sel.disabled = false;
-  hint.textContent = groq
-    ? "Groq's free tier is the same for every model here — 30 a minute, 1000 a "
+  hint.textContent = {
+    groq: "Groq's free tier is the same for every model here — 30 a minute, 1000 a "
       + "day, 8k tokens a minute — so this is a straight quality-for-speed "
-      + "trade, not an allowance one."
-    : "This list comes from your key, so retired models can't appear. "
+      + "trade, not an allowance one.",
+    openrouter: "Models ending in :free cost nothing, with a daily cap set by OpenRouter. "
+      + "Any other model is billed to your OpenRouter credit.",
+  }[d.provider] || ("This list comes from your key, so retired models can't appear. "
       + "Daily limits are the published free-tier numbers where known — the app "
-      + "trusts a real quota error over them.";
+      + "trusts a real quota error over them.");
   sel.onchange = () => saveModel(sel.value, d.provider);
 }
+
+$("modelOtherSave").onclick = () => {
+  const model = $("modelOther").value.trim();
+  if (!model) return;
+  $("modelOther").value = "";
+  saveModel(model, "openrouter");
+};
+
+// Spare Gemini keys. Never shown back -- only how many there are -- so saving
+// replaces the list, and an empty box with Save removes them.
+function drawSpares(d) {
+  const box = $("sparesBox");
+  box.hidden = d.provider !== "gemini" || !keysOnFile.gemini;
+  if (box.hidden) return;
+  const n = d.gemini_spare_keys || 0;
+  $("sparesKeys").disabled = $("sparesSave").disabled = !!d.gemini_spares_pinned;
+  $("sparesHint").textContent = d.gemini_spares_pinned
+    ? "GEMINI_EXTRA_KEYS in your environment is deciding these."
+    : n ? `${n} spare key${n === 1 ? "" : "s"} saved. Saving replaces them; save an empty box to remove them.`
+        : "Each Google project gets its own free daily allowance, so a key from a second project is a second day's worth of runs.";
+}
+
+$("sparesSave").onclick = async () => {
+  const msg = $("sparesMsg"), btn = $("sparesSave");
+  msg.innerHTML = "";
+  btn.disabled = true;
+  try {
+    const r = await api("/api/settings/gemini-spares",
+                        json("POST", { keys: $("sparesKeys").value }));
+    $("sparesKeys").value = "";
+    await checkSetup();
+    toast(r.spares ? `${r.spares} spare key${r.spares === 1 ? "" : "s"} saved.`
+                   : "Spare keys removed.");
+  } catch (e) {
+    msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 async function saveModel(model, provider) {
   const hint = $("modelHint");
@@ -373,11 +424,16 @@ async function saveModel(model, provider) {
 let keysOnFile = {};
 let providerPinned = false;
 
+const PROVIDER_NAMES = { gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter", openai: "OpenAI" };
+
 function drawSwitcher(active) {
-  const other = active === "gemini" ? "openai" : "gemini";
-  const label = other === "gemini" ? "Gemini" : "OpenAI";
+  // The first other provider that already has a key, in the order the
+  // fallback ladder tries them.
+  const other = ["gemini", "groq", "openrouter", "openai"]
+    .find((p) => p !== active && keysOnFile[p]);
+  const label = PROVIDER_NAMES[other] || "";
   const el = $("switcher");
-  if (!keysOnFile[other]) { el.hidden = true; return; }
+  if (!other) { el.hidden = true; return; }
   el.hidden = false;
 
   // An LLM_PROVIDER env var wins over the settings file, so saving here would
@@ -404,7 +460,7 @@ async function switchProvider(provider) {
     await api("/api/settings", json("POST", { provider }));
     await checkSetup();
     refreshUsage();
-    toast(`Now using ${provider === "gemini" ? "Gemini" : "OpenAI"}.`);
+    toast(`Now using ${PROVIDER_NAMES[provider] || provider}.`);
   } catch (e) {
     toast(e.message || "Could not switch provider.", true);
     btn.textContent = was;
@@ -452,7 +508,7 @@ function drawBudget(g, u) {
   if (g.exhausted) {
     el.classList.add("out");
     $("budgetText").textContent = u.fallback_ready
-      ? `Gemini spent for today — this run will continue on OpenAI`
+      ? `Gemini spent for today — this run will continue on ${u.fallback_to || "OpenAI"}`
       : `Gemini spent for today — back in ${fmtSpan(u.resets_in_seconds)}`;
   } else {
     if (frac >= 0.7) el.classList.add("low");
@@ -488,12 +544,13 @@ async function refreshUsage() {
 
     let hint;
     if (g && g.exhausted && u.fallback_ready) {
-      hint = "Gemini is out for today — runs will continue on OpenAI automatically.";
+      hint = `Gemini is out for today — runs will continue on ${u.fallback_to || "OpenAI"} automatically.`;
     } else if (g && g.exhausted) {
-      hint = "Gemini is out for today. Add an OpenAI key below to keep going, "
-           + "or come back after the reset — a part-finished run picks up where it stopped.";
+      hint = "Gemini is out for today. Add a spare Gemini key, or a free Groq or OpenRouter "
+           + "key, under Settings to keep going, or come back after the reset — a "
+           + "part-finished run picks up where it stopped.";
     } else if (u.fallback_ready) {
-      hint = "If Gemini runs out mid-run, OpenAI takes over automatically.";
+      hint = `If Gemini runs out mid-run, ${u.fallback_to || "OpenAI"} takes over automatically.`;
     } else {
       hint = "A long video costs roughly one request per 20 minutes, plus two.";
     }
@@ -507,6 +564,7 @@ async function refreshUsage() {
 const KEY_LINKS = {
   gemini: ["Get a free Gemini key →", "https://aistudio.google.com/apikey"],
   groq:   ["Get a free Groq key →",   "https://console.groq.com/keys"],
+  openrouter: ["Get an OpenRouter key →", "https://openrouter.ai/keys"],
   openai: ["Get an OpenAI key →",     "https://platform.openai.com/api-keys"],
 };
 

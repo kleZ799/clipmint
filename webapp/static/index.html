@@ -164,6 +164,7 @@ addEventListener("load", function () {
           <select id="setProvider">
             <option value="gemini" selected>Google Gemini &mdash; free tier</option>
             <option value="groq">Groq &mdash; free, no card</option>
+            <option value="openrouter">OpenRouter &mdash; free models, any lab</option>
             <option value="openai">OpenAI</option>
           </select>
         </label>
@@ -648,12 +649,20 @@ addEventListener("load", function () {
       <select id="setProvider2">
         <option value="gemini">Google Gemini &mdash; free tier</option>
         <option value="groq">Groq &mdash; free, no card</option>
+        <option value="openrouter">OpenRouter &mdash; free models, any lab</option>
         <option value="openai">OpenAI</option>
       </select>
     </label>
     <label class="fld" id="modelFld" hidden>
-      <span>Gemini model &mdash; free requests per day differ a lot</span>
+      <span id="modelLabel">Gemini model &mdash; free requests per day differ a lot</span>
       <select id="setModel"></select>
+    </label>
+    <label class="fld" id="modelOtherFld" hidden>
+      <span>Or any model ID from <a href="https://openrouter.ai/models" target="_blank" rel="noopener">openrouter.ai/models</a></span>
+      <div class="row-in">
+        <input type="text" id="modelOther" placeholder="e.g. deepseek/deepseek-chat:free" spellcheck="false">
+        <button class="btn ghost sm" id="modelOtherSave">Use it</button>
+      </div>
     </label>
     <p class="hint" id="modelHint"></p>
     <div class="switcher" id="switcher" hidden>
@@ -666,6 +675,15 @@ addEventListener("load", function () {
     </label>
     <button class="btn ghost" id="setSave2">Save key</button>
     <div id="setMsg2"></div>
+    <div id="sparesBox" hidden>
+      <label class="fld">
+        <span>Spare Gemini keys &mdash; one per line, used in turn when a key's free day runs out</span>
+        <textarea id="sparesKeys" rows="3" spellcheck="false" placeholder="A key from another Google account or project"></textarea>
+      </label>
+      <p class="hint" id="sparesHint"></p>
+      <button class="btn ghost" id="sparesSave">Save spare keys</button>
+      <div id="sparesMsg"></div>
+    </div>
   </div>
 
   <div class="d-sec">
