@@ -86,14 +86,14 @@ source too.
 **Can I turn a podcast into Shorts without uploading it anywhere?**
 Yes. ClipMint transcribes on your computer, and the video never leaves it unless
 you press Upload. The transcript text is sent to the AI provider you pick
-(Gemini, Groq or OpenAI) to rank the moments.
+(Gemini, Groq, OpenRouter or OpenAI) to rank the moments.
 
 **Does it work for Twitch streams and gaming videos?**
 Yes, from a downloaded file or a YouTube link. It finds the webcam overlay and
 stacks it over the gameplay, and on YouTube streams it reads the chat replay.
 
 **Does it need an API key?**
-A free Gemini or Groq key, which takes a minute and no card. It stays on your
+A free Gemini, Groq or OpenRouter key, which takes a minute and no card. It stays on your
 computer.
 
 **Who makes it?**
