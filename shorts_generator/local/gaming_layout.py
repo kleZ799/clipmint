@@ -143,6 +143,39 @@ def _faces(img) -> List[Tuple[float, float, float]]:
     return [(cx, cy, fw) for cx, cy, fw, _ in face_detect(img, min_fraction=0.02)]
 
 
+# "auto" means nobody said where the overlay is, so every corner is searched.
+# Streamers put the webcam wherever the game's own interface leaves room, and
+# a bottom-left default missed every overlay that was anywhere else.
+AUTO = "auto"
+CORNERS = ("bottom-left", "bottom-right", "top-left", "top-right")
+
+
+def _quadrant(cx: float, cy: float, w: int, h: int) -> str:
+    """The corner a point is nearest to."""
+    return ("top" if cy < h / 2 else "bottom") + "-" + ("left" if cx < w / 2 else "right")
+
+
+def _best_corner_cluster(faces, w: int, h: int) -> Tuple[List, str]:
+    """The streamer's face cluster from whichever corner it recurs in most.
+
+    Ties go to the cluster furthest from the middle of the frame: the corners
+    overlap, so a face near the centre lands in all four, and an overlay is the
+    one pushed out towards an edge.
+    """
+    best, best_key, best_corner = [], (0, 0.0), CORNERS[0]
+    for corner in CORNERS:
+        cluster = _recurring_face([f for f in faces if _in_corner(f[0], f[1], w, h, corner)])
+        if not cluster:
+            continue
+        cx = statistics.median(f[0] for f in cluster)
+        cy = statistics.median(f[1] for f in cluster)
+        off_centre = abs(cx - w / 2) / w + abs(cy - h / 2) / h
+        key = (len(cluster), off_centre)
+        if key > best_key:
+            best, best_key, best_corner = cluster, key, _quadrant(cx, cy, w, h)
+    return best, best_corner
+
+
 def _in_corner(cx: float, cy: float, w: int, h: int, corner: str) -> bool:
     ok_y = cy >= h * (1 - CORNER_REACH) if corner.startswith("bottom") else cy <= h * CORNER_REACH
     ok_x = cx <= w * CORNER_REACH if corner.endswith("left") else cx >= w * (1 - CORNER_REACH)
@@ -258,10 +291,13 @@ def _overlay_bounds(frames, cx: float, cy: float, fw: float) -> Dict[str, Option
 
 
 def locate_webcam(source_path: str, start: float, end: float,
-                  corner: str = "bottom-left",
+                  corner: str = AUTO,
                   face_context_multiple: float = FACE_CONTEXT_MULTIPLE,
                   panel_aspect: float = 4 / 3) -> Optional[Dict]:
     """Find the webcam overlay and a crop of it, framed on the streamer.
+
+    `corner` is where the user said the overlay is, or AUTO to search all
+    four; the result's "corner" says where it was actually found.
 
     Returns None when no face recurs anywhere near the corner, and
     {"full_frame": True, ...} when the recurring face is too large to be an
@@ -290,7 +326,11 @@ def locate_webcam(source_path: str, start: float, end: float,
         return {"full_frame": True, "detections": len(big),
                 "face_w": int(statistics.median(f[2] for f in big) * to_src)}
 
-    cluster = _recurring_face([f for f in faces if _in_corner(f[0], f[1], an_w, an_h, corner)])
+    if corner in CORNERS:
+        cluster = _recurring_face([f for f in faces if _in_corner(f[0], f[1], an_w, an_h, corner)])
+        found_in = corner
+    else:
+        cluster, found_in = _best_corner_cluster(faces, an_w, an_h)
     if len(cluster) < 2:
         return None
     cx = statistics.median(f[0] for f in cluster)
@@ -332,6 +372,7 @@ def locate_webcam(source_path: str, start: float, end: float,
         "detections": len(cluster),
         "samples": len(frames),
         "borders": found,
+        "corner": found_in,
         "full_frame": False,
     }
 
@@ -343,7 +384,7 @@ def render_stacked_clip(
     out_path: str,
     out_w: int = 1080,
     out_h: int = 1920,
-    corner: str = "bottom-left",
+    corner: str = AUTO,
     cam_panel_fraction: float = CAM_PANEL_FRACTION,
     face_context_multiple: float = FACE_CONTEXT_MULTIPLE,
     log_label: str = "",
@@ -390,8 +431,11 @@ def render_stacked_clip(
     game_crop_w, game_crop_h = framing.gameplay_window(src_w, src_h, out_w, out_h,
                                                        cam_panel_fraction)
     game_x = (src_w - game_crop_w) // 2
-    if cam and corner.endswith("left"):
+    side = (cam or {}).get("corner") or corner
+    if cam and side.endswith("left"):
         game_x = max(game_x, min(cam["x"] + cam["w"], src_w - game_crop_w))
+    elif cam and side.endswith("right"):
+        game_x = min(game_x, max(0, cam["x"] - game_crop_w))
     game_x -= game_x % 2
     if cam:
         game_x, _ = framing.place(frame, src_w, src_h, game_crop_w, game_crop_h,
@@ -440,7 +484,7 @@ def render_stacked_highlights(
     source_path: str,
     highlights: List[Dict],
     out_dir: Optional[str] = None,
-    corner: str = "bottom-left",
+    corner: str = AUTO,
     out_w: int = 1080,
     out_h: int = 1920,
     cam_panel_fraction: float = CAM_PANEL_FRACTION,

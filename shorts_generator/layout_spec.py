@@ -125,6 +125,8 @@ def _has_logo() -> bool:
     except Exception:
         return False
 CORNERS = ("bottom-left", "bottom-right", "top-left", "top-right")
+# No corner named: the renderer searches all four (gaming_layout.AUTO).
+AUTO_CORNER = "auto"
 
 
 @dataclass
@@ -133,7 +135,7 @@ class LayoutSpec:
 
     layout: str = "stacked"
     aspect_ratio: str = "9:16"
-    webcam_corner: str = "bottom-left"
+    webcam_corner: str = AUTO_CORNER
     cam_panel_fraction: float = 0.42
     face_zoom: float = 5.0
     # Ten is the ceiling and the default: one run should hand back a full
@@ -224,7 +226,7 @@ class LayoutSpec:
         if self.aspect_ratio not in ASPECT_PRESETS:
             self.aspect_ratio = "9:16"
         if self.webcam_corner not in CORNERS:
-            self.webcam_corner = "bottom-left"
+            self.webcam_corner = AUTO_CORNER
         # Below ~0.15 the webcam is unreadable; above ~0.75 there's no gameplay left.
         self.cam_panel_fraction = max(0.15, min(0.75, float(self.cam_panel_fraction)))
         # Below 2x the crop is inside the face; above 12x the webcam is a speck.
@@ -363,10 +365,11 @@ class LayoutSpec:
     def _describe_layout(self) -> str:
         if self.layout == "stacked":
             pct = round(self.cam_panel_fraction * 100)
-            where = self.webcam_corner.replace("-", " ")
+            where = ("whichever corner it is in" if self.webcam_corner == AUTO_CORNER
+                     else "the " + self.webcam_corner.replace("-", " "))
             return (
                 f"{self.aspect_ratio} · webcam on top at {pct}% height "
-                f"(overlay found in the {where}) · gameplay below"
+                f"(overlay looked for in {where}) · gameplay below"
             )
         if self.layout == "facetrack":
             return f"{self.aspect_ratio} · single frame, crop follows the face"
@@ -750,8 +753,9 @@ a choice they made somewhere else in the app.
 - "aspect_ratio": "9:16" | "4:5" | "1:1" | "16:9"
 - "layout": "stacked" (webcam panel on top, gameplay below) | "facetrack" (one
   frame, crop follows the speaker's face) | "center" (plain centre crop, no webcam)
-- "webcam_corner": where the webcam overlay sits in the ORIGINAL footage:
-  "bottom-left" | "bottom-right" | "top-left" | "top-right"
+- "webcam_corner": where the webcam overlay sits in the ORIGINAL footage, only
+  if they say where: "bottom-left" | "bottom-right" | "top-left" | "top-right"
+  (left out, the app searches every corner)
 - "cam_panel_fraction": 0.15-0.75, how much of the height the webcam panel gets
 - "face_zoom": 2.0-12.0, crop width as a multiple of face width (lower = tighter)
 - "quality": "best" | "1080" | "720"
