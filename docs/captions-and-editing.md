@@ -102,6 +102,17 @@ arrives, and it never repeats the title. When the clip opens on a replay of its
 loudest moment, the line goes over the replay too, so it is on screen from the
 first frame. Turning captions **Off** turns the hook line off with them.
 
+### A title across the top instead
+
+Since v1.29.0, ticking **Keep the clip's title across the top the whole time**
+under Render (or writing *"title at the top"*, *"add a title"* or *"title card"*
+in the prompt) puts the clip's **title** in that place instead, for the whole
+clip. Hashtags are left off, and a long title is cut on a word to two lines.
+This one shows with captions off too: you asked for it by name.
+
+The title is burned in when the clip is made. Rename a clip in Boost and the
+picture keeps the old one until you burn it in again with **Captions**.
+
 ---
 
 ## 2. Pause cuts and punch-ins
@@ -120,7 +131,9 @@ third of your speaking level all the way through. So these are kept:
 filler half the time and meaning the other half.
 
 The cold open, where the clip opens on its loudest moment, follows the cuts,
-so it still opens on the right second.
+so it still opens on the right second. Since v1.29.0 it runs 2.5 seconds and
+hands over to the start of the clip through a quick white flash, so it reads as
+a preview rather than the video skipping.
 
 **Punch in on emphasis** (on by default). The frame zooms in a little (1.14×)
 on lines said with emphasis: a reaction phrase like "no way", a line with an
@@ -160,6 +173,10 @@ the very corner. It is small (16% of the frame's shorter side) and slightly
 see-through. Untick **Put my logo in the corner** under Render to leave it off
 a run.
 
+Each **channel profile** (*Settings → Channel profile*) has its own logo and
+corner, or none, and its own switches under Render. Switch profile and the
+logo switches with it.
+
 ---
 
 ## 4. Setting it all in words
@@ -179,12 +196,13 @@ change it, change the words.
 | `add emoji` / `no emoji` | emoji on or off |
 | `add b-roll` / `no b-roll` | B-roll on or off |
 | `add my logo` / `no logo` | your logo on or off |
+| `title at the top`, `title card` / `no title on screen` | the clip's title across the top, all the way through, or not |
 
 These combine with everything else the prompt understands: *"30 second clips,
 follow my face, comic captions, keep the pauses"*.
 
-The switches under Render are remembered on this PC, so your usual caption
-style is already picked next time.
+The switches under Render are remembered on this PC, per channel profile, so
+your usual caption style is already picked next time.
 
 ---
 
