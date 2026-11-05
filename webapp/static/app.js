@@ -1628,8 +1628,11 @@ $("creditDonate").onclick = (e) => { e.preventDefault(); openExternal("donate");
 
 // ---------------------------------------------------------------- welcome
 //
-// Shown at every launch. Nothing is remembered about it: the app introduces
-// itself and asks once per session, and the sidebar credit opens it again.
+// Shown at every launch. Nothing is remembered between launches: the app
+// introduces itself once per session, and the sidebar credit opens it again.
+// A reload is not a launch -- switching profile reloads the page, and the
+// card coming back on every switch read as a bug -- so the session keeps a
+// note that it has been shown.
 // It is a plain overlay rather than a native dialog because the packaged app
 // runs inside a WebView2 window -- there is nothing else on screen to be
 // modal against, and <dialog>'s own backdrop cannot take the page's blur.
@@ -2031,7 +2034,14 @@ window.addEventListener("blur", reportAttention);
 setInterval(reportAttention, 20 * 1000);
 reportAttention();
 
-openWelcome();
+function welcomeOnLaunch() {
+  try {
+    if (sessionStorage.getItem("clipmint.welcomed")) return;
+    sessionStorage.setItem("clipmint.welcomed", "1");
+  } catch (_) { /* no storage: show it, as before */ }
+  openWelcome();
+}
+welcomeOnLaunch();
 
 // ---------------------------------------------------------------- source
 
