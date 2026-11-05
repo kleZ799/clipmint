@@ -1390,6 +1390,7 @@ of render time. These short phrases work instantly, even with no AI key:
 | Type this | You get |
 |---|---|
 | `30 second clips` | the length every clip is cut to — enforced in code, not requested of the model |
+| `5 clips, 30s-60s` / `1-2 minutes` | a range of lengths. `5 clips of 0:30-1:00` reads as a length too, since one span can't be five clips |
 | `no hook repeat` | turn off the cold open that puts the payoff first |
 | `webcam at the top` | the stacked layout |
 | `my webcam is bottom right` | which corner to hunt for your overlay. Left out, all four are searched |
@@ -1419,6 +1420,8 @@ While you type, the preview uses a keyword pass that runs in about 70ms and cost
 ### Naming an exact span
 
 Give it a timecode and it **skips transcription and ranking entirely** and cuts exactly what you asked for. `14:45 to 15:30`, `1:30-2:45`, `00:14:45 - 00:15:28`, `885s to 928s`, or several at once with `14:45-15:30 and 24:55-25:40`.
+
+One span beside a count of two or more (`5 clips of 0:30-1:00`) is a clip length, not a cut: one span can only ever be one clip. Say `from` (`2 clips from 1:00 to 1:30`) to mean the place in the video. The preview says which it read: an exact cut shows an *Exact cuts — no AI ranking* box.
 
 This is the fast path: no Whisper, no LLM, straight to ffmpeg. Seconds instead of minutes, and it costs nothing. Use it when you already know where the moment is — which, after you've watched your own stream, is most of the time.
 
