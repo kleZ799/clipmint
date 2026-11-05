@@ -513,10 +513,20 @@ def _fmt_ts(seconds: float) -> str:
 
 # Clip length, longest-reaching patterns first so "between 20 and 40 seconds"
 # is not eaten by the bare "40 seconds" rule. Each returns (min, max).
+_SECS = r"(?:s\b|secs?\b|seconds?\b)"
+_MINS = r"(?:m\b|mins?\b|minutes?\b)"
+
 _LENGTH_PATTERNS = [
-    # a range: "20-40s", "between 20 and 40 seconds"
-    (r"\b(?:between\s+)?(\d{1,3})\s*(?:-|–|to|and)\s*(\d{1,3})\s*(?:s\b|secs?\b|seconds?\b)",
+    # a range: "20-40s", "30s-60s", "between 20 and 40 seconds". The unit on
+    # the first number is optional; without it, "30s-60s" read as a flat 30s.
+    (rf"\b(?:between\s+)?(\d{{1,3}})\s*{_SECS}?\s*(?:-|–|—|to|and)\s*(\d{{1,3}})\s*{_SECS}",
      lambda m: (float(m.group(1)), float(m.group(2)))),
+    # seconds to minutes: "30sec-1min", "45 seconds to 2 minutes"
+    (rf"\b(\d{{1,3}})\s*{_SECS}\s*(?:-|–|—|to)\s*(\d)\s*{_MINS}",
+     lambda m: (float(m.group(1)), float(m.group(2)) * 60)),
+    # minutes: "1-2 minutes", "1 to 3 min"
+    (rf"\b(?:between\s+)?(\d)\s*(?:-|–|—|to|and)\s*(\d)\s*{_MINS}",
+     lambda m: (float(m.group(1)) * 60, float(m.group(2)) * 60)),
     # an upper bound: "under 45s", "max 40 seconds", "no longer than 60s"
     (r"\b(?:under|below|less than|at most|max(?:imum)?|no (?:longer|more) than)\s+"
      r"(\d{1,3})\s*(?:s\b|secs?\b|seconds?\b)",
