@@ -134,7 +134,8 @@ finishes, the clip shows **On YouTube** with **Open in Studio** and **Watch**.
 
 **More than one channel:** *Settings → Channel profile → Add*, then connect the
 new profile's channel the same way. Each profile keeps its own sign-in (and its
-own logo), and uploads go to whichever profile is active. Switching waits until
+own logo), and uploads go to whichever profile is active: its name is in the
+top bar, next to **Create**. Switching waits until
 no run or upload is going. Removing a profile withdraws its sign-in at Google
 first. Upload records and view counts name their channel, so disconnecting one
 profile forgets only that channel's.
