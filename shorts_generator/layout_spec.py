@@ -474,10 +474,13 @@ _CUT_SPAN = (rf"\bcut\s+(?:(?:from|between)\s+)?"
 def _parse_time_ranges(p: str, spec: LayoutSpec) -> tuple:
     """Pull explicit clip spans out of the prompt.
 
-    Returns (remaining_text, found) — the matched spans are stripped so the
-    rest of the parser can't misread "9:16" style leftovers.
+    Returns (remaining_text, found, placed) — the matched spans are stripped
+    so the rest of the parser can't misread "9:16" style leftovers. `placed`
+    is whether any span was introduced with "from", which names a place in
+    the video rather than a length.
     """
     found = []
+    placed = False
     for pattern in _RANGE_PATTERNS:
         spans = []
         for m in re.finditer(pattern, p):
@@ -486,6 +489,7 @@ def _parse_time_ranges(p: str, spec: LayoutSpec) -> tuple:
                 continue
             found.append([a, b])
             spans.append((m.start(), m.end()))
+            placed = placed or m.group(0).lstrip().startswith("from")
         # Cut from the back. Every match's offsets were measured on the text
         # before anything was removed, so cutting front-to-back shifted each
         # later cut onto the wrong characters -- with five spans it ate
@@ -501,7 +505,34 @@ def _parse_time_ranges(p: str, spec: LayoutSpec) -> tuple:
             spec.notes.append(
                 f"exact cut → {_fmt_ts(a)} to {_fmt_ts(b)} ({b - a:.0f}s)"
             )
-    return p, bool(found)
+    return p, bool(found), placed
+
+
+def _span_is_length(spec: LayoutSpec) -> bool:
+    """Turn a lone span beside a clip count into the clip length it meant.
+
+    "5 clips of 0:30-1:00" asks for five clips half a minute to a minute
+    long. Read as an exact cut it made one clip, 0:30 to 1:00 -- the intro --
+    and skipped ranking, so a run asked for five handed back one. A count of
+    two or more with a single span cannot be exact cuts, since there would be
+    one clip; a span longer than any clip is left alone, as is one count with
+    one span ("1 clip 0:30-1:00"), which is an exact cut.
+    """
+    if spec.num_clips < 2 or len(spec.time_ranges) != 1:
+        return False
+    a, b = spec.time_ranges[0]
+    if b > 240:
+        return False
+    # "0:00-1:00" says "up to a minute"; a five-second floor is no clip.
+    lo = a if a >= 5 else max(10.0, b * 0.6)
+    lo = max(5, min(round(lo), 240))
+    hi = max(lo + 1, min(round(b), 240))
+    spec.time_ranges = []
+    spec.clip_seconds = [float(lo), float(hi)]
+    spec.notes = [n for n in spec.notes if not n.startswith("exact cut")]
+    spec.notes.append(f"clip length → {lo}-{hi}s (read as a length, since "
+                      f"{spec.num_clips} clips were asked for)")
+    return True
 
 
 def _fmt_ts(seconds: float) -> str:
@@ -659,7 +690,7 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
 
     # Time ranges next: they're stripped from the text so a span like
     # "1:30-2:45" can never be mistaken for an aspect ratio later.
-    p, had_ranges = _parse_time_ranges(p, spec)
+    p, had_ranges, placed = _parse_time_ranges(p, spec)
     if had_ranges:
         resolved.add("time_ranges")
 
@@ -672,6 +703,9 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
                           + (f" (the most one run makes)" if int(m.group(1)) > MAX_CLIPS else ""))
         resolved.add("num_clips")
         p = p[:m.start()] + " " + p[m.end():]
+        if had_ranges and not placed and _span_is_length(spec):
+            resolved.discard("time_ranges")
+            resolved.add("clip_seconds")
 
     # The cold open is on by default, so the only thing worth reading here is
     # someone asking for it to stop. Both directions are matched anyway: a
