@@ -373,6 +373,33 @@ svg { width: 24px; height: 24px; display: block; flex: 0 0 auto; }
 .pill:hover { background: var(--hover-2); }
 .pill:active { transform: scale(.96); }
 
+/* Which channel profile is on, without opening Settings. Only shown once
+   there is more than one profile to be on. */
+.prof-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  max-width: 200px;
+  padding: 0 14px 0 12px;
+  border: 1px solid rgba(var(--fg-rgb), .14);
+  border-radius: var(--pill);
+  background: transparent;
+  color: var(--text);
+  font: 500 14px/1 inherit;
+  cursor: pointer;
+  transition: background var(--fast), transform var(--fast);
+}
+.prof-chip:hover { background: var(--hover); }
+.prof-chip:active { transform: scale(.96); }
+.prof-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prof-dot {
+  flex: 0 0 auto;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
 .avatar {
   width: 32px; height: 32px;
   margin-left: 6px;
@@ -394,6 +421,7 @@ svg { width: 24px; height: 24px; display: block; flex: 0 0 auto; }
 }
 @media (max-width: 950px) {
   .logo-word { display: none; }
+  .prof-chip { max-width: 120px; }
   .masthead { gap: 10px; padding: 0 10px; }
 }
 

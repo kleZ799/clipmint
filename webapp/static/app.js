@@ -290,7 +290,18 @@ async function loadProfiles() {
     `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
   sel.value = profState.active;
   $("profDel").classList.toggle("hidden", profState.active === "main");
+  // The profile on, in the masthead, once there is a choice of them: which
+  // channel a clip is about to go to should not take a trip to Settings.
+  const on = profState.profiles.find((p) => p.id === profState.active) || {};
+  $("profChipName").textContent = on.name || "";
+  $("profChip").classList.toggle("hidden", profState.profiles.length < 2);
 }
+
+$("profChip").onclick = () => {
+  openDrawer();
+  $("profSel").scrollIntoView({ block: "nearest" });
+  $("profSel").focus();
+};
 
 function profileDone(state, msg) {
   localStorage.setItem("clipmint.profile", state.active);
