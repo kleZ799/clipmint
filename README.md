@@ -417,8 +417,10 @@ gets reposted or screen-recorded still carries your name.
 
 Running more than one channel? **Settings → Channel profile**: each profile
 has its own YouTube sign-in, logo (or none) and corner, views data and edit
-choices. Switch, and uploads go to that channel. The API keys and the clips
-are shared, and everything set up before profiles is the **Main** profile.
+choices. Switch, and uploads go to that channel. With more than one, the
+profile you're on is named in the top bar, next to **Create**; click it to
+switch. The API keys and the clips are shared, and everything set up before
+profiles is the **Main** profile.
 
 <img src="assets/screenshots/14-logo-and-broll.png" alt="Settings: Your logo with its thumbnail, Upload a logo and Remove and the corner picker, then B-roll with the Pexels key saved" width="880">
 
