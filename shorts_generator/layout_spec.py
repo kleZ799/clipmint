@@ -465,6 +465,12 @@ _RANGE_PATTERNS = [
 ]
 
 
+# "cut" followed by a time or a span of numbers: "cut 1:30 to 2:00",
+# "cut 90s to 150s", "cut from 90 to 120", "cut between 20 and 40 seconds".
+_CUT_SPAN = (rf"\bcut\s+(?:(?:from|between)\s+)?"
+             rf"(?:{_TS}|\d{{1,5}}\s*(?:-|–|—|to|and|until)\s*\d)")
+
+
 def _parse_time_ranges(p: str, spec: LayoutSpec) -> tuple:
     """Pull explicit clip spans out of the prompt.
 
@@ -537,10 +543,13 @@ def _parse_clip_length(p: str, spec: LayoutSpec) -> tuple:
     ranking skipped altogether.
 
     "cut" is this app's explicit span verb, and a prompt using it wants exact
-    spans — which bypass ranking, making a clip length meaningless. So that
-    word hands the whole phrase back to the range parser.
+    spans — which bypass ranking, making a clip length meaningless. So "cut"
+    straight before a time hands the whole phrase back to the range parser.
+    Only straight before one: "cut the boring parts" is a wish about the
+    clips, and reading any "cut" as a span request threw away the clip length
+    beside it, or turned "30s - 60s" into one exact cut at the start.
     """
-    if re.search(r"\bcut\b", p):
+    if re.search(_CUT_SPAN, p):
         return p, False
 
     for pattern, to_range in _LENGTH_PATTERNS:
