@@ -1678,9 +1678,9 @@ leftovers:
 
 | # | Step | Why here |
 |---|---|---|
-| 1 | **Clip length** (`"between 20 and 40 seconds"`) | Reads identically to a timespan. Getting this order wrong turned a request for 20–40s clips into a single exact cut from 0:20 to 0:40, with ranking skipped entirely. The word `cut` is the app's explicit-span verb, so its presence hands the phrase to the range parser instead |
-| 2 | **Time ranges** (`"14:45 to 15:30"`) | Stripped so `1:30-2:45` can never be mistaken for an aspect ratio later |
-| 3 | **Clip count** (`"5 clips"`) | Stripped so `5 shorts` can't *also* be read as a request for 9:16 |
+| 1 | **Clip length** (`"between 20 and 40 seconds"`) | Reads identically to a timespan. Getting this order wrong turned a request for 20–40s clips into a single exact cut from 0:20 to 0:40, with ranking skipped entirely. The word `cut` is the app's explicit-span verb, so `cut` *straight before a time* (`_CUT_SPAN`: `cut 1:30 to 2:00`, `cut from 90 to 120`) hands the phrase to the range parser instead. Any `cut` used to, and `cut the boring parts` threw the length away. Ranges take a unit on both ends (`30s-60s`) and minutes (`30sec-1min`, `1-2 minutes`) |
+| 2 | **Time ranges** (`"14:45 to 15:30"`) | Stripped so `1:30-2:45` can never be mistaken for an aspect ratio later. Also reports whether a span came after `from`, which step 3 needs |
+| 3 | **Clip count** (`"5 clips"`) | Stripped so `5 shorts` can't *also* be read as a request for 9:16. Then `_span_is_length`: a count of two or more beside exactly one span, not after `from` and no longer than 240s, turns that span into the clip length. `5 clips of 0:30-1:00` is five 30–60s clips; one span can only ever cut one clip |
 | 4 | **Aspect ratio** | Explicit ratios and unambiguous words before loose platform names |
 | 5 | **Layout** | Most specific first: "no webcam"→`center`, "follow my face"→`facetrack`, "webcam on top"/"pip"→`stacked` |
 | 5b | **Kind of video** | "my vlog", "podcast", "tutorial", "stream" — only when exactly one kind is named ([§8.3](#83-what-comes-out)) |
@@ -3926,6 +3926,17 @@ same step, so the app itself never loses track.
 ### 17.1 Fixed since this document was written
 
 Kept because the failure modes are instructive.
+
+**Asking for five clips made one, of the intro.** A tester on the feedback form
+asked for 5 clips and got a single clip of the video's opening. `5 clips of
+0:30-1:00`, `5 clips, 30s - 60s, cut the boring parts` and `cut 5 clips 30s to
+60s each` all came out as one exact cut from 0:30 to 1:00: exact cuts skip
+ranking, so the clip count was never looked at. Two parser rules did it: any
+`cut` in the request turned clip lengths off, leaving `30s - 60s` for the span
+parser, and clock times were always spans, even beside a count. A third
+showed up on the way: without a `cut`, `30s-60s` read as a flat 30 seconds.
+v1.29.1 fixed all three (§8.2). The lesson: when a run
+produces fewer clips than were asked for, check how the request was read first.
 
 **Several exact cuts garbled the rest of the prompt.** `cut 47:02 to 47:34,
 1:31:16 to 1:31:46, … , gameplay only` with five spans rendered webcam-on-top at
