@@ -2687,7 +2687,11 @@ where captions go, so the emoji move with them.
 Reads `/api/settings` and `/api/usage` to render:
 
 - **Channel profile** — pick, add, rename, remove (`profiles.py`). Switching
-  reloads the page, so every panel below is read again for that channel
+  reloads the page, so every panel below is read again for that channel. The
+  welcome card keeps a `sessionStorage` note that it has been shown, so that
+  reload is not taken for a launch. Before v1.29.2 it reopened on every switch.
+  With two or more profiles, a chip in the masthead (`#profChip`) names the
+  active one and opens this section
 - Provider switcher (the first other provider with a key on disk) — offering a
   switch rather than asking for a key that's already on disk
 - Spare Gemini keys, and an OpenRouter model box that takes any model ID
