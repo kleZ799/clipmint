@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 5 November 2026 (v1.29.0)_
+_Last updated: 6 November 2026 (v1.29.2)_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,
@@ -21,11 +21,20 @@ of your information is covered by the
 
 Connecting YouTube is optional. ClipMint works fully without it.
 
-## What ClipMint gets from your Google account, and why
+## Google user data ClipMint accesses
 
 When you press **Connect YouTube**, your browser opens Google's own sign-in
 page. ClipMint never sees your Google password. Google asks you to allow two
-permissions:
+permissions, and this is all the Google user data ClipMint can access:
+
+- **An OAuth sign-in token** for the channel you choose, which Google issues
+  so the app can act for you within the two permissions below.
+- **Your channel's name and ID.**
+- **Your channel's list of uploads**, and the **view, like and comment counts
+  and publish date** of the videos on it.
+- **The privacy status** of a video ClipMint has just uploaded for you.
+
+The two permissions:
 
 | Permission | What ClipMint does with it |
 | --- | --- |
@@ -34,6 +43,51 @@ permissions:
 
 ClipMint does not delete, edit or comment on anything on your channel. It does
 not read your watch history, subscriptions, analytics or any other videos.
+
+## How ClipMint uses Google user data
+
+ClipMint uses Google user data only to provide the features you can see in
+the app:
+
+- **Uploading:** the sign-in token is used to upload the clips you choose,
+  when you press **Upload to YouTube** or confirm **Upload all**.
+- **Showing the right channel:** the channel name and ID are shown in
+  Settings so you can check where clips will go.
+- **Checking an upload:** a new video's privacy status is read back once, to
+  tell you if YouTube kept it private.
+- **Showing how your clips did:** your list of uploads is matched against
+  your ClipMint clips, and their view, like and comment counts are shown on
+  each clip and used, on your computer only, to learn which kinds of clip do
+  well on your channel.
+
+ClipMint does not use Google user data for advertising, does not sell it, and
+does not use it to develop, improve or train AI or machine-learning models.
+Google user data is never sent to an AI provider, to the developer or to
+anyone else.
+
+ClipMint's use and transfer of information received from Google APIs adheres
+to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
+including the Limited Use requirements.
+
+## How ClipMint protects Google user data
+
+- **It stays on your computer.** ClipMint has no server. The sign-in token
+  and everything else it keeps from Google is stored only in ClipMint's
+  settings folder on your own computer, inside your user account's profile.
+  The developer never receives it.
+- **Only your user account can read the token.** It is written to your
+  account's private application-data folder, and on macOS and Linux the file
+  is set so that only your user account can read it (permissions `600`).
+- **Encrypted in transit.** ClipMint only talks to Google over HTTPS (TLS),
+  to Google's own sign-in, token and YouTube API addresses.
+- **A protected sign-in.** Signing in uses Google's OAuth 2.0 with PKCE, in
+  your own browser, and the answer comes back only to ClipMint on your own
+  computer (`localhost`). ClipMint never sees or stores your password.
+- **The least access needed.** ClipMint asks for upload and read-only access
+  only. It cannot delete, edit or comment on anything on your channel.
+- **Deleted when you're done.** Disconnecting gives the permission back to
+  Google and deletes the token at once; the other data is deleted on the
+  schedule below.
 
 ## What ClipMint stores, and where
 
