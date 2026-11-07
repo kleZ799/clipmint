@@ -935,7 +935,20 @@ addEventListener("load", function () {
   <div class="w-box" role="document">
     <button class="ibtn sm w-x" id="wClose" title="Close"><svg><use href="#i-close"/></svg></button>
 
+    <!-- Festive greeting. Hidden on every other day: app.js switches it on
+         only for the dates in FESTIVE, by the user's own clock. The garland,
+         lamps and sparks are drawn by app.js so this stays short. -->
+    <svg class="wf-toran hidden" id="wfToran" viewBox="0 0 460 34" aria-hidden="true"></svg>
+
     <div class="w-scroll">
+    <div class="w-fest hidden" id="wFest">
+      <div class="wf-sparks" id="wfSparks" aria-hidden="true"></div>
+      <div class="wf-diyas" id="wfDiyas" aria-hidden="true"></div>
+      <p class="wf-eyebrow" lang="hi">शुभ दीपावली</p>
+      <h2 class="wf-title">happy diwali</h2>
+      <p class="wf-msg">lights on, sweets out, clips going viral. have a bright one.</p>
+      <p class="wf-sign">&mdash; parth</p>
+    </div>
     <div class="w-top">
       <span class="w-mark"><svg><use href="#i-yt"/></svg></span>
       <h2 id="wTitle">Clip<b>Mint</b></h2>

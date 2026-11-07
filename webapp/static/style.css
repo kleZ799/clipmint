@@ -2174,6 +2174,136 @@ body.player-on .player-body { transform: none; }
   font-size: 12.5px; line-height: 1.6; color: var(--text-2);
 }
 
+/* ---- festive greeting (Diwali) ----
+   Only ever on for the dates app.js names; .welcome.fest is the switch.
+   The card's own aurora turns from red and blue to lamp-light, the logo
+   tile steps aside for the lamps, and everything else stays as it is. */
+.welcome {
+  --fest-gold:  #ffd76a;
+  --fest-amber: #ff9d2e;
+  --fest-ink:   #ffe7b0;
+}
+:root[data-theme="light"] .welcome {
+  --fest-gold:  #c27400;
+  --fest-amber: #e0560b;
+  --fest-ink:   #8a4a00;
+}
+
+.welcome.fest .w-box {
+  border-color: rgba(255, 170, 60, .38);
+  box-shadow: 0 40px 90px rgba(0, 0, 0, .75), 0 0 70px rgba(255, 150, 40, .16);
+}
+.welcome.fest .w-box::before {
+  height: 260px;
+  background:
+    radial-gradient(60% 90% at 50% 0%, rgba(255, 176, 46, .26), transparent 72%),
+    radial-gradient(50% 80% at 10% 10%, rgba(255, 90, 30, .14), transparent 70%),
+    radial-gradient(50% 80% at 90% 10%, rgba(255, 60, 120, .10), transparent 70%);
+}
+.welcome.fest .w-mark { display: none; }
+.welcome.fest .w-top { margin-bottom: 16px; }
+
+/* The garland hangs off the very top edge, over the scroll's padding. */
+.w-box > .wf-toran {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: auto;
+  z-index: 2;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35));
+}
+
+.w-fest {
+  position: relative;
+  text-align: center;
+  padding: 14px 0 16px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 170, 60, .22);
+}
+
+.wf-diyas {
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: 10px;
+  height: 52px;
+  margin-bottom: 8px;
+}
+.wf-diya { display: block; width: 34px; height: 34px; }
+.wf-diya:nth-of-type(2), .wf-diya:nth-of-type(4) { width: 40px; height: 40px; margin-bottom: 5px; }
+.wf-diya:nth-of-type(3) { width: 50px; height: 50px; margin-bottom: 9px; }
+.wf-diya svg { width: 100%; height: 100%; overflow: visible; }
+.wf-flame {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: wf-flicker 1.6s ease-in-out infinite alternate;
+}
+.wf-glow { animation: wf-glow 2.4s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+.wf-diya:nth-of-type(2n) .wf-flame { animation-duration: 1.25s; animation-delay: -.4s; }
+.wf-diya:nth-of-type(3n) .wf-flame { animation-duration: 1.9s;  animation-delay: -.9s; }
+.wf-diya:nth-of-type(2n) .wf-glow  { animation-delay: -1.1s; }
+
+@keyframes wf-flicker {
+  0%   { transform: scale(1, 1)       rotate(-2deg); }
+  35%  { transform: scale(.94, 1.08)  rotate(2deg); }
+  70%  { transform: scale(1.04, .95)  rotate(-1deg); }
+  100% { transform: scale(.97, 1.05)  rotate(1.5deg); }
+}
+@keyframes wf-glow {
+  from { opacity: .55; transform: scale(.92); }
+  to   { opacity: 1;   transform: scale(1.08); }
+}
+
+.wf-eyebrow {
+  font-size: 13px; letter-spacing: .06em;
+  color: var(--fest-ink);
+  opacity: .9;
+}
+.wf-title {
+  margin-top: 2px;
+  font-size: 36px; font-weight: 800; line-height: 1.1;
+  letter-spacing: -.02em;
+  background: linear-gradient(100deg, var(--fest-gold) 0%, var(--fest-amber) 30%, var(--fest-gold) 50%, var(--fest-amber) 70%, var(--fest-gold) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: wf-shine 7s linear infinite;
+}
+@keyframes wf-shine { to { background-position: -220% 0; } }
+.wf-msg {
+  margin: 8px auto 0; max-width: 340px;
+  font-size: 13px; line-height: 1.55; color: var(--text-2);
+  text-wrap: balance;
+}
+.wf-sign { margin-top: 4px; font-size: 12px; color: var(--fest-ink); opacity: .85; }
+
+/* Sparks drift up behind the words, never over a button. */
+.wf-sparks { position: absolute; inset: -30px 0 0; overflow: hidden; pointer-events: none; z-index: -1; }
+.wf-sparks i {
+  position: absolute; bottom: 0;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--fest-gold);
+  box-shadow: 0 0 6px 1px var(--fest-amber);
+  opacity: 0;
+  animation: wf-spark 4s ease-out infinite;
+}
+@keyframes wf-spark {
+  0%   { opacity: 0; transform: translate(0, 0) scale(.6); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx, 0), -150px) scale(1.1); }
+}
+
+@media (max-height: 760px) {
+  .wf-diyas { height: 42px; margin-bottom: 4px; }
+  .wf-diya:nth-of-type(3) { width: 42px; height: 42px; }
+  .wf-title { font-size: 28px; }
+  .w-fest { padding: 10px 0 12px; margin-bottom: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-flame, .wf-glow, .wf-title { animation: none; }
+  .wf-sparks { display: none; }
+}
+
 .w-by {
   display: flex; align-items: baseline; justify-content: center; gap: 7px;
   padding: 12px 0; margin-bottom: 4px;

@@ -1637,6 +1637,90 @@ $("creditLi").onclick = (e) => { e.preventDefault(); openExternal("author-linked
 $("creditDc").onclick = (e) => { e.preventDefault(); openExternal("author-discord"); };
 $("creditDonate").onclick = (e) => { e.preventDefault(); openExternal("donate"); };
 
+// ---------------------------------------------------------------- festive
+//
+// A greeting on the launch card for a festival, on its dates only, by the
+// user's own clock. Dated by year because Diwali moves every year: a rule like
+// "early November" would be wrong more often than right. Diwali 2026 is the
+// 8th, so it runs the eve and the day. ?festive=diwali shows it on any date,
+// for screenshots.
+
+const FESTIVE = { diwali: ["2026-11-07", "2026-11-08"] };
+
+function festiveToday() {
+  try {
+    const f = new URLSearchParams(location.search).get("festive");
+    if (f && FESTIVE[f]) return f;
+  } catch (_) { /* fall through to the date */ }
+  const d = new Date();
+  const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return Object.keys(FESTIVE).find((k) => FESTIVE[k].includes(ymd)) || null;
+}
+
+// A clay lamp: glow, flame, bowl. One gradient set is shared by every lamp.
+const DIYA_SVG = `<svg viewBox="0 0 40 40">
+  <circle class="wf-glow" cx="20" cy="14" r="13" fill="url(#wfGlow)"/>
+  <g class="wf-flame">
+    <path d="M20 2.5C24.5 9.5 26 14 20 21 14 14 15.5 9.5 20 2.5Z" fill="url(#wfFlame)"/>
+    <path d="M20 10.5c2 3 2.4 6 0 9.5-2.4-3.5-2-6.5 0-9.5Z" fill="#fff6cf"/>
+  </g>
+  <path d="M19.4 19.5h1.2v3.4h-1.2z" fill="#3a2410"/>
+  <path d="M4 23h32c-1 8-7.5 12.5-16 12.5S5 31 4 23Z" fill="url(#wfClay)"/>
+  <ellipse cx="20" cy="23" rx="16" ry="2.8" fill="#f08a45"/>
+  <ellipse cx="20" cy="23.2" rx="12.5" ry="1.6" fill="#7a2f12"/>
+  <circle cx="11" cy="29" r="1.3" fill="#ffd27a"/><circle cx="20" cy="31.5" r="1.3" fill="#ffd27a"/><circle cx="29" cy="29" r="1.3" fill="#ffd27a"/>
+  <circle cx="15.5" cy="30.6" r=".8" fill="#fff0c2"/><circle cx="24.5" cy="30.6" r=".8" fill="#fff0c2"/>
+</svg>`;
+
+const DIYA_DEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <radialGradient id="wfGlow"><stop offset="0" stop-color="#ffcc55" stop-opacity=".85"/><stop offset="1" stop-color="#ff8a00" stop-opacity="0"/></radialGradient>
+  <linearGradient id="wfFlame" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff5a00"/><stop offset=".55" stop-color="#ffb300"/><stop offset="1" stop-color="#ffe680"/></linearGradient>
+  <linearGradient id="wfClay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d2602c"/><stop offset="1" stop-color="#8e3414"/></linearGradient>
+</defs></svg>`;
+
+// A marigold toran: four swags of flowers, a mango leaf at each low point.
+function drawToran(svg) {
+  const W = 460, swags = 4, per = 10, sag = 15;
+  const flowers = ["#ff7a00", "#ffb300", "#ff9100", "#ffc83d"];
+  let out = `<path d="M0 3H${W}" stroke="#7a4a1a" stroke-width="1.2"/>`;
+  for (let s = 0; s < swags; s++) {
+    const x0 = (s * W) / swags, x1 = ((s + 1) * W) / swags;
+    const xm = (x0 + x1) / 2, ym = 4 + sag;
+    out += `<path d="M${xm} ${ym + 3}c5 6 4 11 0 15-4-4-5-9 0-15Z" fill="#2f9e4f"/>`
+         + `<path d="M${xm} ${ym + 4}v12" stroke="#1d6b33" stroke-width=".7"/>`;
+    for (let i = 0; i <= per; i++) {
+      const t = i / per;
+      const x = x0 + (x1 - x0) * t;
+      const y = 4 + sag * Math.sin(Math.PI * t);
+      const c = flowers[(s + i) % flowers.length];
+      out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.4" fill="${c}"/>`
+           + `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2" fill="#c24e00" opacity=".55"/>`;
+    }
+  }
+  svg.innerHTML = out;
+}
+
+function setupFestive() {
+  const fest = festiveToday();
+  if (fest !== "diwali") return;
+  const diyas = $("wfDiyas");
+  diyas.innerHTML = DIYA_DEFS + Array.from({ length: 5 },
+    () => `<span class="wf-diya">${DIYA_SVG}</span>`).join("");
+  drawToran($("wfToran"));
+  // Sparks start spread out in time, so the first second already has some.
+  $("wfSparks").innerHTML = Array.from({ length: 14 }, (_, i) => {
+    const left = 6 + Math.random() * 88;
+    const dx = Math.round((Math.random() - .5) * 60);
+    const dur = (3.2 + Math.random() * 2.4).toFixed(2);
+    const delay = (-(i / 14) * 5).toFixed(2);
+    return `<i style="left:${left.toFixed(1)}%;--dx:${dx}px;animation-duration:${dur}s;animation-delay:${delay}s"></i>`;
+  }).join("");
+  $("wFest").classList.remove("hidden");
+  $("wfToran").classList.remove("hidden");
+  $("welcome").classList.add("fest");
+}
+setupFestive();
+
 // ---------------------------------------------------------------- welcome
 //
 // Shown at every launch. Nothing is remembered between launches: the app

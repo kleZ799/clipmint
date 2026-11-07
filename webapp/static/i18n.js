@@ -186,6 +186,9 @@ window.I18N = (function () {
       "Buy me a coffee": "मुझे एक कॉफ़ी पिलाएँ",
       "This app is free, and stays free. A coffee pays for the hours that keep it working.": "यह ऐप मुफ़्त है और मुफ़्त ही रहेगा। एक कॉफ़ी इसे चलता रखने वाले घंटों का ख़र्च उठाती है।",
       "Start making Shorts": "Shorts बनाना शुरू करें",
+      "happy diwali": "हैप्पी दिवाली",
+      "lights on, sweets out, clips going viral. have a bright one.":
+        "दीये जले, मिठाई बँटी, क्लिप्स वायरल। रोशन रहो।",
       "Links and credits": "लिंक और क्रेडिट",
       "Support this project — buy me a coffee": "इस प्रोजेक्ट को सपोर्ट करें — एक कॉफ़ी पिलाएँ",
       "Email": "ईमेल",
@@ -518,6 +521,9 @@ window.I18N = (function () {
       "Buy me a coffee": "Invítame a un café",
       "This app is free, and stays free. A coffee pays for the hours that keep it working.": "Esta app es gratis y seguirá siéndolo. Un café paga las horas que la mantienen en marcha.",
       "Start making Shorts": "Empezar a crear Shorts",
+      "happy diwali": "feliz diwali",
+      "lights on, sweets out, clips going viral. have a bright one.":
+        "luces encendidas, dulces en la mesa, clips virales. que brille tu día.",
       "Links and credits": "Enlaces y créditos",
       "Support this project — buy me a coffee": "Apoya este proyecto: invítame a un café",
       "Email": "Correo",
@@ -850,6 +856,9 @@ window.I18N = (function () {
       "Buy me a coffee": "Pague-me um café",
       "This app is free, and stays free. A coffee pays for the hours that keep it working.": "Este app é gratuito e continuará sendo. Um café paga as horas que o mantêm funcionando.",
       "Start making Shorts": "Começar a criar Shorts",
+      "happy diwali": "feliz diwali",
+      "lights on, sweets out, clips going viral. have a bright one.":
+        "luzes acesas, doces na mesa, clipes viralizando. que seu dia brilhe.",
       "Links and credits": "Links e créditos",
       "Support this project — buy me a coffee": "Apoie este projeto — pague-me um café",
       "Email": "E-mail",
@@ -1182,6 +1191,9 @@ window.I18N = (function () {
       "Buy me a coffee": "Offrez-moi un café",
       "This app is free, and stays free. A coffee pays for the hours that keep it working.": "Cette app est gratuite et le restera. Un café paie les heures qui la font tenir.",
       "Start making Shorts": "Commencer à créer des Shorts",
+      "happy diwali": "joyeux diwali",
+      "lights on, sweets out, clips going viral. have a bright one.":
+        "lumières allumées, douceurs sur la table, clips qui cartonnent. belle fête lumineuse.",
       "Links and credits": "Liens et crédits",
       "Support this project — buy me a coffee": "Soutenir ce projet — offrez-moi un café",
       "Email": "E-mail",
@@ -1514,6 +1526,9 @@ window.I18N = (function () {
       "Buy me a coffee": "Spendier mir einen Kaffee",
       "This app is free, and stays free. A coffee pays for the hours that keep it working.": "Diese App ist kostenlos und bleibt es. Ein Kaffee bezahlt die Stunden, die sie am Laufen halten.",
       "Start making Shorts": "Shorts erstellen",
+      "happy diwali": "frohes diwali",
+      "lights on, sweets out, clips going viral. have a bright one.":
+        "lichter an, süßes raus, clips gehen viral. hab ein strahlendes fest.",
       "Links and credits": "Links und Credits",
       "Support this project — buy me a coffee": "Projekt unterstützen — spendier mir einen Kaffee",
       "Email": "E-Mail",
@@ -1846,6 +1861,9 @@ window.I18N = (function () {
       "Buy me a coffee": "コーヒーをおごる",
       "This app is free, and stays free. A coffee pays for the hours that keep it working.": "このアプリは無料で、これからも無料です。コーヒー一杯が開発を支えます。",
       "Start making Shorts": "Shorts を作り始める",
+      "happy diwali": "ハッピー・ディワリ",
+      "lights on, sweets out, clips going viral. have a bright one.":
+        "灯りをともして、お菓子を広げて、クリップはバズらせよう。明るい一日を。",
       "Links and credits": "リンクとクレジット",
       "Support this project — buy me a coffee": "このプロジェクトを応援 — コーヒーをおごる",
       "Email": "メール",
@@ -2178,6 +2196,9 @@ window.I18N = (function () {
       "Buy me a coffee": "Угостить кофе",
       "This app is free, and stays free. A coffee pays for the hours that keep it working.": "Это приложение бесплатное и останется бесплатным. Кофе оплачивает часы, которые поддерживают его работу.",
       "Start making Shorts": "Начать делать Shorts",
+      "happy diwali": "счастливого дивали",
+      "lights on, sweets out, clips going viral. have a bright one.":
+        "огни горят, сладости на столе, клипы залетают в тренды. светлого праздника.",
       "Links and credits": "Ссылки и благодарности",
       "Support this project — buy me a coffee": "Поддержать проект — угостить кофе",
       "Email": "Эл. почта",
