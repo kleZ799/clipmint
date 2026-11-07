@@ -2724,6 +2724,12 @@ switch that looks broken and one that explains itself.
   paste, plus the channel grid — four ways in.
 - **Usage refreshes after every run** — including failed ones, which is exactly
   when knowing what's left matters most.
+- **A festival greeting on its days only** — `FESTIVE` in `app.js` maps a
+  festival to the exact dates it runs, checked against the user's own clock at
+  launch. On those dates the welcome card gets a garland, lamps and a short
+  note (Diwali, 7–8 November 2026). The dates carry the year because Diwali
+  moves every year, so an old build never greets anyone on the wrong day.
+  `?festive=diwali` shows it on any date, for screenshots.
 
 ### 12.10 Asking for feedback
 
