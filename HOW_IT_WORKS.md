@@ -2140,6 +2140,15 @@ So `POST /api/jobs` **only ever enqueues and returns an id**. The browser follow
 progress separately over server-sent events. The request never blocks on the
 pipeline.
 
+The one thing it checks first is that an LLM key is set (`_require_llm_key()`,
+using `user_config.has_llm_key()`). Ranking is the first stage that needs one,
+and it comes after the download and the transcription, so a keyless run used to
+spend many minutes and then fail with *"GEMINI_API_KEY is not set"*. Now it is
+refused with **428** before any work. The page reacts to that status, not the
+words: it opens the key setup panel and puts the cursor in the key box.
+`/retry` and `/continue` do the same check; `/retry?clips_only=true` doesn't,
+since re-rendering clips already ranked needs no ranking.
+
 ### 11.2 One worker, on purpose
 
 ```python
@@ -2253,7 +2262,7 @@ the app has, so there are two layers.
 **Automatic.** `JobStore._attempt()` wraps the download, transcription and
 ranking: `STAGE_ATTEMPTS` (3) tries, 5s then 15s apart, each retry printed to
 the run's log with the reason. `_is_permanent()` short-circuits errors trying
-again cannot fix — an invalid API key, a spent daily quota, a private or
+again cannot fix — an invalid or missing API key, a spent daily quota, a private or
 unavailable video, a local file that is not there — because retrying those
 only delays the same message. Rendering is per clip: `_render()` renders the
 batch, then gives each clip that failed `CLIP_ATTEMPTS` of its own, under its
@@ -2423,7 +2432,7 @@ system rather than a pile of separate animations.
 masthead        search box (paste a link) · file picker · Create · folder · settings
 guide rail      Create · Your clips · Settings · Clips folder · Upload to YouTube
 main
- ├── setup panel        first-run only: provider + API key
+ ├── setup panel        provider + API key: on first run, and again if a run is started without one
  ├── chip bar           clickable example phrases
  ├── 1 Source           drag-drop zone / URL / channel grid
  ├── 2 What to make     the layout prompt + aspect toggle
@@ -4117,7 +4126,7 @@ rather than guessing from what the button last did.
 | `POST /api/resolve` | Classify a pasted link: single video, or a channel to pick from |
 | `POST /api/upload` | Accept a dropped video file, return a path to run from |
 | `POST /api/layout/preview` | Parse a layout prompt without running anything — powers the live preview. Takes `aspect_ratio` and `content_kind` picks and `use_llm` (false for the quick keyword reading). Returns the model's `reply`, and `reading: true` when it has not answered within 15s |
-| `POST /api/jobs` | Enqueue a job. Returns immediately with an id. `content_kind` (`stream`, `vlog`, `podcast`, `tutorial`, `sports`, `other`) beats the prompt's words; omit it or send `auto` to leave it to them |
+| `POST /api/jobs` | Enqueue a job. Returns immediately with an id, or **428** if no LLM key is set. `content_kind` (`stream`, `vlog`, `podcast`, `tutorial`, `sports`, `other`) beats the prompt's words; omit it or send `auto` to leave it to them |
 
 ### Following work
 
@@ -4140,10 +4149,10 @@ rather than guessing from what the button last did.
 | `PUT …/clips/{file}/frame` | Place the window (`x`, `y` as 0-1 of its travel) and the captions (`caption_y`), or `auto` / `caption_auto` to hand them back; re-renders from source |
 | `POST …/clips/{file}/save` | Copy out of the working folder into the save location |
 | `DELETE …/clips/{file}` | Delete the clip and its file |
-| `POST /api/jobs/{id}/continue` | Carry on a run the app never finished (distinct from `/resume`, which lifts a pause) |
+| `POST /api/jobs/{id}/continue` | Carry on a run the app never finished (distinct from `/resume`, which lifts a pause). **428** if no LLM key is set |
 | `GET /api/processor` | What video encoding and transcription will run on, and why (`?recheck=true` re-tests the encoders) |
 | `POST /api/processor` | Set `auto`, `gpu` or `cpu`; applies from the next clip, even on a paused run |
-| `POST /api/jobs/{id}/retry` | Run a failed job again from where its caches stop it; `?clips_only=true` re-renders only a finished run's failed clips |
+| `POST /api/jobs/{id}/retry` | Run a failed job again from where its caches stop it; `?clips_only=true` re-renders only a finished run's failed clips. **428** if no LLM key is set (not for `clips_only`) |
 | `POST /api/jobs/{id}/seo` | Write or rewrite upload metadata (`?force=true` to overwrite, `?only={file}` for one clip) |
 | `PUT …/clips/{file}/seo` | Save metadata the user typed — YouTube, Reels and TikTok fields — or a corrected `subject`; renames the mp4 to a new title |
 | `POST /api/jobs/{id}/reveal` | Show a clip in the file manager |
