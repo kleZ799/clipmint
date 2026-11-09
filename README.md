@@ -941,6 +941,7 @@ To run it: **More info → Run anyway**.
 - **Windows will warn you.** The exe isn't code-signed, so SmartScreen shows *"Windows protected your PC"*. Click **More info → Run anyway**. On a Mac it is Gatekeeper instead — see above.
 - **First launch is slow.** It's a single file that unpacks itself each time. The mac app is a normal bundle and starts faster.
 - **Where things go.** The key lives at `%APPDATA%\ClipMint\settings.json`; clips go to `%USERPROFILE%\Videos\ClipMint`, changeable in Settings. On a Mac: `~/Library/Application Support/ClipMint/settings.json` and `~/Movies/ClipMint`.
+- **No key, no run.** Picking the best moments needs the free API key, so **Generate** without one opens the key box instead of starting a run that would stop after the download.
 - **ffmpeg is bundled**, so there is nothing else to install — on both platforms.
 - **The downloadable .exe transcribes on the CPU.** The CUDA runtime is 2GB, and a single-file exe re-unpacks its whole payload on every launch — so bundling it would cost every user a slow start for something only NVIDIA owners can use. If you have an NVIDIA card and want the ~5x faster transcription, build the one-folder version from source: `pip install -r requirements-nvidia.txt` then `python build_exe.py` (CUDA is the default there; `--no-cuda` opts out).
 
