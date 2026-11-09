@@ -2583,7 +2583,15 @@ body.player-on .player-body { transform: none; }
   opacity: .9;
   pointer-events: none;
   user-select: none;
+  /* Its own patch of glass, so it reads as a label rather than colliding
+     with whatever text happens to scroll underneath it. */
+  padding: 1px 8px;
+  border-radius: var(--pill);
+  background: rgba(var(--glass-rgb), .72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
+.ver-mark:empty { display: none; }
 
 /* ============================ pause a run ============================ */
 .prow { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
