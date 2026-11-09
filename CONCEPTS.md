@@ -1185,9 +1185,16 @@ just "run the job", with no special recovery code at all. Designing the stages
 that way first is what made the retry button a few lines.
 
 The same classification as above decides what gets retried. A transient error
-is worth another go; a permanent one (a wrong key, a missing file) fails
-immediately, because retrying it only makes someone wait longer to read the
-same message.
+is worth another go; a permanent one (a wrong or missing key, a missing file)
+fails immediately, because retrying it only makes someone wait longer to read
+the same message.
+
+Failing fast has a stronger form: **check preconditions before the expensive
+work**. A missing key used to be discovered at ranking, after the download and
+the transcription had already spent many minutes. Now `POST /api/jobs` checks for
+a key first and refuses with a status of its own (428), which the page turns into
+"here is where the key goes". The rule: if a later stage can only fail because
+of something already known at the start, say so at the start.
 
 ### Provider fallback, and the ceiling on retrying
 
