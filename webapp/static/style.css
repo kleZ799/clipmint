@@ -342,11 +342,17 @@ svg { width: 24px; height: 24px; display: block; flex: 0 0 auto; }
 }
 .searchbox:focus-within .search-lead { opacity: 1; }
 
-.searchbox input {
+/* input[type=text] as well as the class: the general field rule further down
+   has the same weight as a bare `.searchbox input` and comes later, so it was
+   winning — drawing a second, boxed field inside the pill. */
+.searchbox input[type=text] {
   flex: 1;
   min-width: 0;
+  padding: 0;
   background: none;
   border: 0;
+  border-radius: 0;
+  box-shadow: none;
   outline: none;
   color: var(--text);
   font: 400 16px/1 var(--font);
