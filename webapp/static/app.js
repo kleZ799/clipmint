@@ -2871,11 +2871,14 @@ async function run() {
   } catch (e) {
     $("go").disabled = false;
     $("go").textContent = "Generate shorts";
+    // Nothing started, so there is no progress to show: left up, the panel
+    // sat there saying "Queued 0%" under an error about a run that never was.
+    $("progress").classList.add("hidden");
     if (e.status === NO_KEY) {
-      $("progress").classList.add("hidden");
       needKey();
     } else {
       showErr(e.message);
+      $("srcErr").scrollIntoView({ behavior: "smooth", block: "center" });
     }
     return;
   }
