@@ -198,6 +198,10 @@ button, input, select, textarea { font-family: inherit; }
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .hidden { display: none !important; }
+/* The hidden attribute loses to any rule that sets display, which is how an
+   empty "switch provider" row with a blank button came to sit in Settings.
+   Hidden means hidden, whatever else the element is. */
+[hidden] { display: none !important; }
 
 svg { width: 24px; height: 24px; display: block; flex: 0 0 auto; }
 
