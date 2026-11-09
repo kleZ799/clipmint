@@ -643,7 +643,7 @@ body.guide-off .content { margin-left: 0; }
 @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
 
 /* ============================ inputs ============================ */
-input[type=text], input[type=password], input[type=datetime-local], textarea, select {
+input[type=text], input[type=password], input[type=number], input[type=datetime-local], textarea, select {
   width: 100%;
   background: var(--field);
   border: 1px solid var(--line);
