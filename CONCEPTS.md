@@ -1015,6 +1015,16 @@ Be able to justify it over the alternatives:
 
 Progress is strictly one-directional, so SSE is the right size of tool.
 
+**"Automatic" reconnect is only automatic if you leave it alone.** The server
+ends the stream when a job finishes, and to `EventSource` a finished stream and
+a dropped connection look the same: both fire `onerror`. So the page closes the
+stream itself and does one direct read to find out which it was. For a long
+time it stopped there, which threw away the reconnect it had been given for
+free: a PC that slept mid-render woke to a frozen progress bar. The fix is to
+let the direct read decide. A job that is still running gets a new stream; a
+finished one doesn't. Whenever you take over error handling from a library, you
+also take over whatever it was doing for you on that path.
+
 ### HTTP range requests
 
 Clip playback returns **`206 Partial Content`** with `Accept-Ranges: bytes` and
