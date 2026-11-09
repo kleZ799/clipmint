@@ -1315,6 +1315,9 @@ async function openBulk(runId) {
   $("bkGap").value = "24";
   $("bkWhen").value = yuDefaultWhen();
   $("bkMsg").innerHTML = "";
+  // A finished batch leaves this button saying "Close"; a fresh one starts
+  // with something to cancel again.
+  $("bkCancel").textContent = I18N.t("Cancel");
   [$("bkPrivacy"), $("bkWhen"), $("bkGap"), $("bkCat"), $("bkKids")].forEach((el) => {
     el.disabled = false;
   });
@@ -3578,6 +3581,17 @@ $("pScrub").addEventListener("pointerdown", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  // A question on screen is answered before anything behind it hears a key:
+  // Esc on "Delete this clip?" used to close the player and leave the
+  // question hanging over the page, and T or C opened panels underneath it.
+  if (!$("confirm").classList.contains("hidden")) {
+    if (e.key === "Escape") closeAsk();
+    return;
+  }
+  if (!$("bulk").classList.contains("hidden")) {
+    if (e.key === "Escape") closeBulk();
+    return;
+  }
   if (!$("feedback").classList.contains("hidden")) {
     if (e.key === "Escape") closeFeedback();
     return;
