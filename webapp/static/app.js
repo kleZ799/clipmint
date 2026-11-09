@@ -4061,7 +4061,7 @@ function toggleCaptions() {
   const c = clips[cur];
   if (!canFixCaptions(c)) return;
   $("capText").value = joinWords((c.caption_words || []).length ? c.caption_words : c.heard_words);
-  $("capMsg").innerHTML = "";
+  $("capFixMsg").innerHTML = "";
   p.classList.remove("seo-on", "trim-on");
   closeFrame();
   p.classList.add("cap-on");
@@ -4078,7 +4078,7 @@ $("capApply").onclick = async () => {
   if (!canFixCaptions(c)) return;
   $("capApply").disabled = true;
   busy(true, "Burning the captions in again…");
-  $("capMsg").innerHTML = "";
+  $("capFixMsg").innerHTML = "";
   vid.pause();
   try {
     const updated = await api(
@@ -4092,7 +4092,7 @@ $("capApply").onclick = async () => {
     toast("Captions fixed.");
     $("player").classList.remove("cap-on");
   } catch (e) {
-    $("capMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    $("capFixMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
   } finally {
     busy(false);
     $("capApply").disabled = false;
