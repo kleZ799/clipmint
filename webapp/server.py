@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from shorts_generator import captions as caption_styles
 from shorts_generator import framing
+from shorts_generator.version import SITE_URL
 from shorts_generator.layout_spec import (
     ASPECT_PRESETS, EDIT_FIELDS, LayoutSpec, parse_layout_prompt,
 )
@@ -977,7 +978,7 @@ EXTERNAL_LINKS = {
     # these (YouTube API Services Developer Policies, III.A.1 and III.A.2).
     "youtube-terms": "https://www.youtube.com/t/terms",
     "google-privacy": "https://policies.google.com/privacy",
-    "privacy": "https://klez799.github.io/clipmint/privacy.html",
+    "privacy": SITE_URL + "privacy.html",
     "google-permissions": "https://security.google.com/settings/security/permissions",
     # A free key for the stock footage B-roll is drawn from.
     "pexels-key": "https://www.pexels.com/api/",

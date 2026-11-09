@@ -13,6 +13,7 @@ on:
     paths:
       - "site/**"
       - "PRIVACY.md"
+      - "shorts_generator/version.py"   # SITE_URL: the site's own address
       - "docs/compare.md"
       - "docs/case-study.md"
       - "assets/social-preview.png"

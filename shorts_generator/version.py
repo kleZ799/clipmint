@@ -12,3 +12,8 @@ APP_VERSION = "1.29.3"
 # Where updates come from. Hardcoded on purpose: the page must never be able
 # to point the updater at a different repository.
 UPDATE_REPO = "kleZ799/clipmint"
+
+# The public site: home page and privacy policy. Google's consent screen links
+# here, and the link in the app must match it. site/build.py reads this too, so
+# moving the site to a new domain is this one line (plus the Cloud Console).
+SITE_URL = "https://klez799.github.io/clipmint/"

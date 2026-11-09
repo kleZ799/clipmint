@@ -4,6 +4,7 @@ import time
 from typing import Dict, List, Optional, Set, Tuple
 
 from .. import usage
+from ..version import SITE_URL
 from ..config import (
     current_model,
     current_provider,
@@ -156,7 +157,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # OpenRouter shows these on its own dashboard, so a user can see which of
 # their requests came from this app.
 _OPENROUTER_HEADERS = {"X-Title": "ClipMint",
-                       "HTTP-Referer": "https://klez799.github.io/clipmint/"}
+                       "HTTP-Referer": SITE_URL}
 
 
 def _openrouter_client():

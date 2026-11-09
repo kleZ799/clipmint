@@ -19,6 +19,7 @@ authorise.
 """
 import html
 import re
+import runpy
 import shutil
 from pathlib import Path
 
@@ -88,7 +89,10 @@ PAGE = """<!doctype html>
 """
 
 
-BASE = "https://klez799.github.io/clipmint/"
+# The site's address comes from the app's version.py, so the app's privacy link
+# and the site can't disagree. Read by path: importing the package would pull in
+# the whole pipeline, and this runs in CI with only `markdown` installed.
+BASE = runpy.run_path(str(ROOT / "shorts_generator" / "version.py"))["SITE_URL"]
 
 # Pages rendered from markdown in the repo: (output, source, title, description).
 DOCS = [
@@ -154,8 +158,12 @@ def main() -> None:
     shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir()
 
-    for name in ("index.html", "style.css", "icons.svg"):
+    for name in ("style.css", "icons.svg"):
         shutil.copy2(SITE / name, OUT / name)
+    # The home page's absolute links (canonical, share card, structured data)
+    # are written as {base} so they follow SITE_URL.
+    index = (SITE / "index.html").read_text(encoding="utf-8")
+    (OUT / "index.html").write_text(index.replace("{base}", BASE), encoding="utf-8")
     shutil.copy2(ROOT / "assets" / "icon.png", OUT / "icon.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "01-create.png", OUT / "screenshot.png")
     shutil.copy2(ROOT / "assets" / "screenshots" / "09-youtube-upload.png", OUT / "upload.png")
