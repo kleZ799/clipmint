@@ -681,7 +681,7 @@ label.fld > span {
 label.fld > span a { color: var(--blue); text-decoration: none; float: right; }
 label.fld > span a:hover { text-decoration: underline; }
 
-.row { display: flex; gap: 10px; }
+.row { display: flex; gap: 10px; align-items: center; }
 .row > input { flex: 1; min-width: 0; }
 
 .check {
@@ -693,7 +693,9 @@ label.fld > span a:hover { text-decoration: underline; }
   cursor: pointer;
   margin: 14px 0;
 }
-.check input { width: 17px; height: 17px; accent-color: var(--red); cursor: pointer; }
+/* flex: none, or a label long enough to wrap squeezes its own tick box
+   narrower than the ones beside shorter labels. */
+.check input { flex: none; width: 17px; height: 17px; accent-color: var(--red); cursor: pointer; }
 
 /* ============================ buttons ============================ */
 .btn {
@@ -1268,7 +1270,8 @@ label.fld > span a:hover { text-decoration: underline; }
 
 /* Copy straight off the card — the common case is grabbing a title and
    pasting it into YouTube, without opening the clip at all. */
-.clip .cq { display: flex; gap: 6px; margin-top: 8px; }
+/* The pills wrap as whole pills on a narrow card, never as two-line labels. */
+.clip .cq { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .qbtn {
   border: 1px solid var(--line);
   background: var(--raised-2);
