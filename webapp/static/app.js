@@ -94,8 +94,26 @@ function toast(msg, bad) {
 async function api(url, opts) {
   const r = await fetch(url, opts);
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.detail || `Request failed (${r.status})`);
+  if (!r.ok) {
+    const err = new Error(d.detail || `Request failed (${r.status})`);
+    err.status = r.status;     // so a caller can act on what kind of no it was
+    throw err;
+  }
   return d;
+}
+
+// The server answers 428 when a run needs an API key and none is set (see
+// NO_KEY_STATUS in server.py). Instead of an error by the source box, take the
+// user to the box where the key goes.
+const NO_KEY = 428;
+
+function needKey() {
+  $("setup").classList.remove("hidden");
+  $("setMsg").innerHTML =
+    `<div class="err">Add a free API key first. Picking the best moments needs one, ` +
+    `so without it the run would stop after the download.</div>`;
+  $("setup").scrollIntoView({ behavior: "smooth", block: "center" });
+  $("setKey").focus({ preventScroll: true });
 }
 
 function json(method, payload) {
@@ -2848,9 +2866,14 @@ async function run() {
       ...editChoice,
     }));
   } catch (e) {
-    showErr(e.message);
     $("go").disabled = false;
     $("go").textContent = "Generate shorts";
+    if (e.status === NO_KEY) {
+      $("progress").classList.add("hidden");
+      needKey();
+    } else {
+      showErr(e.message);
+    }
     return;
   }
 
@@ -2903,7 +2926,8 @@ async function retryRun(id, clipsOnly) {
     $("progress").classList.remove("hidden");
     follow(id);
   } catch (e) {
-    showErr(e.message);
+    if (e.status === NO_KEY) needKey();
+    else showErr(e.message);
   } finally {
     $("retryBtn").disabled = false;
   }
@@ -3026,7 +3050,8 @@ async function checkInterrupted() {
         $("progress").scrollIntoView({ behavior: "smooth", block: "center" });
         follow(j.id);
       } catch (e) {
-        showErr(e.message);
+        if (e.status === NO_KEY) needKey();
+        else showErr(e.message);
         $("rbGo").disabled = false;
       }
     };

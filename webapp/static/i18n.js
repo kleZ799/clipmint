@@ -30,6 +30,8 @@ window.I18N = (function () {
       "Set up in 30 seconds": "30 सेकंड में सेटअप करें",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "सबसे अच्छे पल चुनने के लिए एक मुफ़्त API की ज़रूरत है। यह सिर्फ़ इसी PC पर सेव होती है।",
+      "Add a free API key first. Picking the best moments needs one, so without it the run would stop after the download.":
+        "पहले एक मुफ़्त API की जोड़ें। सबसे अच्छे पल चुनने के लिए इसकी ज़रूरत है, इसके बिना रन डाउनलोड के बाद रुक जाएगा।",
       "Provider": "प्रोवाइडर",
       "API key": "API की",
       "Save and continue": "सेव करके आगे बढ़ें",
@@ -365,6 +367,8 @@ window.I18N = (function () {
       "Set up in 30 seconds": "Configúralo en 30 segundos",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Elegir los mejores momentos necesita una clave de API gratuita. Se guarda solo en este PC.",
+      "Add a free API key first. Picking the best moments needs one, so without it the run would stop after the download.":
+        "Primero añade una clave de API gratuita. Elegir los mejores momentos la necesita; sin ella, el proceso se detendría después de la descarga.",
       "Provider": "Proveedor",
       "API key": "Clave de API",
       "Save and continue": "Guardar y continuar",
@@ -700,6 +704,8 @@ window.I18N = (function () {
       "Set up in 30 seconds": "Configure em 30 segundos",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Escolher os melhores momentos exige uma chave de API gratuita. Ela fica salva só neste PC.",
+      "Add a free API key first. Picking the best moments needs one, so without it the run would stop after the download.":
+        "Adicione primeiro uma chave de API gratuita. Escolher os melhores momentos exige uma; sem ela, o processo pararia depois do download.",
       "Provider": "Provedor",
       "API key": "Chave de API",
       "Save and continue": "Salvar e continuar",
@@ -1035,6 +1041,8 @@ window.I18N = (function () {
       "Set up in 30 seconds": "Prêt en 30 secondes",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Choisir les meilleurs moments demande une clé d'API gratuite. Elle reste sur ce PC uniquement.",
+      "Add a free API key first. Picking the best moments needs one, so without it the run would stop after the download.":
+        "Ajoutez d'abord une clé d'API gratuite. Choisir les meilleurs moments en demande une ; sans elle, le traitement s'arrêterait après le téléchargement.",
       "Provider": "Fournisseur",
       "API key": "Clé d'API",
       "Save and continue": "Enregistrer et continuer",
@@ -1370,6 +1378,8 @@ window.I18N = (function () {
       "Set up in 30 seconds": "In 30 Sekunden eingerichtet",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Für die Auswahl der besten Momente braucht es einen kostenlosen API-Schlüssel. Er bleibt nur auf diesem PC.",
+      "Add a free API key first. Picking the best moments needs one, so without it the run would stop after the download.":
+        "Füge zuerst einen kostenlosen API-Schlüssel hinzu. Für die Auswahl der besten Momente braucht es einen – ohne ihn würde der Lauf nach dem Download stoppen.",
       "Provider": "Anbieter",
       "API key": "API-Schlüssel",
       "Save and continue": "Speichern und weiter",
@@ -1705,6 +1715,8 @@ window.I18N = (function () {
       "Set up in 30 seconds": "30 秒でセットアップ",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "見どころの選定には無料の API キーが 1 つ必要です。この PC 内にのみ保存されます。",
+      "Add a free API key first. Picking the best moments needs one, so without it the run would stop after the download.":
+        "先に無料の API キーを追加してください。見どころの選定に必要で、ないとダウンロードの後で処理が止まってしまいます。",
       "Provider": "プロバイダ",
       "API key": "API キー",
       "Save and continue": "保存して続ける",
@@ -2040,6 +2052,8 @@ window.I18N = (function () {
       "Set up in 30 seconds": "Настройка за 30 секунд",
       "Picking the best moments needs one free API key. It is stored on this PC only.":
         "Чтобы выбирать лучшие моменты, нужен один бесплатный API-ключ. Он хранится только на этом компьютере.",
+      "Add a free API key first. Picking the best moments needs one, so without it the run would stop after the download.":
+        "Сначала добавьте бесплатный API-ключ. Он нужен, чтобы выбирать лучшие моменты, — без него обработка остановится после загрузки.",
       "Provider": "Сервис",
       "API key": "API-ключ",
       "Save and continue": "Сохранить и продолжить",
