@@ -1379,11 +1379,28 @@ async def upload(file: UploadFile = File(...)) -> dict:
             "size": dest.stat().st_size}
 
 
+# Ranking is the first stage that needs the LLM, and it comes after the
+# download and the transcription -- many minutes into a long video. Without a
+# key a run can only fail there, so it is refused before any of that work.
+# A status of its own, so the page can open the key setup on the code rather
+# than by matching these words.
+NO_KEY_STATUS = 428
+NO_KEY_MESSAGE = ("Add a free API key first. Picking the best moments needs one, "
+                  "so without it the run would stop after the download.")
+
+
+def _require_llm_key() -> None:
+    from shorts_generator import user_config
+    if not user_config.has_llm_key():
+        raise HTTPException(NO_KEY_STATUS, NO_KEY_MESSAGE)
+
+
 @app.post("/api/jobs")
 async def create_job(req: JobRequest) -> dict:
     source = req.source.strip()
     if not source:
         raise HTTPException(400, "No source given")
+    _require_llm_key()
 
     spec, _ = await _read_prompt(req.prompt, req.use_llm, JOB_READ_SECONDS)
     _override_aspect(spec, req.aspect_ratio)
@@ -2055,6 +2072,7 @@ async def continue_job(job_id: str) -> dict:
     everything already cached on disk.
     """
     job = _job_or_404(job_id)
+    _require_llm_key()
     try:
         job = STORE.carry_on(job)
     except ValueError as e:
@@ -2072,6 +2090,8 @@ async def retry_job(job_id: str, clips_only: bool = False) -> dict:
     make the second go start where the first stopped.
     """
     job = _job_or_404(job_id)
+    if not clips_only:      # re-rendering clips already ranked needs no ranking
+        _require_llm_key()
     try:
         job = STORE.retry_clips(job) if clips_only else STORE.retry(job)
     except ValueError as e:
