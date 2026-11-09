@@ -2184,7 +2184,10 @@ async def update_check() -> dict:
 @app.post("/api/update/install")
 async def update_install() -> dict:
     state = await asyncio.to_thread(updater.check)
-    if state["status"] not in ("update", "rollback") or not state["can_install"]:
+    # "ahead" is the way back from a pulled release (see updater.check). This
+    # used to test for "rollback", a status check() has never returned, so the
+    # page offered "Go back to 1.x" and the server refused it every time.
+    if state["status"] not in ("update", "ahead") or not state["can_install"]:
         raise HTTPException(400, state["reason"] or "There is nothing to install.")
     if not updater.INSTALL.start(state["_url"], state["_digest"]):
         raise HTTPException(409, "An update is already downloading.")

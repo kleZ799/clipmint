@@ -2095,7 +2095,10 @@ if ($("verCheck")) {
 async function checkUpdateAndShow() {
   toast("Checking for updates…");
   await checkUpdate(true);
-  if (updateState && (updateState.status === "update" || updateState.status === "rollback")) {
+  // "ahead" is the build being newer than the latest release, where the card
+  // offers the way back. This used to test for "rollback", a status the
+  // updater has never sent, so on such a build the button answered nothing.
+  if (updateState && (updateState.status === "update" || updateState.status === "ahead")) {
     openWelcome();
     $("wUpdate").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
