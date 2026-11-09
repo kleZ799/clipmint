@@ -238,6 +238,8 @@ CLIP_ATTEMPTS = 3
 # Retry button is still there once whatever it was has been put right.
 _PERMANENT = (
     "api_key_invalid", "api key not valid", "permission_denied", "unauthenticated",
+    # config.require_*_key(): no key at all. Waiting won't make one appear.
+    "_api_key is not set",
     "private video", "video unavailable", "unsupported url", "is not a valid url",
     "sign in to confirm", "members-only", "join this channel",
     "local file path does not exist",
