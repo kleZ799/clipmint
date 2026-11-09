@@ -2391,14 +2391,14 @@ delete says so instead of reporting success over a half-deleted folder.
 
 ## 12. The frontend
 
-`webapp/static/` — four files, ~10,000 lines, **no framework, no build step.**
+`webapp/static/` — four files, ~11,400 lines, **no framework, no build step.**
 
 | File | Lines | What |
 |---|---|---|
-| `index.html` | 1,014 | Full page markup + an inline SVG sprite sheet |
-| `app.js` | 4,296 | All behaviour, plain DOM, no dependencies |
-| `i18n.js` | 2,279 | The interface in seven more languages, keyed by the English |
-| `style.css` | 2,757 | Design system in CSS custom properties |
+| `index.html` | 1,114 | Full page markup + an inline SVG sprite sheet |
+| `app.js` | 4,826 | All behaviour, plain DOM, no dependencies |
+| `i18n.js` | 2,461 | The interface in seven more languages, keyed by the English |
+| `style.css` | 3,022 | Design system in CSS custom properties |
 
 **The stylesheet is served inside the page.** `GET /` reads `index.html` and
 replaces its `<link rel="stylesheet">` with the contents of `style.css`
@@ -2520,14 +2520,37 @@ phrases the parser already understands.
 ### 12.5 Following a job
 
 ```js
-es = new EventSource(`/api/jobs/${job.id}/stream`);
-es.onmessage = (ev) => onUpdate(JSON.parse(ev.data));
-es.onerror = () => {
-  // The stream drops when the job ends; fall back to one direct read.
-  es.close();
-  fetch(`/api/jobs/${job.id}`).then(r => r.json()).then(onUpdate).catch(() => {});
-};
+function listen(id, misses) {
+  if (es) es.close();
+  const stream = new EventSource(`/api/jobs/${id}/stream`);
+  es = stream;
+  const again = (n, wait) => setTimeout(() => { if (es === stream) listen(id, n); }, wait);
+  stream.onmessage = (ev) => { misses = 0; onUpdate(JSON.parse(ev.data)); };
+  stream.onerror = () => {
+    stream.close();
+    fetch(`/api/jobs/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (!s || es !== stream) return;
+        onUpdate(s);
+        if (["running", "queued"].includes(s.status)) again(0, 2000);
+      })
+      .catch(() => { if (misses < 30) again(misses + 1, 4000); });
+  };
+}
 ```
+
+The stream closes when the job ends, and one direct read picks up the last
+word. But it also drops when the PC sleeps or the connection blips, with the
+run still going. Until v1.29.5 the page stopped listening there, and sat on a
+frozen bar for the rest of a render that was working fine. Now the direct read
+decides: a run it says is still `running` or `queued` is listened to again.
+
+`es === stream` is how a stale retry knows to give up. `finish()` and
+`stopped()` set `es` to null and a newer run replaces it, so the check reads as
+"nobody has moved on from this run yet". When the server itself doesn't answer
+(it may be waking up with the PC) the page tries again every four seconds, for
+two minutes and no longer.
 
 `onUpdate()` writes the stage label, the percentage, a `scaleX()` transform on
 the bar (transform, not width — it's GPU-composited and doesn't trigger layout),
@@ -3248,6 +3271,15 @@ rule. That is the whole mechanism, and the reason for it is maintenance: a
 colour added to a rule later works in both themes or in neither. It cannot
 work in only one by accident, which is the failure mode of a second stylesheet
 that has to be kept in step by hand.
+
+**The typeface is a token too, and for a sharper reason.** 43 rules set their
+size and weight as `font: 500 14px/1 inherit`. That is not valid CSS: `inherit`
+can't stand in for the family inside the shorthand, and a browser drops the
+whole declaration without a word. So until v1.29.5 every one of those rules was
+drawing at the browser's defaults instead (buttons in 13px Arial, headings at
+21px bold, the step numbers off-centre in their circles), and the stylesheet
+read as if it were working. They now end in `var(--font)`. A bad value in a
+shorthand doesn't fail one part of it; it fails all of it, silently.
 
 Getting there meant pulling out ~180 hardcoded colours first. Three patterns
 were worth naming:
@@ -4093,7 +4125,7 @@ rather than guessing from what the button last did.
 |---|---|
 | `GET /api/version` | The running build's version and platform (`windows`, `mac`, `linux`). Local only, never touches the network, so the number is there when GitHub is not. The page writes it into the masthead, the sidebar, the welcome and credits card and a watermark fixed in the bottom-right corner above every modal, so any screenshot someone sends says which build it came from |
 | `GET /api/update/check` | Asks GitHub for the newest release. Returns `current` / `update` / `ahead` / `unavailable`, and never the download URL |
-| `POST /api/update/install` | Starts the download. Takes no arguments — the server resolves which file to fetch for itself |
+| `POST /api/update/install` | Starts the download. Takes no arguments — the server resolves which file to fetch for itself. Allowed when the check says `update` or `ahead` (going back to the latest release) |
 | `GET /api/update/progress` | Bytes done, total, and state: `downloading` / `verifying` / `ready` / `failed` |
 | `POST /api/update/apply` | Swaps the verified build in and relaunches. The process exits ~1.5s after replying |
 
