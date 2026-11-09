@@ -523,7 +523,7 @@ ClipMint reads the views, likes and comments of every clip that's on your
 channel, including ones you uploaded yourself, which it finds by title. Then it
 says what the numbers show:
 
-<img src="assets/screenshots/16-performance.png" alt="How your Shorts did: 37 clips on YouTube with a median of 12 views, a finding marked Looks real that clips with a title the AI actually wrote got a median of 31 views against 3.5 for the rest, two more marked Looks real, two marked Worth watching, a line listing what has no clear link yet, and a note that the ranking is unchanged" width="880">
+<img src="assets/screenshots/16-performance.png" alt="How your Shorts did: 43 clips on YouTube with a median of 10 views, a finding marked Looks real that clips with a title the AI actually wrote got a median of 20 views against 4 for the rest, three more marked Looks real, one marked Worth watching, a line listing what has no clear link yet, and a note that the ranking now leans less on reaction words" width="880">
 
 - **Every pattern is tested against chance.** With a few dozen Shorts, most
   differences are noise, and the panel says so: a finding is marked **Looks
