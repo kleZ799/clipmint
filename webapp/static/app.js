@@ -2889,13 +2889,34 @@ function follow(id) {
   jobId = id;
   finished = null;
   $("retryRow").classList.add("hidden");
+  listen(id, 0);
+}
+
+// The stream drops when the job ends, and one direct read picks up the last
+// word. It also drops when the PC sleeps or the connection blips, with the
+// run still going -- and a page that stopped listening there sat on a frozen
+// bar for the rest of a render that was working fine. So a run the direct
+// read says is still live is listened to again.
+function listen(id, misses) {
   if (es) es.close();
-  es = new EventSource(`/api/jobs/${id}/stream`);
-  es.onmessage = (ev) => onUpdate(JSON.parse(ev.data));
-  es.onerror = () => {
-    // The stream drops when the job ends; fall back to one direct read.
-    es.close();
-    fetch(`/api/jobs/${id}`).then((r) => r.json()).then(onUpdate).catch(() => {});
+  const stream = new EventSource(`/api/jobs/${id}/stream`);
+  es = stream;
+  // finish() and stopped() null `es`, and a newer run replaces it, so
+  // `es === stream` is "nobody has moved on from this run yet".
+  const again = (n, wait) => setTimeout(() => { if (es === stream) listen(id, n); }, wait);
+  stream.onmessage = (ev) => { misses = 0; onUpdate(JSON.parse(ev.data)); };
+  stream.onerror = () => {
+    stream.close();
+    fetch(`/api/jobs/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (!s || es !== stream) return;
+        onUpdate(s);
+        if (["running", "queued"].includes(s.status)) again(0, 2000);
+      })
+      // The server itself did not answer. Worth a few more tries -- it may be
+      // waking up with the PC -- but not forever against one that has gone.
+      .catch(() => { if (misses < 30) again(misses + 1, 4000); });
   };
 }
 
