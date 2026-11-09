@@ -235,19 +235,55 @@ policy III.H says they can ask for access to test the app.
 
 Only needed to ship the client to more than 100 people. It asks for:
 
-- **A homepage and privacy policy on a domain you have verified** in Google
-  Search Console. ClipMint's are on `klez799.github.io`: add it as a **URL
-  prefix** property (`https://klez799.github.io/clipmint/`) and verify it with
-  the HTML-tag method, by putting Google's `<meta>` tag in `site/index.html`.
-  If Google's review refuses a github.io address, the fallback is a custom
-  domain (about $10 a year) pointed at the same GitHub Pages site.
+- **A homepage and privacy policy on a domain you own and have verified** in
+  Google Search Console. A github.io address is not enough: on 8 Nov 2026
+  Google's review refused `klez799.github.io` as "a third-party hosting
+  platform where you can't verify that you own your subdomain". ClipMint needs a
+  custom domain (about $10 a year) pointed at the same GitHub Pages site; see
+  **Moving the site to its own domain** below.
 - **A demo video** (unlisted on YouTube) showing the whole sign-in, the consent
   screen with both scopes, and the features that use each scope
 - **A written justification for each scope.** Use the same text as the audit.
 
-The link in the app (`EXTERNAL_LINKS["privacy"]` in `webapp/server.py`) and the
-one on the consent screen must match. Both point at
-`https://klez799.github.io/clipmint/privacy.html`; change both if the site moves.
+The link in the app and the one on the consent screen must match. The app's
+comes from `SITE_URL` in `shorts_generator/version.py` (plus `privacy.html`),
+which the site build reads too, so the app, the site's own links and the
+sitemap all follow that one line.
+
+#### Moving the site to its own domain
+
+`example.dev` below stands for the domain you bought. Any registrar that lets
+you edit DNS records works.
+
+1. **Point the domain at GitHub Pages.** At the registrar, add four `A`
+   records on the bare domain (`@`): `185.199.108.153`, `185.199.109.153`,
+   `185.199.110.153`, `185.199.111.153`. Optionally add four `AAAA` records:
+   `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`,
+   `2606:50c0:8003::153`. Then add a `CNAME` for `www` → `klez799.github.io`.
+2. **Verify the domain with GitHub**, so nobody else can claim it for their
+   Pages site: GitHub → your account Settings → Pages → *Add a domain*, then
+   add the `TXT` record it shows.
+3. **Set it on the repo:** clipmint → Settings → Pages → *Custom domain* →
+   `example.dev`. The site is deployed by a workflow, so a `CNAME` file in the
+   repo does nothing; this setting is what counts. Once the certificate is
+   issued (minutes to an hour), tick **Enforce HTTPS**. From then on
+   `klez799.github.io/clipmint/...` redirects to the new domain, so links in
+   releases already out there keep working.
+4. **Verify it with Google:** Search Console → *Add property* → **Domain**
+   → `example.dev`, then add the `TXT` record it shows. Use the same Google
+   account that owns the Cloud project.
+5. **Change `SITE_URL`** in `shorts_generator/version.py` to
+   `https://example.dev/` and push. The Site workflow rebuilds the pages with
+   the new address; the app picks it up in the next release.
+6. **Update the Cloud Console** (Google Auth Platform → Branding): home page
+   `https://example.dev/`, privacy policy `https://example.dev/privacy.html`,
+   and add `example.dev` under *Authorized domains*. Save.
+7. **Reply to Google's verification email** (the "[Action Needed] OAuth
+   Verification Request Acknowledgement" thread) to say the home page and
+   privacy policy are now on a verified domain you own. Google doesn't look
+   again until you reply.
+8. Update the github.io links in the docs, the README and the website (every
+   `.md` file), and the `pages.yml` header comment.
 
 ---
 
@@ -285,8 +321,9 @@ it, or the review can fail on a use of the scope nobody explained.
 2. Put the github.io home page, privacy policy and authorized domain on the
    **Branding** page (1.3). The site itself is already live.
 3. Record the demo video and submit the audit form (3.1).
-4. Before shipping to more than 100 people: a verified domain and OAuth
-   verification (3.2).
+4. Before shipping to more than 100 people: OAuth verification (3.2). Google's
+   last review (8 Nov 2026) raised only the domain, so what's left is moving
+   the site to one you own.
 
 ### The risks, most serious first
 
