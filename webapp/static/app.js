@@ -278,6 +278,8 @@ async function checkSetup() {
         $("fbBaseUrlRow").title = "Set via environment variable — changes here won't override it.";
       }
     }
+    updateOpenaiBaseUrlVisibility();
+    if ($("setBaseUrl")) $("setBaseUrl").value = d.openai_base_url || "";
     drawSwitcher(d.provider);
     // Ollama has no key to report; where its server is says more.
     const keyRow = d.provider === "ollama"
@@ -753,6 +755,13 @@ function keyField2For(p) {
 }
 $("setProvider2").onchange = () => keyField2For($("setProvider2").value);
 
+// Show the base URL field only when OpenAI is selected as provider.
+function updateOpenaiBaseUrlVisibility() {
+  const fld = $("openaiBaseUrlFld");
+  if (fld) fld.hidden = $("setProvider2").value !== "openai";
+}
+$("setProvider2").addEventListener("change", updateOpenaiBaseUrlVisibility);
+
 async function saveKey(providerEl, keyEl, btn, msgEl, onDone) {
   const key = keyEl.value.trim();
   const provider = providerEl.value;
@@ -782,8 +791,34 @@ $("setSave").onclick = () =>
   saveKey($("setProvider"), $("setKey"), $("setSave"), $("setMsg"),
           () => $("setup").classList.add("hidden"));
 
-$("setSave2").onclick = () =>
-  saveKey($("setProvider2"), $("setKey2"), $("setSave2"), $("setMsg2"), null);
+$("setSave2").onclick = async () => {
+  const provider = $("setProvider2").value;
+  const key = $("setKey2").value.trim();
+  const url = (provider === "openai" && $("setBaseUrl")) ? $("setBaseUrl").value.trim() : null;
+  const msg = $("setMsg2"), btn = $("setSave2");
+  if (!key && url === null) { msg.innerHTML = `<div class="err">Paste a key first.</div>`; return; }
+  if (!key && !url) { msg.innerHTML = `<div class="err">Paste a key first.</div>`; return; }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    // Save key if provided
+    if (key) {
+      await api("/api/settings", json("POST", { provider, api_key: key, as_fallback: true }));
+      $("setKey2").value = "";
+    }
+    // Save base URL if on OpenAI
+    if (url !== null) {
+      await api("/api/settings", json("POST", { provider: "openai", base_url: url, as_fallback: true }));
+      if ($("fbBaseUrl")) $("fbBaseUrl").value = url;
+    }
+    msg.innerHTML = `<div class="ok-box">Saved.</div>`;
+    checkSetup();
+  } catch (e) {
+    msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+};
 
 // ------------------------------------------------------------ YouTube sign-in
 //

@@ -21,8 +21,9 @@ The model scores both, and `score` is the blend the rest of the app sorts on.
 import hashlib
 import json
 import re
+import threading
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import boundaries, content_kinds, muapi, signals, visual
 from .signals import AudioTrack
@@ -1055,28 +1056,196 @@ def get_highlights(
                   f"already ranked earlier", flush=True)
 
         all_highlights: List[Dict] = []
+
+        # Determine how many chunks to run simultaneously.
+        # With N Gemini keys we can send N chunks in parallel — each key handles
+        # one concurrent request and they don't interfere with each other.
+        # We cap at 4 regardless of key count to avoid flooding the API.
+        # With 1 key (or non-Gemini providers) the pool size is 1, which means
+        # the behaviour is identical to the original sequential loop.
+        try:
+            from .config import gemini_keys as _gkeys, current_provider as _cprov
+            _n_keys = len(_gkeys()) if _cprov() == "gemini" else 1
+        except Exception:
+            _n_keys = 1
+        workers = max(1, min(_n_keys, 4))
+
+        # Identify which chunks still need processing.
+        pending: List[Tuple[int, Dict]] = [
+            (i, chunk) for i, chunk in enumerate(chunks)
+            if str(i) not in done
+        ]
+
+        # Extend all_highlights with already-done chunks in order.
         for i, chunk in enumerate(chunks):
-            offset = chunk.get("_offset", 0)
-            key = str(i)
-            if key in done:
-                all_highlights.extend(done[key])
-                continue
+            if str(i) in done:
+                all_highlights.extend(done[str(i)])
 
-            text = build_transcript_text(chunk, chat=chat, offset=offset)
-            print(f"[highlights] chunk {i + 1}/{len(chunks)} (offset {offset:.0f}s)", flush=True)
-            result = call_highlight_api(text, content_info, chunk["duration"], num_clips=num_clips, is_chunk=True, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note, asks=asks)
-            ranked = []
-            for h in result.get("highlights", []):
-                h["start_time"] = float(h["start_time"]) + offset
-                h["end_time"] = float(h["end_time"]) + offset
-                ranked.append(h)
-            all_highlights.extend(ranked)
+        if pending:
+            if workers > 1:
+                print(
+                    f"[highlights] {workers} Gemini keys available — "
+                    f"processing {len(pending)} chunk(s) {workers} at a time",
+                    flush=True,
+                )
 
-            # Written per chunk, not at the end: the whole point is to survive
-            # the failure that happens on the *next* one.
-            done[key] = ranked
-            _save_checkpoint(checkpoint_path, fingerprint, done,
-                             content=content_info, duration=duration)
+            checkpoint_lock = threading.Lock()
+
+            def _process_chunk(args: Tuple[int, Dict]) -> Tuple[int, List[Dict]]:
+                """Rank one chunk; thread-safe. Returns (index, highlights)."""
+                i, chunk = args
+                offset = chunk.get("_offset", 0)
+                text = build_transcript_text(chunk, chat=chat, offset=offset)
+                print(
+                    f"[highlights] chunk {i + 1}/{len(chunks)} (offset {offset:.0f}s)",
+                    flush=True,
+                )
+                result = call_highlight_api(
+                    text, content_info, chunk["duration"],
+                    num_clips=num_clips, is_chunk=True, llm_fn=llm_fn,
+                    clip_seconds=clip_seconds, brief=brief,
+                    chat_note=chat_note, asks=asks,
+                )
+                ranked: List[Dict] = []
+                for h in result.get("highlights", []):
+                    h["start_time"] = float(h["start_time"]) + offset
+                    h["end_time"] = float(h["end_time"]) + offset
+                    ranked.append(h)
+                # Checkpoint immediately after each chunk completes so a later
+                # failure doesn't throw away work already paid for.
+                with checkpoint_lock:
+                    done[str(i)] = ranked
+                    _save_checkpoint(checkpoint_path, fingerprint, done,
+                                     content=content_info, duration=duration)
+                return i, ranked
+
+            if workers == 1:
+                # Sequential path — identical behaviour to the original loop,
+                # no threading overhead for single-key setups.
+                for args in pending:
+                    _, ranked = _process_chunk(args)
+                    all_highlights.extend(ranked)
+            else:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                import time as _time
+
+                # Results arrive in completion order; re-sort by chunk index
+                # afterwards so the highlight list is chronological.
+                index_results: Dict[int, List[Dict]] = {}
+                failed_chunks: List[Tuple[int, Dict]] = []  # chunks to retry
+
+                with ThreadPoolExecutor(max_workers=workers,
+                                        thread_name_prefix="chunk") as pool:
+                    futures = {pool.submit(_process_chunk, args): args
+                               for args in pending}
+                    for fut in as_completed(futures):
+                        orig_args = futures[fut]
+                        chunk_num = orig_args[0] + 1
+                        try:
+                            idx, ranked = fut.result()
+                            index_results[idx] = ranked
+                        except Exception as exc:
+                            # Don't abandon it yet — queue for a sequential
+                            # retry once the parallel batch is done.  Keys
+                            # that were busy or rate-limited during the batch
+                            # may be free again by then.
+                            print(
+                                f"[highlights] chunk {chunk_num} failed in "
+                                f"parallel pass ({str(exc)[:100]}) — "
+                                f"will retry sequentially",
+                                flush=True,
+                            )
+                            failed_chunks.append(orig_args)
+
+
+                # Retry failed chunks one at a time (sequential, no race).
+                # Each attempt resets the key-rotation deadline and clears the
+                # spent-key set so every available key gets a clean shot.
+                if failed_chunks:
+                    try:
+                        from .local import llm as _llm_mod
+                        from .config import (
+                            current_provider as _cprov,
+                            gemini_keys as _gkeys,
+                        )
+                        _provider = _cprov()
+                        # Key count per provider:
+                        #   Gemini  — supports multiple spare keys (rotation)
+                        #   Others  — single key; retry helps with transient
+                        #             errors (503s, rate-limit windows, etc.)
+                        if _provider == "gemini":
+                            _n_retry_keys = len(_gkeys())
+                        else:
+                            # 1 key but still worth 2 attempts for transient failures
+                            _n_retry_keys = 1
+                    except Exception:
+                        _provider = "unknown"
+                        _n_retry_keys = 1
+                        _llm_mod = None
+
+                    # Retry up to (number of keys) times — minimum 2 so single-key
+                    # providers also get a second chance on transient failures.
+                    max_retries = max(2, _n_retry_keys)
+                    backoff = [2, 5, 10, 15, 20]  # seconds between attempts
+
+                    print(
+                        f"[highlights] retrying {len(failed_chunks)} failed chunk(s)"
+                        f" — up to {max_retries} attempt(s) per chunk"
+                        f" ({_provider}, {_n_retry_keys} key(s))",
+                        flush=True,
+                    )
+                    for args in failed_chunks:
+                        chunk_num = args[0] + 1
+                        succeeded = False
+                        last_exc: Optional[Exception] = None
+                        for attempt in range(1, max_retries + 1):
+                            wait = backoff[min(attempt - 1, len(backoff) - 1)]
+                            print(
+                                f"[highlights] chunk {chunk_num} retry "
+                                f"{attempt}/{max_retries} (waiting {wait}s)…",
+                                flush=True,
+                            )
+                            _time.sleep(wait)
+                            # Reset provider-specific rate-limit state so every
+                            # key gets a genuinely fresh attempt.
+                            try:
+                                if _llm_mod is not None:
+                                    # Gemini: clear rotation deadline + spent marks
+                                    _llm_mod._key_rotation_deadline = None
+                                    _llm_mod._spent_keys.clear()
+                                    # All providers: clear the fallback flag so the
+                                    # active provider is tried first again.
+                                    _llm_mod._fallback_provider = None
+                            except Exception:
+                                pass
+                            try:
+                                idx, ranked = _process_chunk(args)
+                                index_results[idx] = ranked
+                                print(
+                                    f"[highlights] chunk {chunk_num} succeeded "
+                                    f"on attempt {attempt}",
+                                    flush=True,
+                                )
+                                succeeded = True
+                                break
+                            except Exception as exc_r:
+                                last_exc = exc_r
+                                print(
+                                    f"[highlights] chunk {chunk_num} attempt "
+                                    f"{attempt} failed: {str(exc_r)[:80]}",
+                                    flush=True,
+                                )
+                        if not succeeded:
+                            print(
+                                f"[highlights] chunk {chunk_num} permanently skipped "
+                                f"after {max_retries} attempt(s) with all available "
+                                f"keys — last error: {str(last_exc)[:80]}",
+                                flush=True,
+                            )
+
+                # Merge in chronological order.
+                for i, _ in sorted(pending, key=lambda x: x[0]):
+                    all_highlights.extend(index_results.get(i, []))
 
         candidates = dedupe_highlights(all_highlights)
     else:

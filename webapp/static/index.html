@@ -702,6 +702,10 @@ addEventListener("load", function () {
       <span id="setKey2Label">Replace API key</span>
       <input type="password" id="setKey2" placeholder="Paste a new key">
     </label>
+    <label class="fld" id="openaiBaseUrlFld" hidden>
+      <span>Base URL <span style="color:var(--text-3);font-size:11px;font-weight:400">(optional — LM Studio, Ollama, Together AI…)</span></span>
+      <input type="url" id="setBaseUrl" placeholder="https://api.openai.com/v1" spellcheck="false">
+    </label>
     <button class="btn ghost" id="setSave2">Save key</button>
     <div id="setMsg2"></div>
     <div id="sparesBox" hidden>
