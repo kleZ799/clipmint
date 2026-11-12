@@ -362,6 +362,10 @@ def main() -> int:
         "--exclude-module", "matplotlib",
         "--exclude-module", "tkinter",
         "--exclude-module", "pytest",
+        "--exclude-module", "PyQt5",
+        "--exclude-module", "PyQt6",
+        "--exclude-module", "PySide2",
+        "--exclude-module", "PySide6",
 
         str(ROOT / "desktop.py"),
     ]
@@ -410,6 +414,8 @@ def main() -> int:
             "--hidden-import", "webview.platforms.edgechromium",
             "--hidden-import", "webview.platforms.winforms",
             "--hidden-import", "clr",
+            "--collect-all", "pythonnet",
+            "--collect-all", "clr_loader",
         ]
     cmd[-1:-1] = platform_args
 

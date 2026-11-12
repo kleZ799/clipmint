@@ -45,14 +45,31 @@ def _register_cuda_dlls() -> None:
     if bundled:
         roots.append(Path(bundled) / "nvidia")
 
+    # In a frozen PyInstaller executable, user site-packages is not on sys.path,
+    # so `import nvidia` fails even when `pip install nvidia-cublas-cu12` was run.
+    # Scan user and system Python site-packages directories on Windows:
+    import glob
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        for p in glob.glob(os.path.join(appdata, "Python", "Python*", "site-packages", "nvidia")):
+            roots.append(Path(p))
+    localappdata = os.environ.get("LOCALAPPDATA", "")
+    if localappdata:
+        for p in glob.glob(os.path.join(localappdata, "Programs", "Python", "Python*", "Lib", "site-packages", "nvidia")):
+            roots.append(Path(p))
+    for p in glob.glob(r"C:\Python*\Lib\site-packages\nvidia"):
+        roots.append(Path(p))
+
     for root in roots:
         for lib in ("cublas", "cudnn", "cuda_nvrtc", "cuda_runtime"):
-            d = root / lib / "bin"
-            if d.is_dir():
-                try:
-                    os.add_dll_directory(str(d))
-                except OSError:
-                    pass    # already registered, or gone between check and use
+            for sub in ("bin", "lib"):
+                d = root / lib / sub
+                if d.is_dir():
+                    try:
+                        os.add_dll_directory(str(d))
+                        os.environ["PATH"] = str(d) + os.pathsep + os.environ.get("PATH", "")
+                    except OSError:
+                        pass    # already registered, or gone between check and use
 
     # Also register the CUDA Toolkit bin directory on Windows.
     # The pip wheels (nvidia-cublas-cu12 / nvidia-cudnn-cu12) are the preferred
