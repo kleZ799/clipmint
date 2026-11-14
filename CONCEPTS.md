@@ -334,6 +334,15 @@ is cached by prompt so one message costs one call. A request that only the
 model can understand still degrades gracefully: with no key, or a model that
 is slow or down, the keyword reading stands.
 
+**A fallback has to cover what the thing it stands in for covers.** The
+keyword pass was written in English, on the reasoning that the model reads
+every other language. That holds only while the model answers. A Spanish
+speaker who typed "cámara arriba" on a day the quota was spent got the
+defaults, and for a stream taken for a podcast the default was the opposite
+of what they asked for. A degraded mode that works for one language is not a
+degraded mode for the others, it is an outage with no error message. The
+framing words are now matched in every language the interface is offered in.
+
 ### Filling quotas, not just taking the top N
 
 "2 funny, 2 that ask a question" is a **stratified selection**. Taking the
@@ -1208,7 +1217,7 @@ of something already known at the start, say so at the start.
 
 ### Provider fallback, and the ceiling on retrying
 
-Gemini (each spare key in turn) → Groq → OpenRouter → OpenAI. A **fallback
+Gemini (each spare key in turn) → Groq → OpenRouter → OpenAI → Claude. A **fallback
 chain**, with usage accounting to know when to switch.
 
 The idea worth carrying away: **retrying has a ceiling.** Exponential backoff
@@ -1687,6 +1696,9 @@ sufficient alone:
 - *Integrity* — SHA-256 from the releases API, compared before anything is
   replaced. This proves the bytes match what the API described. It does not
   prove who built them; that needs code signing, which needs a certificate.
+  Windows has started asking for exactly that: Smart App Control refuses an
+  unsigned program outright, with no "run anyway", so an unsigned build is
+  no longer only a warning to click through on those PCs.
 - *Authority* — the repository is compiled into the build. The page can ask to
   install "the update" but cannot say what the update is. Anything rendered in
   a webview is untrusted input, and the way to keep it from choosing a download
