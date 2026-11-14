@@ -409,7 +409,11 @@ _QUALITY_WORDS = [
 # Words that say what kind of video the source is.
 _KIND_WORDS = [
     (r"\b(?:live ?)?streams?\b|\bvods?\b|\bgameplay\b|\blet'?s ?plays?\b"
-     r"|\bplaythrough\b|\bgaming\b|\btwitch\b", content_kinds.STREAM),
+     r"|\bplaythrough\b|\bgaming\b|\btwitch\b"
+     # The same thing in the app's other languages: "mis directos", "ao vivo".
+     r"|\bdirectos?\b|\ben vivo\b|\bao vivo\b|\ben direct\b|\btransmisi[oó]n(?:es)?\b"
+     r"|\btransmiss[aã]o\b|\bстрим\w*|\bтрансляци\w*|配信|ライブ|स्ट्रीम|लाइव",
+     content_kinds.STREAM),
     (r"\bvlogs?\b|\birl\b|\bday in (?:the|my) life\b|\btravel video\b", content_kinds.VLOG),
     (r"\bpodcasts?\b|\binterviews?\b|\bdebate\b", content_kinds.PODCAST),
     (r"\btutorials?\b|\bhow[\s-]?to\b|\bexplainer\b|\blecture\b", content_kinds.TUTORIAL),
@@ -419,6 +423,48 @@ _KIND_WORDS = [
      r"|\bsoccer\b|\bbasketball\b|\bnba\b|\bnfl\b|\bcricket\b|\btennis\b|\bf1\b"
      r"|\bwrestling\b|\bwwe\b", content_kinds.SPORTS),
 ]
+
+# The framing words, in every language the interface is offered in. The model
+# reads any language, but it is not always there to ask: the live preview
+# never calls it, and a spent quota or a dropped connection takes it away
+# mid-run. Then these were the only reader, they knew English alone, and
+# "cámara arriba" set nothing -- so a stream the detector took for a podcast
+# was framed on the face with no webcam panel at all. English had the same
+# hole one word along: "webcam on top" was read and "camera on top" was not.
+def _words(*alternatives: str) -> str:
+    return r"(?<!\w)(?:" + "|".join(alternatives) + r")(?!\w)"
+
+
+# Japanese and Hindi are matched bare: neither puts spaces where \w ends.
+_CAM = ("(?:" + _words(r"(?:web[\s-]?|face[\s-]?)?cam(?:era)?s?", r"c[aá]maras?",
+                       r"c[aâ]meras?", r"cam[ée]ras?", r"kameras?", r"камер\w*",
+                       r"веб[\s-]?к\w*")
+        + "|カメラ|कैमर[ाे]|वेबकैम)")
+_TOP = ("(?:" + _words("top", "above", "arriba", "encima", "parte superior", "em cima",
+                       "no topo", "acima", "en haut", r"au[\s-]dessus", "oben",
+                       "сверху", "наверху", "вверху", "upar", "uper")
+        + "|上|ऊपर)")
+_NEAR = r"[^.;\n]{0,40}?"
+_CAM_ON_TOP = rf"{_CAM}{_NEAR}{_TOP}|{_TOP}{_NEAR}{_CAM}"
+_NO_CAM = (_words(r"sin (?:la |mi |una )?(?:c[aá]mara|webcam|cam)",
+                  r"sem (?:a |minha |uma )?(?:c[aâ]mera|webcam|cam)",
+                  r"sans (?:la |ma |une )?(?:cam[ée]ra|webcam|cam)",
+                  r"ohne (?:die |meine |eine )?(?:kamera|webcam|cam)",
+                  r"без (?:веб[\s-]?)?камеры",
+                  r"s[oó]lo (?:el )?(?:juego|gameplay)", r"s[oó] (?:o )?(?:jogo|gameplay)",
+                  r"(?:seulement|juste) le (?:jeu|gameplay)", r"nur (?:das )?(?:spiel|gameplay)",
+                  r"только (?:игр\w+|геймплей)")
+           + "|カメラなし|カメラ無し|बिना कैमर[ाे]")
+_FOLLOW_FACE = (_words(r"(?:sigue|seguir|siga) (?:mi |la )?cara",
+                       r"(?:segue|seguir|siga) (?:o |meu )?rosto",
+                       r"(?:suis|suivre|suivez) (?:mon |le )?visage",
+                       r"(?:folge|folgen) (?:meinem |dem )?gesicht", r"gesicht (?:ver)?folgen",
+                       r"(?:следи|следить|следуй) за (?:моим )?лицом")
+                + "|顔を追|चेहरे को फॉलो")
+# "captions at the top" names the top too, and is not about the camera.
+_NOT_THE_FRAME = (r"\b(?:captions?|subtitles?|subs|titles?|text|headline)\s+"
+                  r"(?:at|on|in|to|across)\s+(?:the\s+)?top\b")
+
 
 _CORNER_WORDS = [
     (r"bottom[\s-]*left|lower[\s-]*left", "bottom-left"),
@@ -742,17 +788,20 @@ def _parse_keywords(prompt: str, spec: LayoutSpec) -> set:
     _cam = r"(?:web[\s-]?|face[\s-]?)?cam(?:era)?s?"
     if re.search(rf"\bno {_cam}\b|\bwithout (?:a |the |my )?{_cam}\b"
                  rf"|\bhide (?:the |my )?{_cam}\b|\b(?:don'?t|do not|doesn'?t) (?:have|use) (?:a |any )?{_cam}\b"
-                 rf"|\b{_cam} off\b|\bgameplay only\b|\bjust (the )?gameplay\b|\bno face\b", p):
+                 rf"|\b{_cam} off\b|\bgameplay only\b|\bjust (the )?gameplay\b|\bno face\b"
+                 rf"|{_NO_CAM}", p):
         spec.layout = "center"
         spec.notes.append("layout → gameplay only, no webcam panel")
         resolved.add("layout")
     elif re.search(r"\bfollow (my |the )?face\b|\bface[\s-]*track\w*\b|\btrack (my |the )?face\b"
-                   r"|\bkeep (my |the )?face cent\w+\b|\btalking head\b", p):
+                   r"|\bkeep (my |the )?face cent\w+\b|\btalking head\b"
+                   rf"|{_FOLLOW_FACE}", p):
         spec.layout = "facetrack"
         spec.notes.append("layout → single frame, crop follows the face")
         resolved.add("layout")
     elif re.search(r"\bstack\w*\b|\b(web)?cam (on |at |to )?(the )?top\b|\btop\b.*\b(web)?cam\b"
-                   r"|\b(web)?cam above\b|\bsplit\b|\bpicture[\s-]*in[\s-]*picture\b|\bpip\b", p):
+                   r"|\b(web)?cam above\b|\bsplit\b|\bpicture[\s-]*in[\s-]*picture\b|\bpip\b", p) \
+            or re.search(_CAM_ON_TOP, re.sub(_NOT_THE_FRAME, " ", p)):
         spec.layout = "stacked"
         spec.notes.append("layout → webcam on top, gameplay below")
         resolved.add("layout")
