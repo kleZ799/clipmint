@@ -936,9 +936,44 @@ To run it: **More info → Run anyway**.
 </details>
 
 <details>
+<summary>Smart App Control blocked it, and there is no "Run anyway"</summary>
+
+That is a different Windows feature from the SmartScreen warning above, and a
+stricter one. **Smart App Control** blocks any program that is not code-signed
+and that Microsoft's cloud does not already recognise, and it has no exception
+for a single app: [Microsoft's own FAQ](https://support.microsoft.com/windows/smart-app-control-faq-285ea03d-fa88-4d56-882e-6698afdb7003)
+says there is no way to allow one. So on a PC with it switched on,
+`ClipMint.exe` cannot start, and nothing inside the app can change that. It
+needs a signature from a certificate Windows trusts, and this project does not
+have one yet. Getting one is tracked in [#19](https://github.com/kleZ799/clipmint/issues/19).
+
+It usually appears out of nowhere: Windows runs Smart App Control in a silent
+evaluation mode on a fresh install, and an update can switch it on.
+
+What you can do until there is a signed build:
+
+- **Run the Linux build inside WSL.** Smart App Control checks Windows
+  programs, not Linux ones running in the Windows Subsystem for Linux. Install
+  WSL (`wsl --install` in a terminal), then follow the Linux steps above inside
+  it. The app opens in your Windows browser. It transcribes on the CPU, and I
+  have not been able to try this on a PC with Smart App Control on, so tell me
+  if it does not work.
+- **Turn Smart App Control off**: Windows Security → App & browser control →
+  Smart App Control. SmartScreen and Defender stay on. Check one thing first:
+  recent Windows 11 updates let you turn it back on afterwards, but older
+  builds only allow that by resetting Windows.
+- **Wait for the signed build.** Subscribe to [#19](https://github.com/kleZ799/clipmint/issues/19) and it
+  will tell you.
+
+Unblocking the file in its Properties does not help; that clears the
+"downloaded from the internet" mark, which is not what Smart App Control reads.
+
+</details>
+
+<details>
 <summary>First-run details</summary>
 
-- **Windows will warn you.** The exe isn't code-signed, so SmartScreen shows *"Windows protected your PC"*. Click **More info → Run anyway**. On a Mac it is Gatekeeper instead — see above.
+- **Windows will warn you.** The exe isn't code-signed, so SmartScreen shows *"Windows protected your PC"*. Click **More info → Run anyway**. If the message is from **Smart App Control** and has no such button, see the section above. On a Mac it is Gatekeeper instead — see above.
 - **First launch is slow.** It's a single file that unpacks itself each time. The mac app is a normal bundle and starts faster.
 - **Where things go.** The key lives at `%APPDATA%\ClipMint\settings.json`; clips go to `%USERPROFILE%\Videos\ClipMint`, changeable in Settings. On a Mac: `~/Library/Application Support/ClipMint/settings.json` and `~/Movies/ClipMint`.
 - **No key, no run.** Picking the best moments needs the free API key, so **Generate** without one opens the key box instead of starting a run that would stop after the download.
