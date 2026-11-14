@@ -213,6 +213,51 @@ jobs:
           CLIPMINT_YOUTUBE_CLIENT: ${{ secrets.CLIPMINT_YOUTUBE_CLIENT }}
         run: python build_exe.py --onefile
 
+      # Code signing, through SignPath (docs/code-signing-policy.md). All three
+      # steps are skipped until the repository variable SIGNPATH_ORGANIZATION_ID
+      # is set, so a repository with no SignPath project builds exactly as it
+      # did before. Only a real release is signed: a dry run publishes
+      # nothing, and every signing request has to be approved by hand.
+      #
+      # It sits before the version check on purpose. Everything after this
+      # point -- the SHA-256 in the summary, the file the release carries --
+      # has to describe the signed file, because signing changes its bytes.
+      - name: Hand the unsigned exe to SignPath
+        id: unsigned
+        if: vars.SIGNPATH_ORGANIZATION_ID != '' && steps.tag.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClipMint-unsigned
+          path: dist/ClipMint.exe
+          retention-days: 1
+
+      # Waits for the approval. The job's own 90-minute limit is the ceiling on
+      # how long that can take.
+      - name: Sign the exe
+        if: vars.SIGNPATH_ORGANIZATION_ID != '' && steps.tag.outputs.publish == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      # A signing step that hands back the same unsigned file, or nothing,
+      # must stop the release rather than publish it as if it were signed.
+      - name: Put the signed exe in place of the unsigned one
+        if: vars.SIGNPATH_ORGANIZATION_ID != '' && steps.tag.outputs.publish == 'true'
+        shell: pwsh
+        run: |
+          $signed = Get-ChildItem signed -Recurse -Filter ClipMint.exe | Select-Object -First 1
+          if (-not $signed) { throw "SignPath returned no ClipMint.exe" }
+          $sig = Get-AuthenticodeSignature $signed.FullName
+          Write-Host "signature: $($sig.Status)   signer: $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne "Valid") { throw "the returned exe is not validly signed: $($sig.StatusMessage)" }
+          Copy-Item $signed.FullName dist/ClipMint.exe -Force
+
       - name: Check the built exe reports the right version
         shell: pwsh
         run: |
