@@ -72,7 +72,7 @@ produces a set of ranked vertical clips ready to upload as YouTube Shorts,
 Reels or TikToks, each packaged for the app it is going to.**
 
 It downloads the source with **yt-dlp**, transcribes it locally with
-**faster-whisper**, sends the transcript to an **LLM (Gemini, Groq, OpenRouter or OpenAI)**
+**faster-whisper**, sends the transcript to an **LLM (Gemini, Groq, OpenRouter, OpenAI or Claude)**
 with a prompt tuned to find moments that travel (on a YouTube stream, with the
 chat replay's bursts marked in it, so it sees what the live audience reacted
 to), dedupes and scores the results,
@@ -1229,7 +1229,10 @@ move** — which means looking at more than the clip:
    them (`_best_corner_cluster`). It was bottom-left unless told otherwise,
    which turned every other overlay into a centre crop. The corner it was
    found in comes back as `cam["corner"]`, and the gameplay crop is nudged
-   away from that side, left or right.
+   away from that side, left or right. When no face recurs in any corner the
+   clip is rendered as the game alone. That used to be said only in the log;
+   since v1.30.0 the frame editor says it too (`no_webcam` from
+   `_frame_geometry`), with what to type to point the search at a corner.
 3. **The overlay's border is found, not guessed** (`_overlay_bounds`). Two maps
    over the samples: the 20th-percentile Sobel gradient (an edge present in
    ~80% of samples) and the per-pixel standard deviation (how much the picture
@@ -1671,6 +1674,22 @@ one read, the instant keyword fallback queued behind them, and the whole app
 froze on *Reading what you asked for*
 ([#16](https://github.com/kleZ799/clipmint/issues/16)).
 
+**The keywords speak seven languages, because the model is not always there.**
+Until v1.30.0 the layout phrases were English only, on the reasoning that the
+model reads everything else. But the live preview never asks the model, and a
+spent quota or a dropped connection takes it away mid-run. Then "cámara
+arriba" set nothing: `layout_set` stayed false, and a stream the detector took
+for a podcast was moved to the face-follow framing with no webcam panel at
+all, the opposite of what was typed ([#17](https://github.com/kleZ799/clipmint/issues/17)). English had
+the same hole one word along: "webcam on top" was read, "camera on top" was
+not. `_CAM_ON_TOP` now pairs a word for the camera with a word for "top"
+within forty characters, in English, Spanish, Portuguese, French, German,
+Russian, Japanese and Hindi, with `_NO_CAM` and `_FOLLOW_FACE` beside it and
+"directo", "ao vivo" and the rest added to the words that mean a stream.
+"Captions at the top" is taken out first, since it names the top and is not
+about the camera. Japanese and Hindi are matched without word boundaries:
+neither puts spaces where `\w` ends.
+
 ### 8.2 Parse order is load-bearing
 
 Each step **strips the text it matched**, so later steps can't misread the
@@ -1682,7 +1701,7 @@ leftovers:
 | 2 | **Time ranges** (`"14:45 to 15:30"`) | Stripped so `1:30-2:45` can never be mistaken for an aspect ratio later. Also reports whether a span came after `from`, which step 3 needs |
 | 3 | **Clip count** (`"5 clips"`) | Stripped so `5 shorts` can't *also* be read as a request for 9:16. Then `_span_is_length`: a count of two or more beside exactly one span, not after `from` and no longer than 240s, turns that span into the clip length. `5 clips of 0:30-1:00` is five 30–60s clips; one span can only ever cut one clip |
 | 4 | **Aspect ratio** | Explicit ratios and unambiguous words before loose platform names |
-| 5 | **Layout** | Most specific first: "no webcam"→`center`, "follow my face"→`facetrack`, "webcam on top"/"pip"→`stacked` |
+| 5 | **Layout** | Most specific first: "no webcam"→`center`, "follow my face"→`facetrack`, "webcam on top"/"pip"→`stacked`. Since v1.30.0 in all seven interface languages, see below |
 | 5b | **Kind of video** | "my vlog", "podcast", "tutorial", "stream" — only when exactly one kind is named ([§8.3](#83-what-comes-out)) |
 | 6 | **Webcam corner** | Only read when the phrasing is about *locating an overlay* — "webcam on top" is a layout instruction, not a corner |
 | 7 | **Panel size** | bigger→0.55, smaller→0.30, or explicit `"60%"` |
@@ -2949,7 +2968,7 @@ four minutes, more requests to Google will not help either. Somewhere else will,
 because its capacity has nothing to do with Google's. So there is a ladder:
 
 ```
-gemini (key 1 → key 2 → …)  →  groq  →  openrouter  →  openai
+gemini (key 1 → key 2 → …)  →  groq  →  openrouter  →  openai  →  anthropic
 ```
 
 **Free before paid**, so failing over cannot quietly start spending money.
@@ -2987,6 +3006,31 @@ each is tried once, then the real error surfaces.
 OpenRouter's own router across whichever free models are up, so it never bills.
 It sends no `response_format`, because the router may land on a model without a
 JSON mode, and every caller already digs the object out of plain text.
+
+**Claude** joined in v1.30.0, asked for by a tester ([#17](https://github.com/kleZ799/clipmint/issues/17)).
+It is the first provider that could not borrow the `openai` client: Anthropic's
+Messages API is its own shape, so `_call_anthropic()` uses the `anthropic`
+package, which is one more thing in the build. Four things about it differ from
+the others, each because the API says so:
+
+- **No `temperature`.** The current Claude models reject one. Depth is set with
+  `output_config.effort`, sent as `medium` because the default is not the same
+  on every model.
+- **It is streamed**, and the finished message collected with
+  `get_final_message()`. Thinking counts against `max_tokens` (32,000 here, as
+  on Gemini 3.x), and a ranking chunk can take longer than a plain request is
+  allowed to stay open.
+- **A request can be declined.** That arrives as a normal answer with
+  `stop_reason: "refusal"`, not as an error, so it is checked before the text
+  is read and raised as one. The request also asks Anthropic to re-run a
+  declined request on another of its models (`fallbacks: "default"`), which
+  every model here supports but Haiku.
+- **It has no free tier**, so it sits last on the ladder, after OpenAI, and the
+  model picker shows a price where Gemini's shows a daily allowance.
+
+Frames go to it as base64 image blocks, twenty to a request like Gemini and
+OpenAI. Adding it turned up a small old bug: `usage.daily_limit()` read
+OpenAI's cap for every provider that was not Gemini.
 
 **Spare Gemini keys** (`GEMINI_EXTRA_KEYS`, one per line) come before any other
 provider. Each Google project has its own free day, so a second key is a second
