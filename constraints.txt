@@ -16,6 +16,7 @@
 # To move a pin: change it here, push a tag, and run the build before trusting it.
 
 altgraph==0.17.5
+anthropic==2.8.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
@@ -29,6 +30,7 @@ colorama==0.4.6
 cryptography==50.0.2
 ctranslate2==4.8.2
 distro==1.9.0
+docstring-parser==0.18.0
 fastapi==0.142.2
 faster-whisper==1.2.1
 filelock==4.0.9

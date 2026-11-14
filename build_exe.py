@@ -331,6 +331,7 @@ def main() -> int:
         "--hidden-import", "ctranslate2",
         "--hidden-import", "google.genai",
         "--hidden-import", "openai",
+        "--hidden-import", "anthropic",
         "--hidden-import", "cv2",
         "--hidden-import", "yt_dlp",
         "--hidden-import", "webapp.youtube_upload",

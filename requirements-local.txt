@@ -23,6 +23,9 @@ av>=11,<19
 # reached through the OpenAI client, so there is no separate package for it.
 google-genai>=1.0.0
 openai>=1.0.0
+# Claude, for anyone who would rather rank with it. Anthropic's own client:
+# its API is not the OpenAI one, so unlike Groq it cannot borrow that package.
+anthropic>=2.0.0
 
 # Face detection and the webcam overlay. opencv 5.x removed
 # cv2.CascadeClassifier, the fallback detector, so stay below it. 4.8 or newer
