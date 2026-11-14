@@ -436,9 +436,11 @@ function drawModels(d) {
   // control entirely, as this used to, left no way to choose one at all.
   // OpenRouter's are written notes too, and it also takes any model ID typed
   // in, since its catalogue is hundreds long and changes every month.
-  const noted = d.provider === "groq" || d.provider === "openrouter";
+  // Claude's notes are prices: it has no free allowance to show a number for.
+  const noted = ["groq", "openrouter", "anthropic"].includes(d.provider);
   const models = { gemini: d.gemini_models, groq: d.groq_models,
-                   openrouter: d.openrouter_models }[d.provider] || [];
+                   openrouter: d.openrouter_models,
+                   anthropic: d.anthropic_models }[d.provider] || [];
   drawSpares(d);
   $("modelOtherFld").hidden = d.provider !== "openrouter" || !!d.model_pinned;
   if (!models.length) {
@@ -450,6 +452,7 @@ function drawModels(d) {
     gemini: "Gemini model — free requests per day differ a lot",
     groq: "Groq model",
     openrouter: "OpenRouter model",
+    anthropic: "Claude model. Prices are per million tokens",
   }[d.provider]);
   // A model we have no confirmed number for says so, rather than showing a
   // guess with the same confidence as a checked one.
@@ -475,6 +478,8 @@ function drawModels(d) {
       + "trade, not an allowance one.",
     openrouter: "Models ending in :free cost nothing, with a daily cap set by OpenRouter. "
       + "Any other model is billed to your OpenRouter credit.",
+    anthropic: "Claude has no free tier: every request is billed to your Anthropic "
+      + "account. A long video costs roughly one request per 20 minutes, plus two.",
   }[d.provider] || ("This list comes from your key, so retired models can't appear. "
       + "Daily limits are the published free-tier numbers where known — the app "
       + "trusts a real quota error over them.");
@@ -543,12 +548,13 @@ async function saveModel(model, provider) {
 let keysOnFile = {};
 let providerPinned = false;
 
-const PROVIDER_NAMES = { gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter", openai: "OpenAI" };
+const PROVIDER_NAMES = { gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter",
+                         openai: "OpenAI", anthropic: "Claude" };
 
 function drawSwitcher(active) {
   // The first other provider that already has a key, in the order the
   // fallback ladder tries them.
-  const other = ["gemini", "groq", "openrouter", "openai"]
+  const other = ["gemini", "groq", "openrouter", "openai", "anthropic"]
     .find((p) => p !== active && keysOnFile[p]);
   const label = PROVIDER_NAMES[other] || "";
   const el = $("switcher");
@@ -657,7 +663,10 @@ async function refreshUsage() {
     // Anything without a cap has no bar, so it still needs a plain count.
     if (g && !g.limit) rows.push(`<div><span>Gemini</span><b>${g.used} used</b></div>`);
     if (o && !o.limit) rows.push(`<div><span>OpenAI</span><b>${o.used} used</b></div>`);
-    if (!g && !o) rows.push(`<div><span>Requests</span><b>none yet today</b></div>`);
+    // Claude is billed per request, so the count is the thing worth seeing.
+    const c = u.providers.anthropic || null;
+    if (c) rows.push(`<div><span>Claude</span><b>${c.used} used</b></div>`);
+    if (!g && !o && !c) rows.push(`<div><span>Requests</span><b>none yet today</b></div>`);
     rows.push(`<div><span>Resets in</span><b>${fmtSpan(u.resets_in_seconds)}</b></div>`);
     $("usageInfo").innerHTML = rows.join("");
 
@@ -685,6 +694,7 @@ const KEY_LINKS = {
   groq:   ["Get a free Groq key →",   "https://console.groq.com/keys"],
   openrouter: ["Get an OpenRouter key →", "https://openrouter.ai/keys"],
   openai: ["Get an OpenAI key →",     "https://platform.openai.com/api-keys"],
+  anthropic: ["Get a Claude API key →", "https://platform.claude.com/settings/keys"],
 };
 
 function keyLinkFor(provider) {

@@ -1,4 +1,4 @@
-"""Local LLM backend — Gemini, Groq, OpenRouter or OpenAI, selected by LLM_PROVIDER."""
+"""Local LLM backend — Gemini, Groq, OpenRouter, OpenAI or Claude, selected by LLM_PROVIDER."""
 import re
 import time
 from typing import Dict, List, Optional, Set, Tuple
@@ -9,13 +9,14 @@ from ..config import (
     current_model,
     current_provider,
     gemini_keys,
+    require_anthropic_key,
     require_gemini_key,
     require_groq_key,
     require_openai_key,
     require_openrouter_key,
 )
 
-PROVIDERS = ("gemini", "groq", "openrouter", "openai")
+PROVIDERS = ("gemini", "groq", "openrouter", "openai", "anthropic")
 
 # Models whose name says they are not for ranking text.
 _NON_TEXT = ("image", "tts", "embed", "robotics", "computer-use", "transcribe",
@@ -195,6 +196,94 @@ def call_openrouter_llm(prompt: str) -> str:
     return text
 
 
+# Claude's newer models can decline a request outright, and Anthropic will
+# re-run a declined one on another of its models inside the same call when
+# asked to. Haiku has no such fallback and rejects the parameter.
+_ANTHROPIC_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+# Thinking is part of the output budget on these models, as it is on Gemini
+# 3.x, so the ceiling has to leave room for it ahead of the JSON.
+_ANTHROPIC_MAX_TOKENS = 32000
+
+
+def _call_anthropic(content) -> str:
+    """One request to Claude. `content` is a string, or a list of content
+    blocks when there are frames to look at."""
+    try:
+        import anthropic  # type: ignore
+    except ImportError as e:
+        raise RuntimeError(
+            "anthropic is required for LLM_PROVIDER=anthropic. Install it with:\n"
+            "    pip install -r requirements-local.txt"
+        ) from e
+
+    model = current_model("anthropic")
+    client = anthropic.Anthropic(api_key=require_anthropic_key())
+    request = {
+        "model": model,
+        "max_tokens": _ANTHROPIC_MAX_TOKENS,
+        # Said outright because the default differs between models. No
+        # temperature: the current models reject one.
+        "output_config": {"effort": "medium"},
+        "messages": [{"role": "user", "content": content}],
+    }
+    if "haiku" not in model:
+        request["betas"] = [_ANTHROPIC_FALLBACK_BETA]
+        request["fallbacks"] = "default"
+
+    # Streamed, and the finished message collected: a ranking chunk can take
+    # longer to answer than a plain request is allowed to stay open.
+    try:
+        with client.beta.messages.stream(**request) as stream:
+            message = stream.get_final_message()
+    except anthropic.AuthenticationError as e:
+        raise RuntimeError("Anthropic did not accept the Claude API key. Check it "
+                           "under Settings.") from e
+    except anthropic.PermissionDeniedError as e:
+        raise RuntimeError(f"This Claude API key cannot use {model}: {e.message}") from e
+    except anthropic.NotFoundError as e:
+        raise RuntimeError(f"Claude has no model called {model}. Pick another "
+                           "under Settings.") from e
+    except anthropic.RateLimitError as e:
+        raise RuntimeError(f"Claude is rate limiting this key: {e.message}") from e
+    except anthropic.APIStatusError as e:
+        raise RuntimeError(f"Claude returned an error ({e.status_code}): {e.message}") from e
+    except anthropic.APIConnectionError as e:
+        raise RuntimeError("Could not reach Anthropic. Check the connection.") from e
+
+    usage.record("anthropic", model)
+    if message.stop_reason == "refusal":
+        category = getattr(message.stop_details, "category", None)
+        raise RuntimeError("Claude declined this request"
+                           + (f" ({category})" if category else ""))
+    text = "".join(b.text for b in message.content if b.type == "text")
+    if not text.strip():
+        raise RuntimeError(f"Claude ({model}) returned no text "
+                           f"(stop_reason={message.stop_reason})")
+    return text
+
+
+def call_anthropic_llm(prompt: str) -> str:
+    """Claude backend, through Anthropic's own SDK.
+
+    No JSON mode is asked for: every caller already pulls the JSON object out
+    of plain text, as it does for OpenAI and OpenRouter.
+    """
+    return _call_anthropic(prompt)
+
+
+def _as_anthropic_content(parts: list) -> list:
+    import base64
+    out = []
+    for p in parts:
+        if isinstance(p, str):
+            out.append({"type": "text", "text": p})
+        else:
+            out.append({"type": "image", "source": {
+                "type": "base64", "media_type": p[1],
+                "data": base64.standard_b64encode(p[0]).decode("ascii")}})
+    return out
+
+
 def _is_daily_quota(msg: str) -> bool:
     """Tell a per-day cap apart from a per-minute one.
 
@@ -372,6 +461,13 @@ def _groq_is_configured() -> bool:
         return False
 
 
+def _anthropic_is_configured() -> bool:
+    try:
+        return bool(require_anthropic_key())
+    except RuntimeError:
+        return False
+
+
 def _openrouter_is_configured() -> bool:
     try:
         return bool(require_openrouter_key())
@@ -383,10 +479,13 @@ def _openrouter_is_configured() -> bool:
 # before OpenAI, because OpenAI has no free tier: falling back should not
 # quietly start spending money. OpenRouter after Groq because its default is
 # the free router, which is slower and less predictable than Groq's own model.
+# Claude last: it is paid too, and it arrived after people had already set
+# OpenAI up as their paid fallback, so it does not jump ahead of it.
 _LADDER = (
     ("groq", _groq_is_configured),
     ("openrouter", _openrouter_is_configured),
     ("openai", _openai_is_configured),
+    ("anthropic", _anthropic_is_configured),
 )
 
 
@@ -419,7 +518,8 @@ def _switch_to_openai(why: str) -> None:
 GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 # OpenRouter's limit is whichever model the request lands on; five is what the
 # smallest of the free vision models take.
-_IMAGES_PER_REQUEST = {"gemini": 20, "openai": 20, "groq": 5, "openrouter": 5}
+_IMAGES_PER_REQUEST = {"gemini": 20, "openai": 20, "groq": 5, "openrouter": 5,
+                       "anthropic": 20}
 
 
 def _as_gemini_parts(parts: list) -> list:
@@ -492,9 +592,11 @@ def call_vision_llm(parts: list) -> str:
     """
     images = sum(1 for p in parts if not isinstance(p, str))
     first = _fallback_provider or current_provider()
-    order = [first] + [p for p in ("gemini", "openai", "groq", "openrouter") if p != first]
+    order = [first] + [p for p in ("gemini", "openai", "groq", "openrouter", "anthropic")
+                       if p != first]
     configured = {"gemini": _gemini_is_configured, "openai": _openai_is_configured,
-                  "groq": _groq_is_configured, "openrouter": _openrouter_is_configured}
+                  "groq": _groq_is_configured, "openrouter": _openrouter_is_configured,
+                  "anthropic": _anthropic_is_configured}
     last: Optional[Exception] = None
     for name in order:
         if not configured.get(name, lambda: False)():
@@ -504,6 +606,8 @@ def call_vision_llm(parts: list) -> str:
         try:
             if name == "gemini":
                 return call_gemini_llm("", contents=_as_gemini_parts(parts))
+            if name == "anthropic":
+                return _call_anthropic(_as_anthropic_content(parts))
             return _openai_compatible_vision(parts, name)
         except Exception as e:
             last = e
@@ -541,20 +645,23 @@ def call_local_llm(prompt: str) -> str:
 
     if provider == "openai":
         return call_openai_llm(prompt)
-    if provider in ("groq", "openrouter"):
-        call = call_groq_llm if provider == "groq" else call_openrouter_llm
+    if provider in ("groq", "openrouter", "anthropic"):
+        call = {"groq": call_groq_llm, "openrouter": call_openrouter_llm,
+                "anthropic": call_anthropic_llm}[provider]
         try:
             return call(prompt)
         except Exception as e:
             # The free tiers are the likeliest to be busy or rate limited, and
             # a run that has paid for a transcription should not end on that.
+            # Claude takes the same way out: a refused key or a declined
+            # request is no reason to lose the run when another key is set up.
             if not _next_provider(f"{provider} failed ({str(e).splitlines()[0][:60]})"):
                 raise
             return call_local_llm(prompt)
     if provider != "gemini":
         raise RuntimeError(
             f"Unknown LLM_PROVIDER={provider!r}. Use 'gemini', 'groq', "
-            f"'openrouter' or 'openai'."
+            f"'openrouter', 'openai' or 'anthropic'."
         )
 
     if _gemini_spent_today():

@@ -67,6 +67,14 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 
+# Claude, through Anthropic's own API. There is no free tier: every request is
+# billed to the user's Anthropic account, so nothing falls back onto it before
+# the free providers have been tried. Opus is the default because ranking is a
+# judgement call; Sonnet and Haiku are a click away in Settings for anyone who
+# would rather pay less.
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5-5")
+
 # More Gemini keys, one per line or comma-separated, tried in order once the
 # main key's day is spent. Each Google project has its own free allowance, so
 # a second key is a second day's worth of runs.
@@ -133,6 +141,8 @@ def current_model(provider: str) -> str:
         return user_config.get("GROQ_MODEL", GROQ_MODEL)
     if provider == "openrouter":
         return user_config.get("OPENROUTER_MODEL", OPENROUTER_MODEL)
+    if provider == "anthropic":
+        return user_config.get("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
     return user_config.get("GEMINI_MODEL", GEMINI_MODEL)
 
 
@@ -188,6 +198,18 @@ def require_openrouter_key() -> str:
     raise RuntimeError(
         "OPENROUTER_API_KEY is not set. Get one at https://openrouter.ai/keys "
         "— the free models need no credit." + _where_we_looked("OPENROUTER_API_KEY")
+    )
+
+
+def require_anthropic_key() -> str:
+    from . import user_config
+    key = user_config.get("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY)
+    if key:
+        return key
+    raise RuntimeError(
+        "ANTHROPIC_API_KEY is not set. Get one at "
+        "https://platform.claude.com/settings/keys — Claude is billed per "
+        "request, there is no free tier." + _where_we_looked("ANTHROPIC_API_KEY")
     )
 
 

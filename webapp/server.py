@@ -225,6 +225,15 @@ OPENROUTER_MODEL_OPTIONS = [
     {"value": "openrouter/auto", "note": "paid, the best model for each request"},
 ]
 
+# Claude has no free tier, so the note beside each is what it costs: dollars
+# per million tokens in, then out. A long video is a few hundred thousand in.
+ANTHROPIC_MODEL_OPTIONS = [
+    {"value": "claude-opus-5-5", "note": "best judgement, the default ($4 in, $20 out)"},
+    {"value": "claude-sonnet-5-5", "note": "faster, half the price ($2 in, $10 out)"},
+    {"value": "claude-haiku-5-5", "note": "fastest and cheapest ($0.10 in, $0.50 out)"},
+    {"value": "claude-fable-5-2", "note": "most capable, most expensive ($8 in, $40 out)"},
+]
+
 
 @app.get("/api/settings")
 async def get_settings() -> dict:
@@ -240,7 +249,8 @@ async def get_settings() -> dict:
 
     provider = current_provider()
     from_env = bool(os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
-                    or os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
+                    or os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+                    or os.getenv("ANTHROPIC_API_KEY"))
     return {
         "has_key": user_config.has_llm_key(),
         "provider": provider,
@@ -255,6 +265,7 @@ async def get_settings() -> dict:
             "groq": bool(user_config.get("GROQ_API_KEY")),
             "openrouter": bool(user_config.get("OPENROUTER_API_KEY")),
             "openai": bool(user_config.get("OPENAI_API_KEY")),
+            "anthropic": bool(user_config.get("ANTHROPIC_API_KEY")),
             # Not a model: the stock-footage library B-roll is drawn from.
             "pexels": bool(user_config.get("PEXELS_API_KEY")),
         },
@@ -273,6 +284,7 @@ async def get_settings() -> dict:
         "gemini_models": _gemini_model_options(),
         "groq_models": GROQ_MODEL_OPTIONS,
         "openrouter_models": OPENROUTER_MODEL_OPTIONS,
+        "anthropic_models": ANTHROPIC_MODEL_OPTIONS,
         "model_pinned": bool(os.getenv(f"{provider.upper()}_MODEL", "").strip()),
         # Spare Gemini keys, counted rather than shown: a key is a secret.
         "gemini_spare_keys": max(0, len(gemini_keys()) - 1),
@@ -294,10 +306,12 @@ async def get_usage() -> dict:
     snap["model"] = current_model(provider)
     # Whether a spent Gemini day would actually be survivable, and on what:
     # the first configured provider in the order the fallback ladder tries.
-    fallback = next((name for name, key in (
-        ("Groq", "GROQ_API_KEY"), ("OpenRouter", "OPENROUTER_API_KEY"),
-        ("OpenAI", "OPENAI_API_KEY"),
-    ) if name.lower() != provider and user_config.get(key)), None)
+    fallback = next((name for ident, name, key in (
+        ("groq", "Groq", "GROQ_API_KEY"),
+        ("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
+        ("openai", "OpenAI", "OPENAI_API_KEY"),
+        ("anthropic", "Claude", "ANTHROPIC_API_KEY"),
+    ) if ident != provider and user_config.get(key)), None)
     snap["fallback_ready"] = bool(fallback)
     snap["fallback_to"] = fallback
 
@@ -325,9 +339,10 @@ async def set_settings(req: SettingsRequest) -> dict:
     # OpenAI's name, which is the kind of bug that only shows up as a
     # confusing auth failure much later.
     prefixes = {"gemini": "GEMINI", "openai": "OPENAI", "groq": "GROQ",
-                "openrouter": "OPENROUTER"}
+                "openrouter": "OPENROUTER", "anthropic": "ANTHROPIC"}
     if provider not in prefixes:
-        raise HTTPException(400, "Provider must be 'gemini', 'groq', 'openrouter' or 'openai'.")
+        raise HTTPException(400, "Provider must be 'gemini', 'groq', 'openrouter', "
+                                 "'openai' or 'anthropic'.")
     prefix = prefixes[provider]
 
     key = (req.api_key or "").strip()

@@ -269,5 +269,6 @@ def has_llm_key() -> bool:
     # read it, so "has a key" here means ranking will find one.
     provider = (get("LLM_PROVIDER", "gemini") or "gemini").strip().lower()
     names = {"openai": "OPENAI_API_KEY", "groq": "GROQ_API_KEY",
-             "openrouter": "OPENROUTER_API_KEY"}
+             "openrouter": "OPENROUTER_API_KEY",
+             "anthropic": "ANTHROPIC_API_KEY"}
     return bool(get(names.get(provider, "GEMINI_API_KEY")))
