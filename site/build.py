@@ -115,7 +115,7 @@ LLMS = """# ClipMint
 > and no account. Built by Parth Bhadana.
 
 Transcription runs locally with faster-whisper; the video never leaves the computer unless the
-user presses Upload. An LLM (Gemini, Groq or OpenAI, on the user's own free key) ranks moments by
+user presses Upload. An LLM (Gemini, Groq, OpenRouter, OpenAI or Claude, on the user's own key) ranks moments by
 rules for each kind of video, a vision model checks the best ones, and ffmpeg renders 9:16 clips
 with word-by-word captions, dead air cut and a crop that follows whoever is talking. It writes
 titles and tags, uploads to YouTube on a schedule, and reads back each Short's views to tune its

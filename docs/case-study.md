@@ -133,14 +133,14 @@ reported rather than acted on.
 - **YouTube uploads** over OAuth with PKCE and a loopback redirect, in 8 MB
   resumable chunks, so a dropped connection carries on instead of resending
   200 MB.
-- **A fallback ladder for the AI**: Gemini, then Groq, then OpenAI, free before
+- **A fallback ladder for the AI**: Gemini, then Groq, OpenRouter, OpenAI and Claude, free before
   paid, switching on a spent quota or an exhausted retry budget, so a busy
   provider at chunk 9 of 12 doesn't throw away a 29-minute transcription.
 
 ## Stack
 
 Python · FastAPI · uvicorn · Pydantic · Server-Sent Events · faster-whisper
-(CTranslate2) · Gemini, Groq and OpenAI APIs, including vision · OpenCV (YuNet)
+(CTranslate2) · Gemini, Groq, OpenAI and Claude APIs, including vision · OpenCV (YuNet)
 · NumPy · ffmpeg filter graphs · NVENC / VideoToolbox / Quick Sync / AMF ·
 yt-dlp · YouTube Data API v3 · OAuth 2.0 + PKCE · pywebview · PyInstaller ·
 GitHub Actions · vanilla JavaScript and CSS (no build step, on purpose)
