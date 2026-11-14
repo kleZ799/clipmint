@@ -1,6 +1,6 @@
 # ClipMint privacy policy
 
-_Last updated: 6 November 2026 (v1.29.2)_
+_Last updated: 14 November 2026 (v1.30.0)_
 
 ClipMint is a free, open-source desktop app that turns long videos into Shorts.
 It is made by Parth Bhadana. This policy covers the ClipMint app for Windows,
@@ -121,7 +121,7 @@ on macOS, `~/.config/ClipMint` on Linux) or beside your clips:
   whether you have already picked a way to give feedback, kept the same way,
   so the app knows when to ask and when to stop. It never leaves your
   computer.
-- **Spare Gemini keys and an OpenRouter key**, if you add them, in the
+- **Spare Gemini keys, an OpenRouter key and a Claude key**, if you add them, in the
   settings file beside your other API keys. They stay until you remove them.
 - **Your Pexels key**, if you add one for B-roll, in the settings file. It
   stays until you remove it in Settings.
@@ -154,7 +154,7 @@ YouTube.
   opens GitHub's issue page instead, where what you write is public.
 - **Google and YouTube:** your clips and their details go to YouTube when you
   upload, and to Google when you sign in.
-- **The AI provider you choose** (Google Gemini, Groq, OpenRouter or OpenAI), using your
+- **The AI provider you choose** (Google Gemini, Groq, OpenRouter, OpenAI or Anthropic's Claude), using your
   own API key: the clip's transcript text, a few still frames from each clip,
   the source video's title and description, and what you type in the
   **What to make** box, so it can understand what you asked for, pick moments
@@ -164,6 +164,10 @@ YouTube.
   you picked there (by default, whichever of its free models is up), under
   [OpenRouter's privacy policy](https://openrouter.ai/privacy) and that
   model maker's; free models may be run by providers who keep prompts.
+  Claude requests go to Anthropic, under
+  [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy). If
+  Claude declines a request, Anthropic may answer it with another of its own
+  models; it does not leave Anthropic.
 - **Pexels**, only if you add a Pexels key and tick **B-roll**: a search of
   one to three words for each cutaway (for example "city at night"), sent
   with your own key, and the stock video it finds downloaded to your
