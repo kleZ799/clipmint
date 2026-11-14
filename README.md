@@ -697,6 +697,8 @@ Every link fetches the newest release. Nothing else to install: no Python, no ff
 | **Linux**, x86-64 | [**⬇ ClipMint-linux-x86_64**](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint-linux-x86_64) | 280 MB | **Untested** on a desktop. Updates itself. |
 
 Older versions and release notes are on the [releases page](https://github.com/kleZ799/clipmint/releases).
+The Windows build is not code-signed yet; the [code signing policy](docs/code-signing-policy.md)
+says how it is built and what a signature will cover.
 Setup for each platform follows below.
 
 > ### ⚠️ Read this before you download the Mac build
@@ -951,7 +953,8 @@ for a single app: [Microsoft's own FAQ](https://support.microsoft.com/windows/sm
 says there is no way to allow one. So on a PC with it switched on,
 `ClipMint.exe` cannot start, and nothing inside the app can change that. It
 needs a signature from a certificate Windows trusts, and this project does not
-have one yet. Getting one is tracked in [#19](https://github.com/kleZ799/clipmint/issues/19).
+have one yet. Getting one is tracked in [#19](https://github.com/kleZ799/clipmint/issues/19),
+and the [code signing policy](docs/code-signing-policy.md) is what it will be signed under.
 
 It usually appears out of nowhere: Windows runs Smart App Control in a silent
 evaluation mode on a fresh install, and an update can switch it on.
