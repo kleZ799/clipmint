@@ -126,11 +126,17 @@ busy. A real run reached chunk 9 of 12 and started getting `503 UNAVAILABLE`,
 with an 11.9 GB download and a 29-minute transcription already paid for.
 
 Retrying Google does not fix Google being busy. So there is a fallback ladder:
-**Gemini → Groq → OpenRouter → OpenAI**, free before paid, switching on a spent quota *or* on
+**Gemini → Groq → OpenRouter → OpenAI → Claude**, free before paid, switching on a spent quota *or* on
 the retry budget running out. A [free Groq key](https://console.groq.com) takes a
 minute and no card, and is the single best insurance for a long run.
 [OpenRouter](https://openrouter.ai/keys) is one key in front of models from every
 lab; it defaults to its free router, so it costs nothing either.
+
+Would rather rank with **Claude**? Pick it under **Settings → Model** and paste
+an [Anthropic API key](https://platform.claude.com/settings/keys). It is the
+one provider here with no free tier: every request is billed to your Anthropic
+account, so the picker shows what each model costs. It reads frames as well as
+text, so titles written from what is on screen work on it too.
 
 Got more than one Gemini key? Paste the spares under **Settings → Model**, one
 per line. Each Google project has its own free day, so when one key's runs out
@@ -1521,7 +1527,7 @@ The knobs that change output quality most, in order:
 | `STAGE_ATTEMPTS` / `CLIP_ATTEMPTS` | `webapp/jobs.py` | How many times a stage, or one clip's render, is tried before a run gives up, `3` each |
 | Processor | Under the live preview, or `PROCESSOR` in `.env` | `auto` (default), `gpu` or `cpu` — what encodes video and runs transcription. `LOCAL_WHISPER_DEVICE`, if set, still pins transcription |
 | `SCORE_THRESHOLD` | `shorts_generator/faces.py` | How sure YuNet must be to count a face, `0.7`. Raise it if a crop keeps catching faces in the game |
-| Provider | Settings | Gemini, Groq, OpenRouter or OpenAI. Add a **free Groq key** as a fallback so a busy Gemini cannot end a run, and spare Gemini keys to use in turn |
+| Provider | Settings | Gemini, Groq, OpenRouter, OpenAI or Claude. Add a **free Groq key** as a fallback so a busy Gemini cannot end a run, and spare Gemini keys to use in turn |
 | Channel profile | Settings | Which channel's sign-in, logo and edit choices are in use. Add one per channel |
 | `LOCAL_WHISPER_MODEL` | `.env` | `base` is plenty for ranking. `small` reads better and hallucinates less — and on a GPU it is *faster* than `base`, so use it if you have one |
 | Spoken language | Render panel | English by default. Pinning it is the fix for whisper inventing text in another language |
@@ -1637,7 +1643,7 @@ shorts_generator/
 └── local/
     ├── downloader.py      # yt-dlp + download cache
     ├── transcriber.py     # faster-whisper + .srt cache
-    ├── llm.py             # Gemini / Groq / OpenRouter / OpenAI, spare keys, text and vision
+    ├── llm.py             # Gemini / Groq / OpenRouter / OpenAI / Claude, spare keys, text and vision
     ├── clipper.py         # face-following crop on a planned camera path
     ├── speaker.py         # with two people in shot, which one is talking
     └── gaming_layout.py   # webcam-over-gameplay stack (streams)
