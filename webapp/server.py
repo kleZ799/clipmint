@@ -1816,6 +1816,10 @@ def _frame_geometry(job, clip: dict) -> dict:
         "manual": bool(chosen),
         "moving": not chosen and x is None and follows,
         "cam": cam,
+        # Webcam-over-gameplay was asked for and this clip is the game alone:
+        # no face kept turning up in a corner, so there was no panel to make.
+        # Said in the editor, because otherwise it only ever reached the log.
+        "no_webcam": spec.layout == "stacked" and panel == framing.PICTURE and not follows,
         "caption_y": clip.get("caption_y") if clip.get("caption_y") is not None
         else default_caption,
         "caption_default": default_caption,

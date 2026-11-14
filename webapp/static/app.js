@@ -4198,6 +4198,7 @@ async function toggleFrame() {
 
 function frameNote(g, travels) {
   if (!travels) return I18N.t("This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.");
+  if (g.no_webcam) return I18N.t("No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.");
   if (g.panel === "gameplay") return I18N.t("Your webcam is found automatically. This moves the part of the game shown under it.");
   if (g.manual) return I18N.t("Placed by hand. Back to automatic hands it back to the app.");
   if (g.moving) return I18N.t("Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.");

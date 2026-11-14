@@ -324,6 +324,8 @@ window.I18N = (function () {
       "Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.": "बॉक्स को उस हिस्से पर खींचें जो Short में दिखना चाहिए। यह पूरे क्लिप में वहीं रहता है, और बाद में ट्रिम या कैप्शन सुधारने पर भी बना रहता है।",
       "This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.": "यह क्लिप पहले से पूरी चौड़ाई दिखाता है। हिलाने को कुछ नहीं है, पर कैप्शन ऊपर या नीचे किए जा सकते हैं।",
       "Your webcam is found automatically. This moves the part of the game shown under it.": "आपका वेबकैम अपने-आप ढूँढा जाता है। इससे उसके नीचे दिखने वाला गेम का हिस्सा खिसकता है।",
+      "No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.":
+        "इस क्लिप में कोई वेबकैम नहीं मिला, इसलिए इसमें सिर्फ़ गेम दिख रहा है। अगर आपका वेबकैम किसी कोने में है, तो बॉक्स में बताइए कि किस कोने में, जैसे “webcam bottom left”, और दोबारा चलाइए।",
       "Placed by hand. Back to automatic hands it back to the app.": "हाथ से रखा गया है। 'वापस ऑटोमैटिक पर' इसे ऐप को लौटा देता है।",
       "Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.": "अभी फ़्रेम चेहरे या बोलने वाले के साथ चलता है। इसे रखने पर यह पूरे क्लिप में स्थिर रहता है।",
       "Framing it again from the source…": "स्रोत से फिर से फ़्रेम किया जा रहा है…",
@@ -661,6 +663,8 @@ window.I18N = (function () {
       "Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.": "Arrastra el recuadro sobre lo que debe mostrar el Short. Se queda ahí durante todo el clip, y un recorte o una corrección de subtítulos posterior lo conserva.",
       "This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.": "Este clip ya muestra toda la imagen de lado a lado. No hay nada que mover, pero los subtítulos pueden ir más arriba o más abajo.",
       "Your webcam is found automatically. This moves the part of the game shown under it.": "Tu webcam se detecta automáticamente. Esto mueve la parte del juego que se ve debajo.",
+      "No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.":
+        "No se encontró ninguna webcam en este clip, así que muestra solo el juego. Si la tuya está en una esquina, di cuál en el cuadro, por ejemplo “webcam bottom left”, y vuelve a generarlo.",
       "Placed by hand. Back to automatic hands it back to the app.": "Colocado a mano. Volver a automático se lo devuelve a la app.",
       "Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.": "Ahora mismo el encuadre sigue la cara, o a quien esté hablando. Colocarlo lo deja fijo durante todo el clip.",
       "Framing it again from the source…": "Encuadrando de nuevo desde el original…",
@@ -998,6 +1002,8 @@ window.I18N = (function () {
       "Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.": "Arraste a caixa sobre o que o Short deve mostrar. Ela fica ali durante todo o clipe, e um corte ou uma correção de legendas depois a mantém.",
       "This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.": "Este clipe já mostra a imagem inteira de lado a lado. Não há nada para mover, mas as legendas podem ficar mais acima ou mais abaixo.",
       "Your webcam is found automatically. This moves the part of the game shown under it.": "Sua webcam é encontrada automaticamente. Isto move a parte do jogo mostrada abaixo dela.",
+      "No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.":
+        "Nenhuma webcam foi encontrada neste clipe, por isso ele mostra só o jogo. Se a sua fica num canto, diga qual na caixa, por exemplo “webcam bottom left”, e gere de novo.",
       "Placed by hand. Back to automatic hands it back to the app.": "Posicionado à mão. Voltar ao automático devolve para o app.",
       "Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.": "Agora o enquadramento segue o rosto, ou quem estiver falando. Posicioná-lo o deixa fixo durante todo o clipe.",
       "Framing it again from the source…": "Enquadrando de novo a partir do original…",
@@ -1335,6 +1341,8 @@ window.I18N = (function () {
       "Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.": "Faites glisser le cadre sur ce que le Short doit montrer. Il reste là pendant tout le clip, et un découpage ou une correction des sous-titres ensuite le conserve.",
       "This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.": "Ce clip montre déjà toute l'image en largeur. Il n'y a rien à déplacer, mais les sous-titres peuvent monter ou descendre.",
       "Your webcam is found automatically. This moves the part of the game shown under it.": "Votre webcam est trouvée automatiquement. Ceci déplace la partie du jeu affichée en dessous.",
+      "No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.":
+        "Aucune webcam n’a été trouvée dans ce clip, il montre donc le jeu seul. Si la vôtre est dans un coin, dites lequel dans la zone de texte, par exemple “webcam bottom left”, et relancez.",
       "Placed by hand. Back to automatic hands it back to the app.": "Placé à la main. Revenir en automatique le rend à l'app.",
       "Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.": "Pour l'instant, le cadre suit le visage, ou la personne qui parle. Le placer le fixe pour tout le clip.",
       "Framing it again from the source…": "Nouveau cadrage depuis la source…",
@@ -1672,6 +1680,8 @@ window.I18N = (function () {
       "Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.": "Zieh den Rahmen über das, was der Short zeigen soll. Er bleibt dort für den ganzen Clip, und ein späteres Kürzen oder eine Untertitelkorrektur behält ihn bei.",
       "This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.": "Dieser Clip zeigt schon das ganze Bild in der Breite. Es gibt nichts zu verschieben, aber die Untertitel können höher oder tiefer sitzen.",
       "Your webcam is found automatically. This moves the part of the game shown under it.": "Deine Webcam wird automatisch gefunden. Das verschiebt den Teil des Spiels, der darunter gezeigt wird.",
+      "No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.":
+        "In diesem Clip wurde keine Webcam gefunden, deshalb zeigt er nur das Spiel. Wenn deine in einer Ecke sitzt, schreib in das Feld, in welcher, zum Beispiel “webcam bottom left”, und starte es noch einmal.",
       "Placed by hand. Back to automatic hands it back to the app.": "Von Hand platziert. Zurück zu automatisch gibt es der App zurück.",
       "Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.": "Gerade folgt der Rahmen dem Gesicht oder der Person, die spricht. Ihn zu platzieren hält ihn für den ganzen Clip still.",
       "Framing it again from the source…": "Wird neu aus dem Original eingerahmt…",
@@ -2009,6 +2019,8 @@ window.I18N = (function () {
       "Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.": "Shorts に映したい部分に枠をドラッグしてください。クリップ全体でその位置に固定され、あとでトリムや字幕修正をしても保たれます。",
       "This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.": "このクリップはすでに横幅いっぱいを映しています。動かすものはありませんが、字幕は上下に動かせます。",
       "Your webcam is found automatically. This moves the part of the game shown under it.": "ウェブカメラは自動で見つけます。ここではその下に映るゲーム部分を動かします。",
+      "No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.":
+        "このクリップではウェブカメラが見つからなかったため、ゲーム画面だけを表示しています。カメラが画面の隅にある場合は、入力欄に「webcam bottom left」のように場所を書いて、もう一度実行してください。",
       "Placed by hand. Back to automatic hands it back to the app.": "手動で配置済みです。「自動に戻す」でアプリに任せられます。",
       "Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.": "今は顔、または話している人をフレームが追っています。配置するとクリップ全体で固定されます。",
       "Framing it again from the source…": "元の動画からフレームを作り直しています…",
@@ -2346,6 +2358,8 @@ window.I18N = (function () {
       "Drag the box over what the Short should show. It stays there for the whole clip, and a trim or a caption fix afterwards keeps it.": "Перетащите рамку на то, что должен показывать Short. Она останется там на весь клип, и последующая обрезка или исправление субтитров её сохранят.",
       "This clip already shows the whole picture across. There is nothing to move, but the captions can go higher or lower.": "Этот клип уже показывает всю картинку по ширине. Двигать нечего, но субтитры можно поднять или опустить.",
       "Your webcam is found automatically. This moves the part of the game shown under it.": "Вебкамера находится автоматически. Здесь можно сдвинуть часть игры, показанную под ней.",
+      "No webcam was found in this clip, so it shows the game on its own. If yours sits in a corner, say which in the box, like “webcam bottom left”, and run it again.":
+        "В этом клипе вебкамера не найдена, поэтому показана только игра. Если ваша камера стоит в углу, напишите в поле, в каком именно, например “webcam bottom left”, и запустите ещё раз.",
       "Placed by hand. Back to automatic hands it back to the app.": "Выставлено вручную. «Вернуть автоматический» отдаст управление приложению.",
       "Right now the frame follows the face, or whoever is talking. Placing it holds it still for the whole clip.": "Сейчас кадр следует за лицом или за тем, кто говорит. Если выставить его вручную, он останется неподвижным на весь клип.",
       "Framing it again from the source…": "Заново кадрирую из исходника…",
