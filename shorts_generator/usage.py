@@ -138,9 +138,11 @@ def _model_entry(data: Dict, provider: str, model: str) -> Dict:
 
 def daily_limit(provider: str, model: str) -> int:
     """Requests per day for this model, or DAILY_LIMIT_UNKNOWN if uncapped."""
-    override = user_config.get(
-        "GEMINI_DAILY_LIMIT" if provider == "gemini" else "OPENAI_DAILY_LIMIT"
-    )
+    # Only these two have a cap a user can set. Anything else used to be read
+    # against OpenAI's, so a Groq or Claude count filled a meter that was
+    # never about it.
+    name = {"gemini": "GEMINI_DAILY_LIMIT", "openai": "OPENAI_DAILY_LIMIT"}.get(provider)
+    override = user_config.get(name) if name else ""
     if override.isdigit():
         return int(override)
     if provider != "gemini":
