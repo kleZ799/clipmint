@@ -133,7 +133,7 @@ reported rather than acted on.
 - **YouTube uploads** over OAuth with PKCE and a loopback redirect, in 8 MB
   resumable chunks, so a dropped connection carries on instead of resending
   200 MB.
-- **A fallback ladder for the AI**: Gemini, then Groq, OpenRouter, OpenAI and Claude, free before
+- **A fallback ladder for the AI**: Gemini, then Groq, OpenRouter, a local model through Ollama, OpenAI and Claude, free before
   paid, switching on a spent quota or an exhausted retry budget, so a busy
   provider at chunk 9 of 12 doesn't throw away a 29-minute transcription.
 
