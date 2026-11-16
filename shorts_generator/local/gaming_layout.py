@@ -40,6 +40,7 @@ is handed to the face-following renderer instead of being split in two.
 
 Rendering is a single ffmpeg pass — no per-frame Python.
 """
+import json
 import os
 import statistics
 from typing import Dict, List, Optional, Tuple
@@ -86,13 +87,27 @@ BORDER_INSET = 3
 
 
 def _probe_dimensions(source_path: str) -> Tuple[int, int]:
+    """Width and height of the first video stream, as ffmpeg will decode it.
+
+    Read as JSON, not CSV: CSV puts side data on the same row and some ffprobe
+    builds break it across lines, which turned "1080x1920" into "1080\\n\\n1920"
+    for a user. A phone recording held upright is stored landscape with a
+    90-degree rotation tag; ffmpeg turns it on decode, so the size swaps too,
+    or every crop is computed for a frame the filters never see.
+    """
     out = proc.run_checked(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", source_path],
+         "-show_entries", "stream=width,height:stream_side_data=rotation",
+         "-of", "json", source_path],
         what="ffprobe (source dimensions)", capture_stdout=True,
-    ).stdout.strip()
-    w, h = out.split("x")[:2]
-    return int(w), int(h)
+    ).stdout
+    stream = json.loads(out)["streams"][0]
+    w, h = int(stream["width"]), int(stream["height"])
+    rotation = next((sd["rotation"] for sd in stream.get("side_data_list", [])
+                     if "rotation" in sd), 0)
+    if round(float(rotation)) % 180 == 90:
+        w, h = h, w
+    return w, h
 
 
 def _probe_duration(source_path: str) -> float:
