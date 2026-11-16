@@ -89,9 +89,10 @@ BORDER_INSET = 3
 def _probe_dimensions(source_path: str) -> Tuple[int, int]:
     """Width and height of the first video stream, as ffmpeg will decode it.
 
-    Read as JSON, not CSV: CSV puts side data on the same row and some ffprobe
-    builds break it across lines, which turned "1080x1920" into "1080\\n\\n1920"
-    for a user. A phone recording held upright is stored landscape with a
+    Read as JSON, not CSV. A file with a timecode track (DaVinci Resolve
+    exports usually carry one) puts the video in a stream group too, so CSV printed the
+    size twice and "1920x1080\\n\\n1920x1080" split into a height of
+    "1080\\n\\n1920". JSON keeps the two apart. A phone recording held upright is stored landscape with a
     90-degree rotation tag; ffmpeg turns it on decode, so the size swaps too,
     or every crop is computed for a frame the filters never see.
     """
