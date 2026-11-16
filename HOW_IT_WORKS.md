@@ -72,7 +72,7 @@ produces a set of ranked vertical clips ready to upload as YouTube Shorts,
 Reels or TikToks, each packaged for the app it is going to.**
 
 It downloads the source with **yt-dlp**, transcribes it locally with
-**faster-whisper**, sends the transcript to an **LLM (Gemini, Groq, OpenRouter, OpenAI or Claude)**
+**faster-whisper**, sends the transcript to an **LLM (Gemini, Groq, OpenRouter, OpenAI, Claude, or a local model through Ollama)**
 with a prompt tuned to find moments that travel (on a YouTube stream, with the
 chat replay's bursts marked in it, so it sees what the live audience reacted
 to), dedupes and scores the results,
@@ -2968,7 +2968,7 @@ four minutes, more requests to Google will not help either. Somewhere else will,
 because its capacity has nothing to do with Google's. So there is a ladder:
 
 ```
-gemini (key 1 → key 2 → …)  →  groq  →  openrouter  →  openai  →  anthropic
+gemini (key 1 → key 2 → …)  →  groq  →  openrouter  →  ollama  →  openai  →  anthropic
 ```
 
 **Free before paid**, so failing over cannot quietly start spending money.
@@ -3031,6 +3031,41 @@ the others, each because the API says so:
 Frames go to it as base64 image blocks, twenty to a request like Gemini and
 OpenAI. Adding it turned up a small old bug: `usage.daily_limit()` read
 OpenAI's cap for every provider that was not Gemini.
+
+**Ollama** joined in v1.31.0, asked for in [#20](https://github.com/kleZ799/clipmint/issues/20):
+open models on the user's own computer, with no key and nothing uploaded. It
+talks to Ollama's **native** API (`/api/chat`) with `requests`, not to its
+OpenAI-compatible endpoint, for one reason: only the native API takes
+`num_ctx`. Ollama runs every model in a 4k-token window unless asked, and
+silently drops the start of a longer prompt. A ranking chunk is 6–7k tokens and
+its instructions are at the top, so through the compatible endpoint a run would
+"work" while ranking with no idea what it was asked. `OLLAMA_NUM_CTX` defaults
+to 16,384. Other differences:
+
+- **Set up means a model is chosen.** There is no key, so `OLLAMA_MODEL` plays
+  the key's part in `has_llm_key()`, and Settings checks the server is up and
+  the model is pulled before saving. Having Ollama installed is not enough to
+  join the fallback ladder: someone running it for something else has not asked
+  for it to rank clips.
+- **On the ladder after the free cloud providers, before the paid ones.** It is
+  free, but an 8–14B model ranks a long transcript worse and slower than Gemini
+  or Groq, so it is a backstop for them and the thing that keeps a fallback from
+  starting to bill.
+- **Output is held to JSON** with `format: "json"`, which small models
+  otherwise drift out of.
+- **Frames go to a model that can see.** `/api/show` reports each model's
+  capabilities, so the vision call uses `OLLAMA_VISION_MODEL`, else the chosen
+  model if it can see, else the biggest pulled model that can. Ollama attaches
+  a message's images beside its text rather than inside it, and the judge
+  interleaves them ("CLIP 2: its four frames follow"), so each text part opens a
+  message and the frames after it ride on that message.
+- **Long timeouts.** A chunk on a laptop GPU, or on the CPU, can take minutes;
+  the call waits up to 30. A model that was never pulled fails the run at once
+  instead of being retried.
+
+`OLLAMA_HOST` is the variable Ollama itself reads, so it is honoured as is, and
+the listening forms people put there (`0.0.0.0`, `0.0.0.0:11434`) are turned
+into an address that can be connected to.
 
 **Spare Gemini keys** (`GEMINI_EXTRA_KEYS`, one per line) come before any other
 provider. Each Google project has its own free day, so a second key is a second
