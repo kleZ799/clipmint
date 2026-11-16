@@ -1217,7 +1217,7 @@ of something already known at the start, say so at the start.
 
 ### Provider fallback, and the ceiling on retrying
 
-Gemini (each spare key in turn) → Groq → OpenRouter → OpenAI → Claude. A **fallback
+Gemini (each spare key in turn) → Groq → OpenRouter → Ollama → OpenAI → Claude. A **fallback
 chain**, with usage accounting to know when to switch.
 
 The idea worth carrying away: **retrying has a ceiling.** Exponential backoff
@@ -1998,12 +1998,16 @@ Ordered by value, with the reasoning that makes each defensible:
    baselines. One final comparison pass over the surviving candidates would make
    the global top-N meaningful rather than approximate.
 
-2. **A local LLM as the last rung.** Groq now covers the common case — a free
-   provider with independent capacity. What it does *not* cover is being
-   offline, or wanting the app to work with no API key at all. Ollama would.
-   Be precise about the tradeoff: on 8 GB of VRAM you can run an 8–14B model,
-   and it is genuinely **worse** than either cloud provider at nuanced judgement
-   over a long transcript. It is the right *last resort*, not the right primary.
+2. **A local LLM as the last rung.** Built in v1.31.0 with Ollama, after a
+   user asked for it. Groq covers the common case — a free provider with
+   independent capacity. What it does *not* cover is being offline, or wanting
+   the app to work with no API key at all. The tradeoff still holds: on 8 GB of
+   VRAM you can run an 8–14B model, and it is genuinely **worse** than the
+   cloud providers at nuanced judgement over a long transcript. So it sits on
+   the ladder after the free cloud providers, and is a choice for people who
+   value privacy or no key over the best picks. The lesson from building it:
+   check the context window. Ollama's default is 4k tokens, and a longer prompt
+   is cut from the top without an error, which is where the instructions are.
 
 3. **Retention instead of views.** Built since v1.24.0 with views: every
    clip's features were recorded first, the channel's view counts now come back,
