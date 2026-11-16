@@ -1191,9 +1191,10 @@ Net effect: a 1440p stream renders at 1440×2560 instead of being flattened to t
 
 Every layout starts from the source's size, and `_probe_dimensions()` in
 `gaming_layout.py` is the one place it comes from. It asks ffprobe for JSON, not
-the terser CSV it used until v1.31.1: CSV prints side data on the same row, and
-on one user's machine it split `1080x1920` across lines so the number no longer
-parsed. The same probe reads the stream's **rotation tag**. A phone held upright
+the terser CSV it used until v1.31.1. A file with a timecode track, which DaVinci
+Resolve exports usually carry, lists its video a second time inside a stream group,
+so CSV printed `1920x1080` twice and splitting on `x` left a height of
+`1080\n\n1920`. JSON keeps the stream list and the group apart. The same probe reads the stream's **rotation tag**. A phone held upright
 records a 1920×1080 picture tagged "turn 90°", and ffmpeg turns it upright as it
 decodes, so the filters see 1080×1920. Every crop is computed against the size
 the filters will see, so a ±90° tag swaps width and height; without that, the
