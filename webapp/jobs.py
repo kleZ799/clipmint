@@ -240,6 +240,9 @@ _PERMANENT = (
     "api_key_invalid", "api key not valid", "permission_denied", "unauthenticated",
     # config.require_*_key(): no key at all. Waiting won't make one appear.
     "_api_key is not set",
+    # Ollama: a model that was never pulled, or none chosen. Ollama not
+    # answering is left retryable -- it may still be starting up.
+    "try pulling it first", "no ollama model is chosen",
     "private video", "video unavailable", "unsupported url", "is not a valid url",
     "sign in to confirm", "members-only", "join this channel",
     "local file path does not exist",
