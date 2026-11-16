@@ -3345,6 +3345,7 @@ function clipCard(c) {
       <div class="cq">
         ${seo ? `<button class="qbtn" data-copy="title" data-i="${i}">Copy title</button>
         <button class="qbtn" data-copy="tags" data-i="${i}">Copy tags</button>` : ""}
+        ${seo && seo.description ? `<button class="qbtn" data-copy="description" data-i="${i}">Copy description</button>` : ""}
         <button class="qbtn" data-show="${i}"
           title="${esc(c.path || c.file || "")}">Show file</button>
       </div>
@@ -3429,8 +3430,9 @@ function renderClips() {
       const c = clips[+b.dataset.i];
       const seo = (c && c.seo) || {};
       const what = b.dataset.copy;
-      copy(what === "title" ? seo.title : (seo.tags || []).join(", "),
-           what === "title" ? "Title copied" : "Tags copied");
+      if (what === "title") copy(seo.title, "Title copied");
+      else if (what === "description") copy(seo.description, "Description copied");
+      else copy((seo.tags || []).join(", "), "Tags copied");
     };
   });
   $("clips").querySelectorAll("[data-show]").forEach((b) => {
