@@ -169,6 +169,7 @@ addEventListener("load", function () {
             <option value="openrouter">OpenRouter &mdash; free models, any lab</option>
             <option value="openai">OpenAI</option>
             <option value="anthropic">Claude &mdash; Anthropic, paid</option>
+            <option value="ollama">Ollama &mdash; on this computer, no key</option>
           </select>
         </label>
         <label class="fld">
@@ -678,6 +679,7 @@ addEventListener("load", function () {
         <option value="openrouter">OpenRouter &mdash; free models, any lab</option>
         <option value="openai">OpenAI</option>
         <option value="anthropic">Claude &mdash; Anthropic, paid</option>
+        <option value="ollama">Ollama &mdash; on this computer, no key</option>
       </select>
     </label>
     <label class="fld" id="modelFld" hidden>
@@ -697,7 +699,7 @@ addEventListener("load", function () {
       <button class="btn ghost sm" id="switchBtn"></button>
     </div>
     <label class="fld">
-      <span>Replace API key</span>
+      <span id="setKey2Label">Replace API key</span>
       <input type="password" id="setKey2" placeholder="Paste a new key">
     </label>
     <button class="btn ghost" id="setSave2">Save key</button>

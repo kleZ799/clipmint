@@ -75,6 +75,19 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5-5")
 
+# Ollama runs open models on this computer: no key, no account, nothing sent
+# anywhere. There is no default model on purpose -- the right one depends on
+# what has been pulled and how much memory the GPU has -- so it is set up by
+# choosing one in Settings, which also records that Ollama is wanted at all.
+# OLLAMA_HOST is the variable Ollama itself reads, so a machine already
+# pointed at a server elsewhere needs no second setting.
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "").strip()
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "").strip()
+# Ollama gives a model a 4k-token window unless asked for more, and quietly
+# drops the start of anything longer. A ranking chunk is about 6-7k tokens,
+# so without this the instructions at the top are what gets cut.
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "16384") or 16384)
+
 # More Gemini keys, one per line or comma-separated, tried in order once the
 # main key's day is spent. Each Google project has its own free allowance, so
 # a second key is a second day's worth of runs.
@@ -143,7 +156,32 @@ def current_model(provider: str) -> str:
         return user_config.get("OPENROUTER_MODEL", OPENROUTER_MODEL)
     if provider == "anthropic":
         return user_config.get("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
+    if provider == "ollama":
+        return user_config.get("OLLAMA_MODEL", OLLAMA_MODEL)
     return user_config.get("GEMINI_MODEL", GEMINI_MODEL)
+
+
+def ollama_host() -> str:
+    """Where the Ollama server is, as a URL the client can call.
+
+    OLLAMA_HOST is often written the way the server wants it to *listen*
+    ("0.0.0.0", "0.0.0.0:11434", "localhost"), which is not something you can
+    connect to. Turn any of those into a working address.
+    """
+    from . import user_config
+    raw = (user_config.get("OLLAMA_HOST", OLLAMA_HOST) or "").strip().rstrip("/")
+    if not raw:
+        return "http://127.0.0.1:11434"
+    if "://" not in raw:
+        raw = "http://" + raw
+    scheme, rest = raw.split("://", 1)
+    host = rest.split("/", 1)[0]
+    if host.startswith("0.0.0.0"):
+        host = "127.0.0.1" + host[len("0.0.0.0"):]
+    # Ollama's own rule: no port means 11434, unless it is https behind a proxy.
+    if ":" not in host.rsplit("]", 1)[-1] and scheme != "https":
+        host += ":11434"
+    return f"{scheme}://{host}"
 
 
 def _where_we_looked(name: str) -> str:

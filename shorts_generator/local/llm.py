@@ -1,4 +1,4 @@
-"""Local LLM backend — Gemini, Groq, OpenRouter, OpenAI or Claude, selected by LLM_PROVIDER."""
+"""Local LLM backend — Gemini, Groq, OpenRouter, OpenAI, Claude or Ollama, selected by LLM_PROVIDER."""
 import re
 import time
 from typing import Dict, List, Optional, Set, Tuple
@@ -16,7 +16,7 @@ from ..config import (
     require_openrouter_key,
 )
 
-PROVIDERS = ("gemini", "groq", "openrouter", "openai", "anthropic")
+PROVIDERS = ("gemini", "groq", "openrouter", "openai", "anthropic", "ollama")
 
 # Models whose name says they are not for ranking text.
 _NON_TEXT = ("image", "tts", "embed", "robotics", "computer-use", "transcribe",
@@ -194,6 +194,157 @@ def call_openrouter_llm(prompt: str) -> str:
     if not text.strip():
         raise RuntimeError(f"OpenRouter ({model}) returned no text")
     return text
+
+
+# Ollama. Its own API rather than the OpenAI-compatible one, because only the
+# native one takes `num_ctx`: through the compatible endpoint every model runs
+# in Ollama's default 4k window and silently loses the top of a ranking
+# prompt, which is where the instructions are.
+_OLLAMA_PROBE_SECONDS = 3
+# A local model on a laptop GPU, or on the CPU, can take minutes over one
+# ranking chunk. That is slow, not broken.
+_OLLAMA_CALL_SECONDS = 30 * 60
+_ollama_seen: Tuple[float, bool] = (0.0, False)
+_ollama_caps: Dict[str, List[str]] = {}
+
+
+class OllamaError(RuntimeError):
+    pass
+
+
+def _ollama(path: str, payload: Optional[dict] = None,
+            timeout: float = _OLLAMA_PROBE_SECONDS) -> dict:
+    import requests
+    from ..config import ollama_host
+
+    url = ollama_host() + path
+    try:
+        if payload is None:
+            r = requests.get(url, timeout=timeout)
+        else:
+            r = requests.post(url, json=payload, timeout=timeout)
+    except requests.RequestException as e:
+        raise OllamaError(
+            f"Ollama isn't answering at {ollama_host()}. Start it (the Ollama app, "
+            f"or `ollama serve`), or install it from https://ollama.com/download."
+        ) from e
+    try:
+        body = r.json()
+    except ValueError:
+        body = {}
+    if r.status_code >= 400:
+        raise OllamaError(f"Ollama: {body.get('error') or r.text[:200] or r.status_code}")
+    return body
+
+
+def list_ollama_models() -> List[dict]:
+    """What has been pulled into this Ollama, biggest first, with what each can do.
+
+    Raises OllamaError when the server is not there, so the caller can say so
+    rather than show an empty list that looks like "no models".
+    """
+    out = []
+    for m in _ollama("/api/tags").get("models") or []:
+        name = m.get("name") or m.get("model")
+        if not name:
+            continue
+        caps = ollama_capabilities(name)
+        if caps and "completion" not in caps:
+            continue        # an embedding model cannot rank anything
+        details = m.get("details") or {}
+        out.append({"value": name, "size": int(m.get("size") or 0),
+                    "params": details.get("parameter_size") or "",
+                    "vision": "vision" in caps})
+    out.sort(key=lambda m: -m["size"])
+    return out
+
+
+def ollama_capabilities(model: str) -> List[str]:
+    """completion / vision / tools / thinking, as Ollama reports them.
+
+    Asked of the model rather than guessed from its name: llava, qwen2.5vl,
+    gemma3 and llama3.2-vision all see, and nothing in those names agrees.
+    An older Ollama that does not report capabilities gives an empty list.
+    """
+    if model not in _ollama_caps:
+        try:
+            _ollama_caps[model] = list(_ollama("/api/show", {"model": model})
+                                       .get("capabilities") or [])
+        except OllamaError:
+            return []
+    return _ollama_caps[model]
+
+
+def _ollama_chat(model: str, messages: List[dict], temperature: float = 0.2) -> str:
+    from ..config import OLLAMA_NUM_CTX
+
+    body = _ollama("/api/chat", {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        # Every caller wants one JSON object back, and Ollama can hold a model
+        # to that exactly, which small models otherwise drift out of.
+        "format": "json",
+        "options": {"temperature": temperature, "num_ctx": OLLAMA_NUM_CTX},
+    }, timeout=_OLLAMA_CALL_SECONDS)
+    usage.record("ollama", model)
+    text = (body.get("message") or {}).get("content") or ""
+    if not text.strip():
+        raise RuntimeError(f"Ollama ({model}) returned no text")
+    return text
+
+
+def call_ollama_llm(prompt: str) -> str:
+    """Ollama backend: an open model on this computer. Free, private, offline.
+
+    Be honest about the trade: an 8-14B model that fits an 8 GB GPU ranks a
+    long transcript worse than the cloud providers do. It is here for running
+    with no key, no account and no upload, not because it picks better clips.
+    """
+    model = current_model("ollama")
+    if not model:
+        raise RuntimeError("No Ollama model is chosen. Pick one in Settings, "
+                           "or set OLLAMA_MODEL.")
+    return _ollama_chat(model, [{"role": "user", "content": prompt}])
+
+
+def _ollama_vision_model() -> Optional[str]:
+    """The model to show frames to: OLLAMA_VISION_MODEL, the chosen one if it
+    can see, otherwise the biggest pulled model that can."""
+    from .. import user_config
+    pinned = user_config.get("OLLAMA_VISION_MODEL", "")
+    if pinned:
+        return pinned
+    chosen = current_model("ollama")
+    if chosen and "vision" in ollama_capabilities(chosen):
+        return chosen
+    try:
+        return next((m["value"] for m in list_ollama_models() if m["vision"]), None)
+    except OllamaError:
+        return None
+
+
+def _call_ollama_vision(parts: list) -> str:
+    import base64
+    model = _ollama_vision_model()
+    if not model:
+        raise RuntimeError("no Ollama model that can see images is pulled "
+                           "(try `ollama pull qwen2.5vl:7b`)")
+    # Ollama attaches a message's images beside its text rather than in
+    # between, and the callers interleave them ("CLIP 2: its four frames
+    # follow", then four frames). So each text part opens a message and the
+    # frames after it ride on that message, which keeps every frame with the
+    # header that introduces it.
+    messages: List[dict] = []
+    for p in parts:
+        if isinstance(p, str):
+            messages.append({"role": "user", "content": p})
+            continue
+        if not messages:
+            messages.append({"role": "user", "content": ""})
+        messages[-1].setdefault("images", []).append(
+            base64.b64encode(p[0]).decode("ascii"))
+    return _ollama_chat(model, messages, temperature=0.1)
 
 
 # Claude's newer models can decline a request outright, and Anthropic will
@@ -475,15 +626,41 @@ def _openrouter_is_configured() -> bool:
         return False
 
 
+def _ollama_is_configured() -> bool:
+    """A model has been chosen for it, and the server is up right now.
+
+    Having Ollama installed is not enough: someone running it for something
+    else has not asked for it to rank clips. The answer is kept briefly so a
+    run that is down to its last rung does not probe once per chunk.
+    """
+    global _ollama_seen
+    if not current_model("ollama"):
+        return False
+    at, up = _ollama_seen
+    if time.time() - at < 30:
+        return up
+    try:
+        _ollama("/api/version")
+        up = True
+    except OllamaError:
+        up = False
+    _ollama_seen = (time.time(), up)
+    return up
+
+
 # Who to try when the preferred provider gives up, in order. The free ones
 # before OpenAI, because OpenAI has no free tier: falling back should not
 # quietly start spending money. OpenRouter after Groq because its default is
 # the free router, which is slower and less predictable than Groq's own model.
 # Claude last: it is paid too, and it arrived after people had already set
 # OpenAI up as their paid fallback, so it does not jump ahead of it.
+# Ollama after the free cloud ones -- it is free too, but a small local model
+# ranks worse and slower -- and before the paid ones, so a run with a local
+# model to fall back on never starts spending money.
 _LADDER = (
     ("groq", _groq_is_configured),
     ("openrouter", _openrouter_is_configured),
+    ("ollama", _ollama_is_configured),
     ("openai", _openai_is_configured),
     ("anthropic", _anthropic_is_configured),
 )
@@ -518,8 +695,10 @@ def _switch_to_openai(why: str) -> None:
 GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 # OpenRouter's limit is whichever model the request lands on; five is what the
 # smallest of the free vision models take.
+# Ollama's vision models are small and run on this machine's memory, so it
+# gets the same modest batch.
 _IMAGES_PER_REQUEST = {"gemini": 20, "openai": 20, "groq": 5, "openrouter": 5,
-                       "anthropic": 20}
+                       "anthropic": 20, "ollama": 5}
 
 
 def _as_gemini_parts(parts: list) -> list:
@@ -592,11 +771,12 @@ def call_vision_llm(parts: list) -> str:
     """
     images = sum(1 for p in parts if not isinstance(p, str))
     first = _fallback_provider or current_provider()
-    order = [first] + [p for p in ("gemini", "openai", "groq", "openrouter", "anthropic")
+    order = [first] + [p for p in ("gemini", "openai", "groq", "openrouter", "anthropic",
+                                   "ollama")
                        if p != first]
     configured = {"gemini": _gemini_is_configured, "openai": _openai_is_configured,
                   "groq": _groq_is_configured, "openrouter": _openrouter_is_configured,
-                  "anthropic": _anthropic_is_configured}
+                  "anthropic": _anthropic_is_configured, "ollama": _ollama_is_configured}
     last: Optional[Exception] = None
     for name in order:
         if not configured.get(name, lambda: False)():
@@ -608,6 +788,8 @@ def call_vision_llm(parts: list) -> str:
                 return call_gemini_llm("", contents=_as_gemini_parts(parts))
             if name == "anthropic":
                 return _call_anthropic(_as_anthropic_content(parts))
+            if name == "ollama":
+                return _call_ollama_vision(parts)
             return _openai_compatible_vision(parts, name)
         except Exception as e:
             last = e
@@ -645,9 +827,9 @@ def call_local_llm(prompt: str) -> str:
 
     if provider == "openai":
         return call_openai_llm(prompt)
-    if provider in ("groq", "openrouter", "anthropic"):
+    if provider in ("groq", "openrouter", "anthropic", "ollama"):
         call = {"groq": call_groq_llm, "openrouter": call_openrouter_llm,
-                "anthropic": call_anthropic_llm}[provider]
+                "anthropic": call_anthropic_llm, "ollama": call_ollama_llm}[provider]
         try:
             return call(prompt)
         except Exception as e:
@@ -661,7 +843,7 @@ def call_local_llm(prompt: str) -> str:
     if provider != "gemini":
         raise RuntimeError(
             f"Unknown LLM_PROVIDER={provider!r}. Use 'gemini', 'groq', "
-            f"'openrouter', 'openai' or 'anthropic'."
+            f"'openrouter', 'openai', 'anthropic' or 'ollama'."
         )
 
     if _gemini_spent_today():

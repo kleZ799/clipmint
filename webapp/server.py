@@ -181,6 +181,8 @@ class SettingsRequest(BaseModel):
     # A self-imposed daily request cap, so a provider that bills instead of
     # cutting you off still has a line to draw a meter against. "" clears it.
     daily_limit: Optional[str] = None
+    # Ollama only: where its server is, if not this computer's default port.
+    host: Optional[str] = None
 
 
 def _gemini_model_options() -> list:
@@ -234,6 +236,50 @@ ANTHROPIC_MODEL_OPTIONS = [
     {"value": "claude-fable-5-2", "note": "most capable, most expensive ($8 in, $40 out)"},
 ]
 
+# What to suggest pulling when Ollama is running but empty, and which pulled
+# model to start on: the first of these that is there, else the biggest.
+# Sized for the 8 GB GPUs most people asking for this have.
+OLLAMA_SUGGESTED = ["qwen3:8b", "qwen2.5vl:7b", "gemma3:12b", "llama3.1:8b"]
+
+
+def _ollama_model_options() -> Optional[list]:
+    """Pulled models, with size and whether each can see. None if Ollama is down."""
+    from shorts_generator.local.llm import OllamaError, list_ollama_models
+    try:
+        models = list_ollama_models()
+    except OllamaError:
+        return None
+    out = []
+    for m in models:
+        bits = [m["params"] or f"{m['size'] / 1e9:.1f} GB"]
+        bits.append("can see frames" if m["vision"] else "text only")
+        out.append({"value": m["value"], "note": ", ".join(bits)})
+    return out
+
+
+def _check_ollama(model: str) -> str:
+    """Ollama is up and has something to rank with. Returns the model to use.
+
+    Raises HTTPException with what to do next, because "could not connect"
+    on its own does not tell someone who has never used Ollama much.
+    """
+    from shorts_generator.local.llm import OllamaError, list_ollama_models
+    try:
+        models = [m["value"] for m in list_ollama_models()]
+    except OllamaError as e:
+        raise HTTPException(400, str(e))
+    if not models:
+        raise HTTPException(400, "Ollama is running but has no models yet. In a terminal, "
+                                 f"run: ollama pull {OLLAMA_SUGGESTED[0]}  (about 5 GB), "
+                                 "then save again.")
+    if model:
+        # "qwen3" and "qwen3:latest" are the same model to Ollama.
+        tagged = model if ":" in model else model + ":latest"
+        if model not in models and tagged not in models:
+            raise HTTPException(400, f"{model} isn't pulled into Ollama. Run: ollama pull {model}")
+        return model
+    return next((m for m in OLLAMA_SUGGESTED if m in models), models[0])
+
 
 @app.get("/api/settings")
 async def get_settings() -> dict:
@@ -266,6 +312,8 @@ async def get_settings() -> dict:
             "openrouter": bool(user_config.get("OPENROUTER_API_KEY")),
             "openai": bool(user_config.get("OPENAI_API_KEY")),
             "anthropic": bool(user_config.get("ANTHROPIC_API_KEY")),
+            # No key: a chosen model is what "set up" means for Ollama.
+            "ollama": bool(user_config.get("OLLAMA_MODEL")),
             # Not a model: the stock-footage library B-roll is drawn from.
             "pexels": bool(user_config.get("PEXELS_API_KEY")),
         },
@@ -285,6 +333,11 @@ async def get_settings() -> dict:
         "groq_models": GROQ_MODEL_OPTIONS,
         "openrouter_models": OPENROUTER_MODEL_OPTIONS,
         "anthropic_models": ANTHROPIC_MODEL_OPTIONS,
+        # Asked of the server, and only when it is the one in use: probing a
+        # port nobody is listening on would slow every settings load.
+        # None means not answering, [] means answering with nothing pulled.
+        "ollama_models": _ollama_model_options() if provider == "ollama" else [],
+        "ollama_host": user_config.get("OLLAMA_HOST", ""),
         "model_pinned": bool(os.getenv(f"{provider.upper()}_MODEL", "").strip()),
         # Spare Gemini keys, counted rather than shown: a key is a secret.
         "gemini_spare_keys": max(0, len(gemini_keys()) - 1),
@@ -310,6 +363,7 @@ async def get_usage() -> dict:
         ("groq", "Groq", "GROQ_API_KEY"),
         ("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
         ("openai", "OpenAI", "OPENAI_API_KEY"),
+        ("ollama", "Ollama", "OLLAMA_MODEL"),
         ("anthropic", "Claude", "ANTHROPIC_API_KEY"),
     ) if ident != provider and user_config.get(key)), None)
     snap["fallback_ready"] = bool(fallback)
@@ -339,11 +393,34 @@ async def set_settings(req: SettingsRequest) -> dict:
     # OpenAI's name, which is the kind of bug that only shows up as a
     # confusing auth failure much later.
     prefixes = {"gemini": "GEMINI", "openai": "OPENAI", "groq": "GROQ",
-                "openrouter": "OPENROUTER", "anthropic": "ANTHROPIC"}
+                "openrouter": "OPENROUTER", "anthropic": "ANTHROPIC", "ollama": "OLLAMA"}
     if provider not in prefixes:
         raise HTTPException(400, "Provider must be 'gemini', 'groq', 'openrouter', "
-                                 "'openai' or 'anthropic'.")
+                                 "'openai', 'anthropic' or 'ollama'.")
     prefix = prefixes[provider]
+
+    if provider == "ollama":
+        # No key to store. Saving means: the server answers, and a model is
+        # chosen -- the one asked for, the one already saved, or a sensible
+        # pick from what is pulled.
+        # The address has to be saved for the check to use it, and put back
+        # if the check fails, or a typo would stay behind as the setting.
+        before = str(user_config.load().get("OLLAMA_HOST") or "")
+        if req.host is not None:
+            user_config.save({"OLLAMA_HOST": req.host.strip()})
+        wanted = (req.model or "").strip() or user_config.get("OLLAMA_MODEL", "")
+        try:
+            model = await asyncio.to_thread(_check_ollama, wanted)
+        except HTTPException:
+            if req.host is not None:
+                user_config.save({"OLLAMA_HOST": before})
+            raise
+        values = {"OLLAMA_MODEL": model}
+        if not req.as_fallback:
+            values["LLM_PROVIDER"] = "ollama"
+        path = user_config.save(values)
+        return {"saved": True, "config_path": str(path), "model": model,
+                "has_key": user_config.has_llm_key()}
 
     key = (req.api_key or "").strip()
     key_name = f"{prefix}_API_KEY"

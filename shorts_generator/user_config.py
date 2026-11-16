@@ -270,5 +270,7 @@ def has_llm_key() -> bool:
     provider = (get("LLM_PROVIDER", "gemini") or "gemini").strip().lower()
     names = {"openai": "OPENAI_API_KEY", "groq": "GROQ_API_KEY",
              "openrouter": "OPENROUTER_API_KEY",
-             "anthropic": "ANTHROPIC_API_KEY"}
+             "anthropic": "ANTHROPIC_API_KEY",
+             # Ollama has no key. Choosing a model is what sets it up.
+             "ollama": "OLLAMA_MODEL"}
     return bool(get(names.get(provider, "GEMINI_API_KEY")))

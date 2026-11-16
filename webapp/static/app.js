@@ -263,6 +263,8 @@ async function checkSetup() {
     if (d.provider) {
       $("setProvider").value = d.provider;
       $("setProvider2").value = d.provider;
+      keyLinkFor(d.provider);
+      keyField2For(d.provider);
     }
     keysOnFile = d.keys || {};
     pexelsReady = !!keysOnFile.pexels;
@@ -271,8 +273,12 @@ async function checkSetup() {
     drawModels(d);
     if (d.daily_limits) $("capOpenai").value = d.daily_limits.openai || "";
     drawSwitcher(d.provider);
+    // Ollama has no key to report; where its server is says more.
+    const keyRow = d.provider === "ollama"
+      ? `<div><span>Server</span><b>${esc(d.ollama_host || "this computer")}</b></div>`
+      : `<div><span>Key</span><b>${d.has_key ? "set — from " + esc(d.source) : "not set"}</b></div>`;
     $("setInfo").innerHTML = `
-      <div><span>Key</span><b>${d.has_key ? "set — from " + esc(d.source) : "not set"}</b></div>
+      ${keyRow}
       <div><span>Model</span><b>${esc(d.model || "—")}</b></div>
       <div><span>ffmpeg</span><b>${d.ffmpeg ? "found" : "missing"}</b></div>`;
     if (!d.ffmpeg) {
@@ -437,14 +443,25 @@ function drawModels(d) {
   // OpenRouter's are written notes too, and it also takes any model ID typed
   // in, since its catalogue is hundreds long and changes every month.
   // Claude's notes are prices: it has no free allowance to show a number for.
-  const noted = ["groq", "openrouter", "anthropic"].includes(d.provider);
+  // Ollama's are whatever has been pulled on this computer, with their size.
+  const noted = ["groq", "openrouter", "anthropic", "ollama"].includes(d.provider);
   const models = { gemini: d.gemini_models, groq: d.groq_models,
                    openrouter: d.openrouter_models,
-                   anthropic: d.anthropic_models }[d.provider] || [];
+                   anthropic: d.anthropic_models,
+                   ollama: d.ollama_models }[d.provider] || [];
   drawSpares(d);
   $("modelOtherFld").hidden = d.provider !== "openrouter" || !!d.model_pinned;
   if (!models.length) {
-    fld.hidden = true; hint.textContent = ""; return;
+    fld.hidden = true;
+    // An empty Ollama list means the server is not answering, which is worth
+    // saying: otherwise the next run is where they find out.
+    // The server sends null for "not answering" and [] for "nothing pulled".
+    hint.textContent = d.provider !== "ollama" ? ""
+      : d.ollama_models === null
+        ? "Ollama isn't answering, so its models can't be listed. Start the Ollama "
+          + "app, then reopen Settings."
+        : "Ollama has no models yet. In a terminal, run: ollama pull qwen3:8b";
+    return;
   }
 
   fld.hidden = false;
@@ -453,6 +470,7 @@ function drawModels(d) {
     groq: "Groq model",
     openrouter: "OpenRouter model",
     anthropic: "Claude model. Prices are per million tokens",
+    ollama: "Ollama model, pulled on this computer",
   }[d.provider]);
   // A model we have no confirmed number for says so, rather than showing a
   // guess with the same confidence as a checked one.
@@ -480,6 +498,9 @@ function drawModels(d) {
       + "Any other model is billed to your OpenRouter credit.",
     anthropic: "Claude has no free tier: every request is billed to your Anthropic "
       + "account. A long video costs roughly one request per 20 minutes, plus two.",
+    ollama: "Runs on this computer: free, offline, nothing uploaded. A model that fits "
+      + "an 8 GB GPU picks clips less well than the cloud ones and takes longer. One "
+      + "that can see frames also checks each clip's opening shot.",
   }[d.provider] || ("This list comes from your key, so retired models can't appear. "
       + "Daily limits are the published free-tier numbers where known — the app "
       + "trusts a real quota error over them.");
@@ -549,12 +570,12 @@ let keysOnFile = {};
 let providerPinned = false;
 
 const PROVIDER_NAMES = { gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter",
-                         openai: "OpenAI", anthropic: "Claude" };
+                         openai: "OpenAI", anthropic: "Claude", ollama: "Ollama" };
 
 function drawSwitcher(active) {
   // The first other provider that already has a key, in the order the
   // fallback ladder tries them.
-  const other = ["gemini", "groq", "openrouter", "openai", "anthropic"]
+  const other = ["gemini", "groq", "openrouter", "ollama", "openai", "anthropic"]
     .find((p) => p !== active && keysOnFile[p]);
   const label = PROVIDER_NAMES[other] || "";
   const el = $("switcher");
@@ -695,24 +716,51 @@ const KEY_LINKS = {
   openrouter: ["Get an OpenRouter key →", "https://openrouter.ai/keys"],
   openai: ["Get an OpenAI key →",     "https://platform.openai.com/api-keys"],
   anthropic: ["Get a Claude API key →", "https://platform.claude.com/settings/keys"],
+  ollama: ["Get Ollama →", "https://ollama.com/download"],
 };
+
+// Ollama has no key. The same box takes its server address instead, and
+// empty means this computer, which is where nearly everyone runs it.
+function keyFieldFor(provider, keyEl) {
+  const local = provider === "ollama";
+  keyEl.type = local ? "text" : "password";
+  keyEl.placeholder = local ? "Leave empty if Ollama runs on this computer"
+                            : keyEl.dataset.keyHint;
+}
 
 function keyLinkFor(provider) {
   const [label, href] = KEY_LINKS[provider] || KEY_LINKS.gemini;
   $("keyLink").textContent = label;
   $("keyLink").href = href;
+  keyFieldFor(provider, $("setKey"));
+  const lbl = $("keyLink").previousSibling;
+  if (lbl && lbl.nodeType === 3)
+    lbl.nodeValue = provider === "ollama" ? "Ollama server (optional) " : "API key ";
 }
+$("setKey").dataset.keyHint = $("setKey").placeholder;
+$("setKey2").dataset.keyHint = $("setKey2").placeholder;
 $("setProvider").onchange = () => keyLinkFor($("setProvider").value);
+function keyField2For(p) {
+  keyFieldFor(p, $("setKey2"));
+  $("setKey2Label").textContent = p === "ollama" ? "Ollama server (optional)" : "Replace API key";
+  $("setSave2").textContent = p === "ollama" ? "Use Ollama" : "Save key";
+}
+$("setProvider2").onchange = () => keyField2For($("setProvider2").value);
 
 async function saveKey(providerEl, keyEl, btn, msgEl, onDone) {
   const key = keyEl.value.trim();
-  if (!key) { msgEl.innerHTML = `<div class="err">Paste a key first.</div>`; return; }
+  const provider = providerEl.value;
+  const local = provider === "ollama";
+  if (!key && !local) { msgEl.innerHTML = `<div class="err">Paste a key first.</div>`; return; }
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Saving…";
+  btn.textContent = local ? "Checking Ollama…" : "Saving…";
   try {
-    await api("/api/settings", json("POST", { provider: providerEl.value, api_key: key }));
-    msgEl.innerHTML = `<div class="ok-box">Saved. You're ready to go.</div>`;
+    const body = local ? { provider, host: key || undefined } : { provider, api_key: key };
+    const r = await api("/api/settings", json("POST", body));
+    msgEl.innerHTML = local
+      ? `<div class="ok-box">Using ${esc(r.model)} on Ollama. You're ready to go.</div>`
+      : `<div class="ok-box">Saved. You're ready to go.</div>`;
     keyEl.value = "";
     checkSetup();
     if (onDone) setTimeout(onDone, 1100);
