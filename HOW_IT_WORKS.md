@@ -1189,6 +1189,16 @@ proportionally more pixels to give.
 Net effect: a 1440p stream renders at 1440×2560 instead of being flattened to the
 1080p platform minimum.
 
+Every layout starts from the source's size, and `_probe_dimensions()` in
+`gaming_layout.py` is the one place it comes from. It asks ffprobe for JSON, not
+the terser CSV it used until v1.31.1: CSV prints side data on the same row, and
+on one user's machine it split `1080x1920` across lines so the number no longer
+parsed. The same probe reads the stream's **rotation tag**. A phone held upright
+records a 1920×1080 picture tagged "turn 90°", and ffmpeg turns it upright as it
+decodes, so the filters see 1080×1920. Every crop is computed against the size
+the filters will see, so a ±90° tag swaps width and height; without that, the
+crop asked for a window wider than the frame and ffmpeg refused the render.
+
 ### 7.2 `stacked` — the webcam-over-gameplay layout
 
 `local/gaming_layout.py`. This is the reason the repo exists.
