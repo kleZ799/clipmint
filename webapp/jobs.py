@@ -1532,8 +1532,12 @@ def regenerate_seo(store: "JobStore", job: Job, force: bool = False,
     mp4 itself. `only` rewrites a single clip by filename, keeping the rest of
     the run's titles in view so the new one does not open the same way.
     """
-    from shorts_generator.local.llm import call_local_llm
+    from shorts_generator.local.llm import call_local_llm, reset_fallback
     from shorts_generator.seo import generate_seo
+    # Each manual rewrite starts fresh — clear any stale provider blacklist
+    # so every configured key gets a fair shot regardless of what a previous
+    # run or rewrite already gave up on.
+    reset_fallback()
 
     with store._lock:
         if only:

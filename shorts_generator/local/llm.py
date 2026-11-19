@@ -511,8 +511,13 @@ def call_gemini_llm(prompt: str, contents: Optional[list] = None) -> str:
     model = current_model("gemini")
     keys = gemini_keys() or [require_gemini_key()]
     # Set the deadline once per run (reset by reset_fallback on a new job).
+    # When other providers are waiting on the ladder, fail over in 30 seconds
+    # rather than the full 5 minutes — the whole point of a ladder is to not
+    # waste time on a provider that is down.
     if _key_rotation_deadline is None:
-        _key_rotation_deadline = time.time() + _KEY_ROTATION_MAX_SECONDS
+        has_ladder = any(cfg() for _, cfg in _LADDER)
+        cap = 30 if has_ladder else _KEY_ROTATION_MAX_SECONDS
+        _key_rotation_deadline = time.time() + cap
     while True:
         if time.time() > _key_rotation_deadline:
             raise RuntimeError(
@@ -589,7 +594,13 @@ def _call_gemini_with(client, model: str, prompt: str, contents: Optional[list])
     # Losing a chunk that late costs the whole ranking pass on a long video,
     # because a chunk is only checkpointed once it succeeds. The extra three
     # attempts sit at the 60s cap, so patience runs to about four minutes.
-    attempts = 8
+    #
+    # But when other providers are configured, patience is wasteful: a 503
+    # from Gemini when OpenRouter or Groq is available should fail over in
+    # seconds, not four minutes. Two attempts + the wall-clock deadline are
+    # enough to tell a one-second blip from a sustained outage.
+    has_fallbacks = any(cfg() for _, cfg in _LADDER)
+    attempts = 2 if has_fallbacks else 8
     last_error = None
     for attempt in range(attempts):
         try:
@@ -702,24 +713,6 @@ def _ollama_is_configured() -> bool:
     return up
 
 
-# Who to try when the preferred provider gives up, in order. The free ones
-# before OpenAI, because OpenAI has no free tier: falling back should not
-# quietly start spending money. OpenRouter after Groq because its default is
-# the free router, which is slower and less predictable than Groq's own model.
-# Claude last: it is paid too, and it arrived after people had already set
-# OpenAI up as their paid fallback, so it does not jump ahead of it.
-# Ollama after the free cloud ones -- it is free too, but a small local model
-# ranks worse and slower -- and before the paid ones, so a run with a local
-# model to fall back on never starts spending money.
-_LADDER = (
-    ("groq", _groq_is_configured),
-    ("openrouter", _openrouter_is_configured),
-    ("ollama", _ollama_is_configured),
-    ("openai", _openai_is_configured),
-    ("anthropic", _anthropic_is_configured),
-)
-
-
 def _switch_to(provider: str, why: str) -> None:
     global _fallback_provider
     _fallback_provider = provider
@@ -811,6 +804,26 @@ def _gemini_spent_today() -> bool:
     return len(gemini_keys()) <= 1
 
 
+# Who to try when the preferred provider gives up, in order. Gemini first
+# when it has keys left — nine keys on the free tier is the deepest pool.
+# Then the other free ones before OpenAI, because OpenAI has no free tier:
+# falling back should not quietly start spending money. OpenRouter after Groq
+# because its default is the free router, which is slower and less predictable
+# than Groq's own model. Claude last: it is paid too, and it arrived after
+# people had already set OpenAI up as their paid fallback, so it does not
+# jump ahead of it. Ollama after the free cloud ones -- it is free too, but
+# a small local model ranks worse and slower -- and before the paid ones, so
+# a run with a local model to fall back on never starts spending money.
+_LADDER = (
+    ("gemini", _gemini_is_configured),
+    ("groq", _groq_is_configured),
+    ("openrouter", _openrouter_is_configured),
+    ("ollama", _ollama_is_configured),
+    ("openai", _openai_is_configured),
+    ("anthropic", _anthropic_is_configured),
+)
+
+
 def vision_images_per_request() -> int:
     """How many frames one vision request may carry on the provider in use."""
     return _IMAGES_PER_REQUEST.get(_fallback_provider or current_provider(), 5)
@@ -877,6 +890,18 @@ def reset_fallback() -> None:
     _given_up.clear()
 
 
+def no_providers_left() -> bool:
+    """True when every configured provider has already been given up on this run.
+
+    Used by callers (e.g. generate_seo) to tell 'all providers exhausted' from
+    'one provider rate-limited but others are available' — the latter is handled
+    inside call_local_llm automatically, so the caller should not stop early.
+    """
+    given_up_now = _given_up | {_fallback_provider or current_provider()}
+    return all(name in given_up_now or not cfg()
+               for name, cfg in _LADDER)
+
+
 def _openrouter_model_supports_vision() -> bool:
     """Return True only when the configured OpenRouter model is known to handle images.
 
@@ -911,7 +936,12 @@ def call_local_llm(prompt: str) -> str:
     provider = _fallback_provider or current_provider()
 
     if provider == "openai":
-        return call_openai_llm(prompt)
+        try:
+            return call_openai_llm(prompt)
+        except Exception as e:
+            if not _next_provider(f"openai failed ({str(e).splitlines()[0][:60]})"):
+                raise
+            return call_local_llm(prompt)
     if provider in ("groq", "openrouter", "anthropic", "ollama"):
         call = {"groq": call_groq_llm, "openrouter": call_openrouter_llm,
                 "anthropic": call_anthropic_llm, "ollama": call_ollama_llm}[provider]
