@@ -26,6 +26,34 @@ from typing import Callable, Dict, List, Optional
 
 from . import boundaries, content_kinds, muapi, signals, visual
 from .signals import AudioTrack
+from .config import current_model
+
+
+# ---------------------------------------------------------------------------
+# Hook-type bonus: question hooks and number/statistic openers have higher
+# retention on short-form platforms, so we nudge their score up slightly.
+# This is not a rewrite of the model's judgement — it is a small lift (+5)
+# applied after the fact to a pattern the model cannot reliably flag itself.
+# ---------------------------------------------------------------------------
+_QUESTION_HOOK_RE = re.compile(
+    r"^(did you|do you|have you|what if|why does|why do|how do|can you|"
+    r"would you|should you|is it|are you|could you|isn't it|aren't you|"
+    r"what is|what are|when did|where did|who|wait[,.]?\s)",
+    re.IGNORECASE,
+)
+_NUMBER_HOOK_RE = re.compile(
+    r"^(\$?\d+[\s%k]|in \d{4}|over \d+|under \d+|more than \d+|"
+    r"less than \d+|only \d+|just \d+|\d+ ways|\d+ things|\d+ tips)",
+    re.IGNORECASE,
+)
+
+
+def _hook_type_bonus(first_line: str) -> int:
+    """Return +5 score for question hooks or number/statistic hooks, else 0."""
+    s = (first_line or "").strip()
+    if _QUESTION_HOOK_RE.search(s) or _NUMBER_HOOK_RE.search(s):
+        return 5
+    return 0
 
 
 LLMFn = Callable[[str], str]
@@ -527,6 +555,12 @@ def _sanitize_highlights(raw_highlights: object, duration: float,
         # absent hook_score means "no opinion" rather than zero.
         hook = max(0, min(100, _coerce_int(item.get("hook_score"), default=viral)))
 
+        hook_text = str(item.get("hook_sentence") or item.get("first_line") or "").strip()
+        base_score = int(round(HOOK_SCORE_WEIGHT * hook + (1 - HOOK_SCORE_WEIGHT) * viral))
+        # Nudge question/number hooks up slightly — they retain better in the
+        # first second, which is what the rule book weighs most.
+        base_score = min(100, base_score + _hook_type_bonus(hook_text))
+
         cleaned.append(
             {
                 "title": str(item.get("title") or "Untitled Highlight").strip(),
@@ -535,8 +569,7 @@ def _sanitize_highlights(raw_highlights: object, duration: float,
                 # What every caller sorts and cuts on. A brilliant moment behind
                 # a flat opening line is not a good Short, because nobody stays
                 # long enough to reach it — so the opening line gets a real vote.
-                "score": int(round(HOOK_SCORE_WEIGHT * hook
-                                   + (1 - HOOK_SCORE_WEIGHT) * viral)),
+                "score": base_score,
                 "viral_score": viral,
                 "hook_score": hook,
                 "first_line": str(item.get("first_line") or "").strip(),
@@ -730,6 +763,18 @@ def call_highlight_api(
         duration_rule=duration_rule(clip_seconds),
         user_brief=brief_block(brief, asks),
     )
+    # Compress transcript for small-context-window models before building the prompt.
+    # Models with 8K token windows silently drop the second half of long videos,
+    # so we keep both ends and snip the middle, which is less harmful than losing
+    # the last hour of a stream entirely.
+    try:
+        from .local.prompt_compressor import compress_for_model
+        from .local import llm as _llm_mod
+        _active_provider = getattr(_llm_mod, "_cur_provider", lambda: "gemini")()
+        _active_model = current_model(_active_provider)
+        transcript_text = compress_for_model(transcript_text, _active_model)
+    except Exception:
+        pass  # compression is a nicety — never sink a render over it
     base_prompt = f"{system}\n{chat_note}\nTranscript:\n{transcript_text}"
     prompt = base_prompt
     last_error = "unknown"

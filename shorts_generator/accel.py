@@ -237,9 +237,12 @@ def whisper_device(register: Optional[Callable[[], None]] = None) -> Tuple[str, 
         return "cpu", "there is no NVIDIA GPU"
     missing = _missing_cuda_libs()
     if missing:
-        return "cpu", ("there is an NVIDIA GPU, but NVIDIA's CUDA libraries are not "
-                       f"installed ({', '.join(missing)} missing) - the download leaves "
-                       "them out to stay small. Video encoding still uses the GPU")
+        pip_cmd = "pip install nvidia-cublas-cu12 nvidia-cudnn-cu12"
+        return "cpu", (
+            f"NVIDIA GPU found but {', '.join(missing)} not on the DLL path. "
+            f"Run:  {pip_cmd}  (~2 GB) to enable GPU transcription (~5x faster). "
+            f"Video encoding (NVENC) already works without this."
+        )
     return "cuda", "NVIDIA GPU with CUDA"
 
 

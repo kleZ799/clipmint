@@ -414,6 +414,31 @@ def coverage(measured: Dict[str, float]) -> float:
     return _clamp01(have / _OBTAINABLE) if _OBTAINABLE else 0.0
 
 
+def pacing_score(start: float, end: float, audio: "AudioTrack") -> float:
+    """0-1: how well-paced this clip is. Clips with >50% silence score lower.
+
+    Uses the audio track's RMS envelope. Windows below the quiet floor are
+    counted as silent. Good pacing = dense speech; poor pacing = lots of dead
+    air.  The result is stored on the highlight as ``pacing_score`` for the
+    scorecard but is *not* blended into ``score``, keeping the range stable.
+    """
+    if not audio or not getattr(audio, "rms", None) or end <= start:
+        return 0.5  # neutral when no data
+    window = getattr(audio, "window", 0.25)
+    a = max(0, int(start / window))
+    b = min(len(audio.rms) - 1, int(end / window))
+    if b <= a:
+        return 0.5
+    span = audio.rms[a : b + 1]
+    if not span:
+        return 0.5
+    quiet_floor = getattr(audio, "_quiet", 0.0)
+    silent = sum(1 for v in span if v < quiet_floor)
+    silent_ratio = silent / len(span)
+    # 0 % silence → 1.0,  50 %+ silence → 0.0 (linear interpolation)
+    return max(0.0, 1.0 - (silent_ratio / 0.5))
+
+
 def rescore(highlights: List[Dict], transcript: Optional[Dict],
             audio: Optional[AudioTrack], chat=None,
             tuning: Optional[Dict[str, float]] = None) -> List[Dict]:
@@ -438,6 +463,21 @@ def rescore(highlights: List[Dict], transcript: Optional[Dict],
         density = measured.pop("density", None)
         if density is not None:
             h["opening_density"] = round(density, 2)
+        # Pacing: stored for the scorecard / analytics but NOT blended into score
+        # (adding it to the weighted average would require redistributing the full
+        # weight map, which would change every existing video's rankings silently).
+        if audio:
+            try:
+                h["pacing_score"] = round(
+                    pacing_score(
+                        float(h.get("start_time", 0) or 0),
+                        float(h.get("end_time", 0) or 0),
+                        audio,
+                    ),
+                    3,
+                )
+            except Exception:
+                pass
         if chat:
             # In the unit a person reads -- "chat ran 5x its usual pace" --
             # for the scorecard, which the 0-1 velocity is not.

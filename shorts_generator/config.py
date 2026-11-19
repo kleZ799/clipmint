@@ -47,6 +47,10 @@ POLL_TIMEOUT_SECONDS = float(os.getenv("MUAPI_POLL_TIMEOUT", "600"))
 # Local-mode (--mode local) settings — only consulted when running offline.
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# Optional custom base URL for the OpenAI provider. Set to point at any
+# OpenAI-compatible endpoint: LM Studio, Ollama, Together AI, Mistral, etc.
+# Leave empty to use the standard OpenAI endpoint (https://api.openai.com/v1).
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # Probed against a real free-tier key: 3.6-flash returns 429 (allowance spent),
 # 3.8-flash answers roughly two times in three, 3.5-flash answered every time.

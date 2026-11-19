@@ -763,6 +763,12 @@ addEventListener("load", function () {
     </label>
     <button class="btn ghost" id="fbSave">Save backup key</button>
     <div id="fbMsg"></div>
+    <label class="fld" id="fbBaseUrlRow">
+      <span>OpenAI base URL <small style="font-weight:normal;opacity:.7">(optional — for LM Studio, Ollama, Together AI…)</small></span>
+      <input type="url" id="fbBaseUrl" placeholder="https://api.openai.com/v1">
+    </label>
+    <button class="btn ghost" id="fbBaseUrlSave">Save base URL</button>
+    <div id="fbBaseUrlMsg"></div>
     <label class="fld">
       <span>Daily request cap for OpenAI &mdash; optional, for the meter</span>
       <input type="number" id="capOpenai" min="1" step="1" placeholder="e.g. 100">

@@ -272,6 +272,12 @@ async function checkSetup() {
     providerPinned = !!d.provider_pinned;
     drawModels(d);
     if (d.daily_limits) $("capOpenai").value = d.daily_limits.openai || "";
+    if ($("fbBaseUrl")) {
+      $("fbBaseUrl").value = (d.openai_base_url || "");
+      if (d.openai_base_url_pinned && $("fbBaseUrlRow")) {
+        $("fbBaseUrlRow").title = "Set via environment variable — changes here won't override it.";
+      }
+    }
     drawSwitcher(d.provider);
     // Ollama has no key to report; where its server is says more.
     const keyRow = d.provider === "ollama"
@@ -4840,6 +4846,29 @@ $("fbSave").onclick = async () => {
     btn.textContent = label;
   }
 };
+
+if ($("fbBaseUrlSave")) {
+  $("fbBaseUrlSave").onclick = async () => {
+    const url = $("fbBaseUrl").value.trim();
+    const msg = $("fbBaseUrlMsg"), btn = $("fbBaseUrlSave");
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Saving…";
+    try {
+      await api("/api/settings", json("POST", {
+        provider: "openai", base_url: url, as_fallback: true,
+      }));
+      msg.innerHTML = url
+        ? `<div class="ok-box">Saved. OpenAI calls will go to ${esc(url)}.</div>`
+        : `<div class="ok-box">Cleared — using the standard OpenAI endpoint.</div>`;
+    } catch (e) {
+      msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  };
+}
 // Clips made in earlier sessions are still on disk — show them straight away.
 loadLibrary();
 

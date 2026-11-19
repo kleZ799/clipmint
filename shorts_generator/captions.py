@@ -86,6 +86,14 @@ PRESETS: Dict[str, Dict] = {
         "primary": "FFFFFF", "active": "FFD43B", "edge": "3B1F6E",
         "upper": True, "words": 3, "chars": 18, "pop": True, "box": False,
     },
+    "karaoke": {
+        "label": "Karaoke",
+        "hint": "Inactive words fade to grey, the spoken word lights up white — classic lyric style",
+        "font": "Montserrat Black", "file": "Montserrat-Black.ttf",
+        "size": 0.075, "outline": 0.008, "shadow": 0.003, "spacing": 0,
+        "primary": "888888", "active": "FFFFFF", "edge": "000000",
+        "upper": False, "words": 4, "chars": 24, "pop": True, "box": False,
+    },
 }
 
 CHOICES = (OFF, *PRESETS)

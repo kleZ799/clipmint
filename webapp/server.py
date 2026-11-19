@@ -183,6 +183,10 @@ class SettingsRequest(BaseModel):
     daily_limit: Optional[str] = None
     # Ollama only: where its server is, if not this computer's default port.
     host: Optional[str] = None
+    # Optional custom API base URL for the OpenAI provider. Enables any
+    # OpenAI-compatible endpoint: LM Studio, Ollama, Together AI, etc.
+    # Only applied when provider == "openai". Pass "" to clear/reset.
+    base_url: Optional[str] = None
 
 
 def _gemini_model_options() -> list:
@@ -342,6 +346,8 @@ async def get_settings() -> dict:
         # Spare Gemini keys, counted rather than shown: a key is a secret.
         "gemini_spare_keys": max(0, len(gemini_keys()) - 1),
         "gemini_spares_pinned": bool(os.getenv("GEMINI_EXTRA_KEYS", "").strip()),
+        "openai_base_url": user_config.get("OPENAI_BASE_URL"),
+        "openai_base_url_pinned": bool(os.getenv("OPENAI_BASE_URL", "").strip()),
     }
 
 
@@ -449,6 +455,13 @@ async def set_settings(req: SettingsRequest) -> dict:
         if cap and not cap.isdigit():
             raise HTTPException(400, "The daily cap must be a whole number of requests.")
         values[f"{prefix}_DAILY_LIMIT"] = cap
+
+    # Save/clear the custom base URL for the OpenAI provider
+    if req.base_url is not None and provider == "openai":
+        url = req.base_url.strip()
+        if url and not url.startswith(("http://", "https://")):
+            raise HTTPException(400, "Base URL must start with http:// or https://")
+        values["OPENAI_BASE_URL"] = url
 
     path = user_config.save(values)
     return {"saved": True, "config_path": str(path),

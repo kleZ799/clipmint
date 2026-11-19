@@ -26,8 +26,11 @@ def _register_cuda_dlls() -> None:
     fix; without it, installing the wheels changes nothing at all.
 
     Frozen builds keep the same layout under the unpack root, so both are
-    checked. Missing directories are ordinary: a CPU-only install has none,
-    and the caller falls back on its own.
+    checked. We also check the CUDA Toolkit install on Windows (via the
+    CUDA_PATH environment variable or common install locations), so the app
+    works even when only the toolkit is installed rather than the pip wheels.
+    Missing directories are ordinary: a CPU-only install has none, and the
+    caller falls back on its own.
     """
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
         return
@@ -50,6 +53,38 @@ def _register_cuda_dlls() -> None:
                     os.add_dll_directory(str(d))
                 except OSError:
                     pass    # already registered, or gone between check and use
+
+    # Also register the CUDA Toolkit bin directory on Windows.
+    # The pip wheels (nvidia-cublas-cu12 / nvidia-cudnn-cu12) are the preferred
+    # source because they include cuDNN, but if only the CUDA Toolkit is
+    # installed we can still find cuBLAS there and give a clearer error message
+    # about the missing cuDNN rather than a generic "DLL not found".
+    _cuda_toolkit_bin = _find_cuda_toolkit_bin()
+    if _cuda_toolkit_bin:
+        try:
+            os.add_dll_directory(str(_cuda_toolkit_bin))
+        except OSError:
+            pass
+
+
+def _find_cuda_toolkit_bin() -> "Optional[Path]":
+    """Return the CUDA Toolkit bin directory on Windows, or None."""
+    if os.name != "nt":
+        return None
+    # Honour CUDA_PATH if the user or installer set it.
+    cuda_path = os.environ.get("CUDA_PATH", "").strip()
+    if cuda_path:
+        p = Path(cuda_path) / "bin"
+        if p.is_dir():
+            return p
+    # Fall back to scanning common CUDA Toolkit install locations.
+    _base = Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA")
+    for _ver in ("12.8", "12.7", "12.6", "12.5", "12.4", "12.3", "12.2",
+                 "12.1", "12.0", "11.8", "11.7"):
+        _candidate = _base / f"v{_ver}" / "bin"
+        if _candidate.is_dir():
+            return _candidate
+    return None
 
 
 def _cache_candidates(media_path: str) -> List[Path]:
