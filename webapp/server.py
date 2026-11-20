@@ -478,10 +478,12 @@ async def set_gemini_spares(req: GeminiSparesRequest) -> dict:
     back to the page, so there is no list there to edit one entry of.
     """
     from shorts_generator import user_config
-    from shorts_generator.config import gemini_keys
+    from shorts_generator.config import gemini_keys, misplaced_key
 
     keys = [k for k in re.split(r"[\s,;]+", req.keys or "") if k]
-    bad = [k for k in keys if not re.fullmatch(r"[A-Za-z0-9_\-]{20,120}", k)]
+    # Dots too: Google's newer keys start "AQ.".
+    bad = [k for k in keys if not re.fullmatch(r"[A-Za-z0-9_.\-]{20,120}", k)
+           or misplaced_key("gemini", k)]
     if bad:
         raise HTTPException(400, "That doesn't look like a list of Gemini keys. Paste one "
                                  "key per line, each from aistudio.google.com/apikey.")
