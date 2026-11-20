@@ -104,6 +104,9 @@ DOCS = [
     ("case-study.html", "docs/case-study.md", "How ClipMint is built — an engineering case study by Parth Bhadana",
      "Architecture, the hard problems and the measured results behind ClipMint, a desktop AI video "
      "clipper built with Python, FastAPI, Whisper, OpenCV, ffmpeg and LLMs."),
+    ("gaming-clips.html", "docs/gaming-clips.md", "Turn GTA 6 streams into YouTube Shorts, free — ClipMint",
+     "A free, open-source clip maker for GTA VI and other game streams: finds your best reactions, "
+     "stacks your webcam over gameplay at 9:16, burns in captions and uploads to YouTube. No watermark."),
 ]
 
 LLMS = """# ClipMint
@@ -125,6 +128,7 @@ ranking when a permutation test says the pattern is real.
 
 - [Home and download]({base}): what it does, screenshots, downloads for all three platforms
 - [Comparison]({base}compare.html): ClipMint vs Opus Clip, Klap, Vizard and open-source clippers
+- [Clipping game streams]({base}gaming-clips.html): GTA VI and other game streams into Shorts, webcam over gameplay
 - [Engineering case study]({base}case-study.html): architecture, hard problems, measured results
 - [Privacy policy]({base}privacy.html)
 
