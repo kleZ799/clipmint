@@ -53,6 +53,7 @@ PAGE = """<!doctype html>
     <a class="brand" href="./"><img src="icon.png" alt="">ClipMint</a>
     <nav class="links">
       <a href="./#download">Download</a>
+      <a href="gaming-clips.html">Game streams</a>
       <a href="compare.html">Compare</a>
       <a href="case-study.html">How it's built</a>
       <a href="privacy.html">Privacy policy</a>
