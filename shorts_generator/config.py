@@ -262,6 +262,43 @@ def require_gemini_key() -> str:
     )
 
 
+PROVIDER_LABELS = {"gemini": "Google Gemini", "groq": "Groq", "openrouter": "OpenRouter",
+                   "openai": "OpenAI", "anthropic": "Claude", "ollama": "Ollama"}
+
+# How each provider's keys begin, most specific first: OpenRouter's and
+# Anthropic's keys also start with OpenAI's "sk-". Google hands out keys in two
+# shapes, the old "AIza..." and the newer "AQ." ones.
+_KEY_PREFIXES = (
+    ("openrouter", ("sk-or-",)),
+    ("anthropic", ("sk-ant-",)),
+    ("openai", ("sk-",)),
+    ("groq", ("gsk_",)),
+    ("gemini", ("AIza", "AQ.")),
+)
+
+
+def key_owner(key: str):
+    """The provider a key plainly belongs to, going by how it starts, or None."""
+    k = (key or "").strip()
+    for name, prefixes in _KEY_PREFIXES:
+        if k.startswith(prefixes):
+            return name
+    return None
+
+
+def misplaced_key(provider: str, key: str):
+    """The provider `key` really belongs to, when that is not `provider`.
+
+    A Gemini key saved as OpenAI's does not fail when it is saved. It fails
+    halfway through a run, as a 401 from OpenAI that never says the key came
+    from Google -- and if OpenAI was only the fallback, the person never chose
+    OpenAI at all. Keys that start some other way are left alone: a provider
+    may change its format, and refusing a good key is worse than this.
+    """
+    owner = key_owner(key)
+    return owner if owner and owner != provider else None
+
+
 def gemini_keys() -> list:
     """Every Gemini key to try, the main one first, without repeats.
 

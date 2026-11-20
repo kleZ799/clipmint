@@ -238,6 +238,8 @@ CLIP_ATTEMPTS = 3
 # Retry button is still there once whatever it was has been put right.
 _PERMANENT = (
     "api_key_invalid", "api key not valid", "permission_denied", "unauthenticated",
+    # llm._final_error(): every provider tried, and the last one refused its key.
+    "refused the api key",
     # config.require_*_key(): no key at all. Waiting won't make one appear.
     "_api_key is not set",
     # Ollama: a model that was never pulled, or none chosen. Ollama not
