@@ -274,6 +274,7 @@ shorts_generator/
 ├── vision.py               what each clip shows, from four of its frames
 ├── faces.py                face detection: YuNet, with Haar as the fallback
 ├── accel.py                which processor encodes video and runs Whisper
+├── picture.py              whether a file has a picture, and where it stops
 ├── seo.py                  Shorts, Reels and TikTok packaging, all ranked
 ├── playbook.py             the growth playbook: bundled, fetched, overridable
 │
@@ -336,6 +337,7 @@ fetch_video_meta()                    ← title/channel/tags, best-effort
       │
       ▼
 transcribe_local()                    ← stage: transcribe (bar 0.15 → 0.55)
+_within_picture()                     ← cut the transcript back to where the picture stops
       │
       ▼
 analyse_audio()                       ← one loudness envelope for the whole VOD
@@ -1408,6 +1410,19 @@ session limit, a driver fault), `run_encode` redoes that clip on libx264 and
 marks the encoder broken for the rest of the run; `reset_run()` at the start of
 each job gives it another chance. Measured here: the stacked layout renders 30s
 of 720p60 in **10.6s on NVENC against 20.3s on the CPU**.
+
+**An encode that succeeds can still have no picture.** Cut a window from past
+the point where a source's picture stops — a recording whose video dropped out,
+an export with a long audio-only tail — and ffmpeg exits 0: it writes the
+sound, and the mp4 muxer leaves out a video track that got no frames. The file
+plays as a black screen, and the auto-edit and the cold open, which both need a
+video stream, skipped it without a word. Since v1.31.3, `run_encode` probes
+what it wrote (`_require_picture()`, using `picture.py`) and fails the clip
+with a message that says so. The real fix is upstream: after transcription,
+`jobs._within_picture()` asks `picture.picture_seconds()` how long the picture
+runs and cuts the transcript ranking sees back to that, so no clip is chosen
+from a part with nothing to watch. `picture_seconds()` reads the stream's own
+duration, or the `DURATION` tag mkv and webm keep it in, and ignores cover art.
 
 **Transcription** runs on CTranslate2, which uses an NVIDIA GPU through CUDA —
 but only with NVIDIA's cuBLAS and cuDNN, which the published single-file builds
@@ -3011,6 +3026,29 @@ remaining chunk — and `reset_fallback()` clears it at the start of each new jo
 A run also remembers every provider it has given up on (`_given_up`), so two
 free tiers that are both failing cannot hand the run back and forth for ever:
 each is tried once, then the real error surfaces.
+
+**Every rung fails over the same way, and the last error says what came
+first.** Until v1.31.3 OpenAI was the exception: `call_local_llm()` called it
+bare, so a refused OpenAI key ended the run even with Groq set up beside it.
+That met a second problem in the field. People pasted a Gemini key with OpenAI
+selected, the save accepted it, and the run only failed later, when Gemini was
+busy and the ladder reached OpenAI, as `401 Incorrect API key provided: AQ.Ab8…`.
+A message naming a provider they never chose, about a key they had already
+checked, so they swapped their Gemini key again and again. Three things changed:
+
+- `config.key_owner()` reads whose a key is from how it starts (`AIza` and
+  `AQ.` are Google's, `gsk_` Groq's, `sk-or-` OpenRouter's, `sk-ant-`
+  Anthropic's, any other `sk-` OpenAI's). Saving a key under the wrong provider
+  is refused with the provider to choose instead; keys that start some other
+  way are still accepted, since refusing a good key is worse.
+- On the ladder, `_key_usable()` skips a provider whose saved key is plainly
+  someone else's, and logs it once.
+- `_next_provider()` records why each provider was left (`_failures`), and
+  `_final_error()` puts that history into the last error: "OpenAI refused the
+  API key saved for it (AQ.Ab8…ogxQ). That key is from Google Gemini, saved under
+  OpenAI by mistake…", or "Google Gemini failed: 503… OpenAI was not tried: the
+  key saved for it is from Google Gemini". "refused the api key" is in
+  `jobs._PERMANENT`, so the stage is not retried three times first.
 
 **OpenRouter** joined in v1.29.0, the same way Groq did: the `openai` client with
 `base_url` at `openrouter.ai/api/v1`. Its default model is `openrouter/free`,
