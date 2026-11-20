@@ -143,6 +143,9 @@ class Options:
     # hook line for its first seconds. Asked for by a tester who wanted "a
     # sort of title at the front" and found no way to say so.
     title_on_screen: bool = False
+    # Whether the prompt asked for a clip length. Then cutting pauses never
+    # takes a clip under the shortest length asked for.
+    length_asked: bool = False
 
     @property
     def needs_words(self) -> bool:
@@ -188,6 +191,7 @@ def options_from_spec(spec, kind: Optional[str] = None) -> Options:
         logo_corner=brand.corner(),
         hook_replay=bool(getattr(spec, "hook_replay", False)),
         title_on_screen=bool(getattr(spec, "title_on_screen", False)),
+        length_asked=bool(getattr(spec, "clip_seconds", None)),
     )
 
 
@@ -275,7 +279,7 @@ def _speech_level(words: List[Dict], track) -> float:
 
 
 def plan_cuts(words: List[Dict], duration: float, track=None, kind: str = "other",
-              protect: Optional[Span] = None) -> List[Span]:
+              protect: Optional[Span] = None, floor: float = 0.0) -> List[Span]:
     """The spans of the clip to keep, in order. [(0, duration)] means no cut.
 
     `track` is the clip's own loudness envelope (signals.AudioTrack). Without
@@ -343,7 +347,35 @@ def plan_cuts(words: List[Dict], duration: float, track=None, kind: str = "other
         gaps = [(keeps[i + 1][0] - keeps[i][1], i) for i in range(len(keeps) - 1)]
         _, i = min(gaps)
         keeps[i:i + 2] = [(keeps[i][0], keeps[i + 1][1])]
-    return keeps or whole
+    return _keep_at_least(keeps, duration, floor) or whole
+
+
+def _keep_at_least(keeps: List[Span], duration: float, floor: float) -> List[Span]:
+    """Put the smallest cuts back until the clip is at least `floor` long.
+
+    Ranking makes a clip as long as was asked for; cutting its pauses then
+    takes seconds back out. A tester who asked for clips over a minute got
+    every one under it. The biggest pauses are the ones worth losing, so the
+    smallest cuts are the first to go back in.
+    """
+    keeps = list(keeps)
+    floor = min(floor, duration)
+    while keeps and sum(b - a for a, b in keeps) < floor - 0.01:
+        gaps = [(keeps[i + 1][0] - keeps[i][1], i) for i in range(len(keeps) - 1)]
+        if keeps[0][0] > 0:
+            gaps.append((keeps[0][0], -1))
+        if keeps[-1][1] < duration:
+            gaps.append((duration - keeps[-1][1], len(keeps)))
+        if not gaps:
+            break
+        _, i = min(gaps)
+        if i == -1:
+            keeps[0] = (0.0, keeps[0][1])
+        elif i == len(keeps):
+            keeps[-1] = (keeps[-1][0], duration)
+        else:
+            keeps[i:i + 2] = [(keeps[i][0], keeps[i + 1][1])]
+    return keeps
 
 
 def _merge(spans: List[Span]) -> List[Span]:
@@ -547,7 +579,9 @@ def analyse(path: str, highlight: Dict, opts: Options,
             at = float(peak) - float(start)
             if 0 <= at <= duration:
                 protect = (at - _PROTECT_BEFORE_PEAK, at + _PROTECT_AFTER_PEAK)
-        plan.keeps = plan_cuts(spoken, duration, track, opts.kind, protect)
+        target = highlight.get("duration_target") or []
+        floor = float(target[0]) if opts.length_asked and target else 0.0
+        plan.keeps = plan_cuts(spoken, duration, track, opts.kind, protect, floor)
 
     plan.words = remap_words(spoken, plan.keeps) if plan.cut else spoken
     plan.caption_words = remap_words(shown, plan.keeps) if plan.cut else shown
