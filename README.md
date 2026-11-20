@@ -1283,8 +1283,8 @@ before it in the feed reads as lower production value before a word of it is
 heard. And a clip whose loudest moment lands late opens with **two and a half
 seconds of that moment first**, then a quick white flash back to the start, and
 plays in full: the payoff arrives before the viewer has
-decided whether to stay. It skips itself when the peak is already at the front,
-where a replay would just be a stutter, and the length it adds is reserved
+decided whether to stay. It skips itself when the peak is already in the first
+six seconds, where a replay would just be a stutter, and the length it adds is reserved
 before the cut is chosen — so 30-second clips are still 30 seconds with it on.
 Turn it off with the switch in the Render panel, or by writing *no hook repeat*
 in the prompt.
@@ -1478,6 +1478,8 @@ Under the prompt, **Shape** and **Kind of video** do the same jobs with a click,
 The **Edit** box under Render works the other way round: when the prompt names a
 caption style or an edit, the words win, and the box shows it with a *set by
 your words* tag.
+
+Clip length can be said the way you'd say it: `30 second clips`, `about a minute`, `2 minutes`, `1.5 minutes`, `20-40s`, `more than a minute` or `1 minute+` (a minimum, so every clip comes out at least that long), `under 45 seconds` or `up to a minute` (a maximum). Cutting pauses never takes a clip below the length you asked for.
 
 While you type, the preview uses a keyword pass that runs in about 70ms and costs no quota. About a second after you stop, the model reads the whole thing; its answer is cached, so starting the run doesn't ask again. Where both read the same setting, your literal words win.
 
