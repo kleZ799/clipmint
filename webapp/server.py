@@ -511,6 +511,28 @@ async def caption_font(name: str) -> FileResponse:
                         headers={"Cache-Control": "max-age=86400"})
 
 
+class PixabayRequest(BaseModel):
+    api_key: str = ""
+
+@app.get("/api/settings/pixabay/status")
+async def pixabay_status() -> dict:
+    """Expose only whether a Pixabay key is available, never the secret."""
+    from shorts_generator import user_config
+
+    return {"configured": bool(user_config.get("PIXABAY_API_KEY"))}
+
+@app.post("/api/settings/pixabay")
+async def set_pixabay(req: PixabayRequest) -> dict:
+    """Save a Pixabay key separately from Pexels and LLM provider keys."""
+    from shorts_generator import user_config
+
+    key = (req.api_key or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{20,100}", key):
+        raise HTTPException(400, "That doesn't look like a Pixabay API key.")
+    user_config.save({"PIXABAY_API_KEY": key})
+    return {"saved": True, "pixabay": True}
+
+
 class PexelsRequest(BaseModel):
     # Empty removes the stored key.
     api_key: str = ""

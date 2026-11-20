@@ -60,7 +60,7 @@ def api_key() -> str:
 
 
 def available() -> bool:
-    return bool(api_key())
+    return bool(api_key() or (user_config.get("PIXABAY_API_KEY") or "").strip())
 
 
 def _lines(words: List[Dict], per_line: int = 10) -> List[str]:
@@ -179,7 +179,7 @@ def _best_file(video: Dict, want_h: int) -> Optional[Dict]:
     return max(files, key=lambda f: int(f.get("height") or 0))
 
 
-def fetch(query: str, seconds: float, width: int, height: int,
+def _pexels_fetch(query: str, seconds: float, width: int, height: int,
           avoid: Optional[set] = None) -> Optional[str]:
     """A local file of stock footage for `query`, downloaded once and cached."""
     key = api_key()
@@ -242,3 +242,116 @@ def fetch(query: str, seconds: float, width: int, height: int,
 
     print(f"[broll] no footage long enough for {query!r}", flush=True)
     return None
+
+# PIXABAY INTEGRATION: managed by instalar_pixabay_clipmint.py
+PIXABAY_VIDEO_URL = "https://pixabay.com/api/videos/"
+PIXABAY_SEARCH_CACHE_HOURS = 24
+
+
+def pixabay_key() -> str:
+    return (user_config.get("PIXABAY_API_KEY") or "").strip()
+
+
+def _pixabay_cache(query: str):
+    """Cache one Pixabay search for >=24 hours as required by Pixabay API."""
+    import hashlib
+    h = hashlib.sha256(query.casefold().encode("utf-8")).hexdigest()[:24]
+    folder = _cache_dir() / "pixabay-search"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / (h + ".json")
+
+
+def _pixabay_results(query: str, requests):
+    import time
+    cache = _pixabay_cache(query)
+    if cache.is_file():
+        try:
+            data = json.loads(cache.read_text(encoding="utf-8"))
+            if time.time() - float(data.get("saved", 0)) < PIXABAY_SEARCH_CACHE_HOURS * 3600:
+                return data.get("hits", [])
+        except (OSError, ValueError, TypeError):
+            pass
+    try:
+        response = requests.get(PIXABAY_VIDEO_URL, params={
+            "key": pixabay_key(), "q": query[:100], "per_page": 10,
+            "safesearch": "true", "lang": "en",
+        }, timeout=20)
+        response.raise_for_status()
+        hits = response.json().get("hits", [])
+        cache.write_text(json.dumps({"saved": time.time(), "hits": hits}), encoding="utf-8")
+        return hits
+    except Exception as exc:
+        print(f"[broll] Pixabay search failed: {exc}", flush=True)
+        return []
+
+
+def _pixabay_fetch(query: str, seconds: float, width: int, height: int,
+                   avoid: Optional[set] = None) -> Optional[str]:
+    """Fetch one Pixabay MP4 locally, preserving ClipMint's fetch() interface."""
+    if not pixabay_key():
+        return None
+    try:
+        import requests
+    except ImportError:
+        return None
+    if avoid is None:
+        avoid = set()
+    for item in _pixabay_results(query, requests):
+        ident = str(item.get("id") or "")
+        token = "pixabay:" + ident
+        if not ident or token in avoid or float(item.get("duration") or 0) < seconds:
+            continue
+        variants = []
+        for variant in (item.get("videos") or {}).values():
+            if not isinstance(variant, dict):
+                continue
+            url = variant.get("url")
+            w, h = int(variant.get("width") or 0), int(variant.get("height") or 0)
+            size = int(variant.get("size") or 0)
+            if url and w >= 540 and h > 0 and size <= MAX_DOWNLOAD_BYTES:
+                variants.append((url, w, h, size))
+        if not variants:
+            continue
+        # Prefer sufficient height with smallest file, otherwise the highest resolution.
+        adequate = [v for v in variants if v[2] >= height * 0.9]
+        variants = sorted(adequate, key=lambda v: v[3]) if adequate else sorted(
+            variants, key=lambda v: v[2], reverse=True)
+        url = variants[0][0]
+        slug = re.sub(r"[^a-z0-9]+", "-", query.lower()).strip("-")[:40] or "broll"
+        dest = _cache_dir() / f"pixabay-{slug}-{ident}.mp4"
+        if dest.exists() and dest.stat().st_size > 0:
+            avoid.add(token)
+            return str(dest)
+        tmp = dest.with_suffix(".part")
+        try:
+            with requests.get(url, stream=True, timeout=60) as response:
+                response.raise_for_status()
+                count = 0
+                with tmp.open("wb") as out:
+                    for block in response.iter_content(65536):
+                        count += len(block)
+                        if count > MAX_DOWNLOAD_BYTES:
+                            raise ValueError("Pixabay clip exceeds 80 MB limit")
+                        out.write(block)
+            tmp.replace(dest)
+            avoid.add(token)
+            print(f"[broll] Pixabay video: {item.get('pageURL', '')}", flush=True)
+            return str(dest)
+        except Exception as exc:
+            print(f"[broll] Pixabay video download failed: {exc}", flush=True)
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return None
+
+
+def fetch(query: str, seconds: float, width: int, height: int,
+          avoid: Optional[set] = None) -> Optional[str]:
+    """Try Pixabay first, then original Pexels; return local file path."""
+    if avoid is None:
+        avoid = set()
+    path = _pixabay_fetch(query, seconds, width, height, avoid)
+    if path:
+        return path
+    return _pexels_fetch(query, seconds, width, height, avoid) if api_key() else None
