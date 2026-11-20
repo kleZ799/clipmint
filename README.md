@@ -647,6 +647,15 @@ is done twice — and a run that finished with a clip missing offers **Retry
 failed clips**, which renders just those. Errors that trying again cannot fix,
 like a wrong API key, fail straight away so you are not kept waiting for them.
 
+If the model you chose is busy and the run moves on to another one you set up,
+and that one fails too, the error says what happened to each of them, not just
+the last. A key pasted under the wrong provider (a Gemini key with OpenAI
+selected, say) is caught when you save it, not halfway through a run.
+
+A video whose picture stops before its sound does only gets clips from the
+part you can see, and the log says where the picture stops. Before, clips from
+the rest came out as a black screen with sound.
+
 Asking for **best** quality when a lower-quality copy is already downloaded
 makes the app try for a better one. If YouTube won't serve it, the run now
 carries on with the copy you have — along with its transcript — instead of
