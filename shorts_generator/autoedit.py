@@ -143,9 +143,6 @@ class Options:
     # hook line for its first seconds. Asked for by a tester who wanted "a
     # sort of title at the front" and found no way to say so.
     title_on_screen: bool = False
-    # Whether the prompt asked for a clip length. Then cutting pauses never
-    # takes a clip under the shortest length asked for.
-    length_asked: bool = False
 
     @property
     def needs_words(self) -> bool:
@@ -191,7 +188,6 @@ def options_from_spec(spec, kind: Optional[str] = None) -> Options:
         logo_corner=brand.corner(),
         hook_replay=bool(getattr(spec, "hook_replay", False)),
         title_on_screen=bool(getattr(spec, "title_on_screen", False)),
-        length_asked=bool(getattr(spec, "clip_seconds", None)),
     )
 
 
@@ -579,8 +575,11 @@ def analyse(path: str, highlight: Dict, opts: Options,
             at = float(peak) - float(start)
             if 0 <= at <= duration:
                 protect = (at - _PROTECT_BEFORE_PEAK, at + _PROTECT_AFTER_PEAK)
-        target = highlight.get("duration_target") or []
-        floor = float(target[0]) if opts.length_asked and target else 0.0
+        # The length typed into the prompt, not the cut's target with the
+        # cold open's room taken off: the cold open is not always added, and
+        # when it is, a clip a little over the floor is no one's complaint.
+        asked = highlight.get("duration_asked") or []
+        floor = float(asked[0]) if asked else 0.0
         plan.keeps = plan_cuts(spoken, duration, track, opts.kind, protect, floor)
 
     plan.words = remap_words(spoken, plan.keeps) if plan.cut else spoken

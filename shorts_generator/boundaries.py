@@ -341,9 +341,9 @@ def refine(highlights: List[Dict], transcript: Optional[Dict],
     30-second files once the replay is on the front of them.
     """
     segments = _segments(transcript)
-    lo, hi = _band(clip_seconds, content_type)
-    lo = max(4.0, lo - reserve_seconds)
-    hi = max(lo + 1.0, hi - reserve_seconds)
+    asked_lo, asked_hi = _band(clip_seconds, content_type)
+    lo = max(4.0, asked_lo - reserve_seconds)
+    hi = max(lo + 1.0, asked_hi - reserve_seconds)
 
     # Nothing may run past the end of the video. Extending a clip to reach the
     # length that was asked for is right up until it asks ffmpeg for footage
@@ -357,6 +357,17 @@ def refine(highlights: List[Dict], transcript: Optional[Dict],
         original = (float(h.get("start_time", 0) or 0), float(h.get("end_time", 0) or 0))
         start, idx, notes = _choose_start(segments, h, audio)
         end, more = _choose_end(segments, idx, start, original[1], lo, hi, audio)
+        clip_lo, clip_hi = lo, hi
+        if reserve_seconds and audio:
+            # The room held back is for a cold open, and there will not be one
+            # when the payoff is already near the start (hook_open). Left empty,
+            # it made a clip asked to be 30 seconds come out at 27.5.
+            from .hook_open import ALREADY_UP_FRONT
+            peak = audio.peak_time(start, end)
+            if peak is not None and peak - start < ALREADY_UP_FRONT:
+                clip_lo, clip_hi = max(4.0, asked_lo), max(asked_lo + 1.0, asked_hi)
+                end, more = _choose_end(segments, idx, start, original[1],
+                                        clip_lo, clip_hi, audio)
         notes += more
         if limit > 0 and end > limit:
             end = limit
@@ -370,7 +381,11 @@ def refine(highlights: List[Dict], transcript: Optional[Dict],
 
         h["start_time"] = round(start, 2)
         h["end_time"] = round(end, 2)
-        h["duration_target"] = [round(lo, 1), round(hi, 1)]
+        h["duration_target"] = [round(clip_lo, 1), round(clip_hi, 1)]
+        if clip_seconds:
+            # What was typed, before any room for the cold open came off it:
+            # the shortest a finished clip may be (autoedit's pause cut).
+            h["duration_asked"] = [round(asked_lo, 1), round(asked_hi, 1)]
         h["boundary_notes"] = notes
         h["original_span"] = [round(original[0], 2), round(original[1], 2)]
         # The peak the audio found may now sit outside the clip. Recompute it
