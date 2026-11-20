@@ -62,6 +62,10 @@ OVERRUN_TOLERANCE = 2.5
 # How far a boundary may move to find a quiet moment to cut on.
 SNAP_WINDOW = 0.4
 
+# When no sentence ends where the clip has to, how far back from that point to
+# look for a pause to end in. A cut on the exact second lands inside a word.
+FORCED_CUT_LOOKBACK = 3.0
+
 
 def _norm(text: str) -> str:
     """Lowercase, stripped of punctuation — for comparing spoken lines."""
@@ -133,18 +137,45 @@ def _segment_at(segments: Sequence[Dict], t: float) -> Optional[int]:
     return None
 
 
-def _snap_quiet(audio: Optional[AudioTrack], t: float,
-                window: float = SNAP_WINDOW) -> float:
-    """Nudge a cut point to the quietest instant within ±window.
+def _snap_start(audio: Optional[AudioTrack], t: float, word_at: float,
+                not_before: float) -> float:
+    """A start nudged to a quiet instant, but only ever earlier than `word_at`.
 
-    Cutting on a loud frame is audible; cutting in a gap is not. Half a beat
-    of movement, which is small enough that it cannot undo the boundary the
-    caller chose for a reason.
+    Moving a start later than the first word's onset clips that word, and the
+    two-way nudge did exactly that whenever the quietest frame fell a beat in.
     """
     if not audio:
         return t
-    quiet = audio.quietest_time(max(0.0, t - window), t + window)
-    return quiet if quiet is not None else t
+    a = max(0.0, not_before, t - SNAP_WINDOW)
+    if word_at <= a:
+        return min(t, word_at)
+    quiet = audio.quietest_time(a, word_at)
+    return min(quiet, word_at) if quiet is not None else t
+
+
+def _snap_end(audio: Optional[AudioTrack], segments: Sequence[Dict], t: float) -> float:
+    """An end nudged to a quiet instant, but only ever later than `t`, and never
+    into whoever speaks next.
+
+    `t` is where the last word ends. The old two-way nudge could pull the cut
+    back inside that word, or push it into the next speaker's first syllable
+    when two people talk back to back -- "it cut one of the guys off mid word".
+    """
+    nxt = next((seg["start"] for seg in segments if seg["start"] > t + 0.01), None)
+    hi = t + SNAP_WINDOW if nxt is None else min(t + SNAP_WINDOW, nxt - 0.05)
+    if not audio or hi <= t:
+        return t
+    quiet = audio.quietest_time(t, hi)
+    return min(max(quiet, t), hi) if quiet is not None else t
+
+
+def _forced_cut(audio: Optional[AudioTrack], at: float, floor: float) -> float:
+    """Where to end when no sentence ends near `at`: the quietest moment in the
+    few seconds before it, so the clip at least stops between words."""
+    if not audio:
+        return at
+    quiet = audio.quietest_time(max(floor, at - FORCED_CUT_LOOKBACK), at)
+    return quiet if quiet is not None and quiet > floor else at
 
 
 def _band(clip_seconds: Optional[Sequence[float]], content_type: str) -> Tuple[float, float]:
@@ -219,7 +250,8 @@ def _choose_start(segments: Sequence[Dict], highlight: Dict,
     if idx > 0:
         runway = min(runway, max(0.0, seg["start"] - segments[idx - 1]["end"]))
     start = max(0.0, seg["start"] - min(runway, MAX_RUNWAY))
-    return _snap_quiet(audio, start), idx, notes
+    prev_end = segments[idx - 1]["end"] if idx > 0 else 0.0
+    return _snap_start(audio, start, seg["start"], prev_end), idx, notes
 
 
 def _choose_end(segments: Sequence[Dict], start_idx: Optional[int], start: float,
@@ -246,9 +278,18 @@ def _choose_end(segments: Sequence[Dict], start_idx: Optional[int], start: float
         for seg in segments[start_idx:]:
             if seg["end"] >= proposed_end - 0.5:
                 if seg["end"] <= ceiling + OVERRUN_TOLERANCE:
-                    return _snap_quiet(audio, seg["end"]), notes
+                    return _snap_end(audio, segments, seg["end"]), notes
                 break
-        return _snap_quiet(audio, proposed_end), notes
+        # That sentence runs too long. End on the sentence boundary in the band
+        # nearest the model's choice, not on the model's own timestamp, which
+        # lands wherever it lands -- often mid-word.
+        near = [seg["end"] for seg in segments[start_idx:]
+                if floor <= seg["end"] <= ceiling + OVERRUN_TOLERANCE]
+        if near:
+            best = min(near, key=lambda t: abs(t - proposed_end))
+            return _snap_end(audio, segments, best), notes
+        notes.append("no sentence boundary inside the requested length")
+        return _forced_cut(audio, proposed_end, floor), notes
 
     # Which boundaries land inside the band at all.
     fits = [seg["end"] for seg in segments[start_idx:]
@@ -278,10 +319,13 @@ def _choose_end(segments: Sequence[Dict], start_idx: Optional[int], start: float
         else:
             best = min(ceiling, max(segments[-1]["end"], start + lo))
             notes.append("no sentence boundary inside the requested length")
+            if abs(best - proposed_end) > 1.0:
+                notes.append(f"length {best - start:.1f}s (asked for {lo:.0f}-{hi:.0f}s)")
+            return _forced_cut(audio, best, floor), notes
 
     if abs(best - proposed_end) > 1.0:
         notes.append(f"length {best - start:.1f}s (asked for {lo:.0f}-{hi:.0f}s)")
-    return _snap_quiet(audio, best), notes
+    return _snap_end(audio, segments, best), notes
 
 
 def refine(highlights: List[Dict], transcript: Optional[Dict],
