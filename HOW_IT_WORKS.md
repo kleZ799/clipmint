@@ -924,12 +924,12 @@ whole transcript segments forward from the opening and picks:
 
 | The model's end time | What happens |
 |---|---|
-| Inside the band | Kept, snapped to the end of the sentence it lands in |
+| Inside the band | Kept, snapped to the end of the sentence it lands in — or, if that sentence runs far past the band, to the sentence end in the band nearest it (until v1.31.4 the model's own timestamp was used there as it was, which lands anywhere, often mid-word) |
 | Short of the band | Extended to the boundary nearest the band's **middle** — someone who typed "30 seconds" wants 30, and a run of 26s clips is the same complaint in a different shape |
 | Past the band | Cut at the **last** boundary that fits, keeping as much of the payoff as the length allows |
-| No boundary fits | The first one past the ceiling if it overruns by under 2.5s, else a cut at the ceiling on the quietest instant |
+| No boundary fits | The first one past the ceiling if it overruns by under 2.5s, else the quietest moment in the **3 seconds before** the ceiling (`_forced_cut()`), so the clip at least stops between words |
 
-Because it moves in whole segments, enforcing a length can never cut mid-word.
+Because it moves in whole segments, enforcing a length does not cut mid-word.
 
 **The opening is placed by the line, not the number.** The prompt asks for
 `first_line` — the exact sentence the clip opens on — and the model quotes it
@@ -941,12 +941,23 @@ into the previous speaker's tail. A clip whose first two seconds fall below the
 dialogue-density floor steps forward up to four segments to find one that does
 not.
 
-Both cut points are then nudged to the quietest instant within ±0.4s, because a
-cut in a gap is inaudible and a cut on a loud frame is not.
+Both cut points are then nudged to a quiet instant, because a cut in a gap is
+inaudible and a cut on a loud frame is not — but **only away from the words**.
+`_snap_end()` moves an end up to 0.4s *later* and stops 50ms short of the next
+segment's start; `_snap_start()` moves a start only *earlier*, never past the
+first word's onset or back into the previous speaker. The nudge used to go
+±0.4s either way, which could pull an end back inside the last word or push it
+into the first syllable of whoever spoke next — a podcast tester's "it cut one
+of the guys off mid word".
 
 `reserve_seconds` shortens the band before any of this, so the room the hook
 cold open will take is held back rather than added on top — which is why
-30-second clips are still 30 seconds once it is on the front.
+30-second clips are still 30 seconds once it is on the front. The cold open is
+skipped when the payoff is already in the first 6 seconds, though, and then the
+room would stay empty: `refine()` checks the peak in the span it chose and, if
+no replay is coming, chooses the end again with the whole band. It also stores
+the band as typed (`duration_asked`), which is the floor the pause cut works to
+(§ the edit).
 
 ### 6.12 The hook cold open — `hook_open.py`
 
@@ -976,6 +987,12 @@ the layout exactly:
 It returns `None` — leaving the plain cut in place — when there is no audio
 envelope to find a peak in, when the peak is already at the front, or when
 anything at all goes wrong. A garnish must never cost a render.
+
+"At the front" means the first **6 seconds** (`ALREADY_UP_FRONT`). It was 3,
+and a peak at 3–6s produced a replay of seconds the viewer then watched again
+almost straight away — a tester called it "clipping the same part in the
+beginning". At 6s the replayed slice comes round again more than 7 seconds
+after it was shown, which reads as a preview rather than a repeat.
 
 Exports are also normalised to **-14 LUFS** (`render.LOUDNESS_FILTER`), the
 target all three platforms mix toward.
@@ -1495,6 +1512,10 @@ second pass over the finished clips, in three steps:
      comes in 0.25s windows, so a pause is only listened to from one window in
      from each edge, or it hears the word next to it. Slivers under 0.2s
      without a word in them are dropped, and the piece count is capped at 40.
+     When the prompt asked for a length, the cut never takes the clip under
+     the shortest length typed (`_keep_at_least()`): the smallest cuts go back
+     in first, since the biggest pauses are the ones worth losing. Before,
+     ranking made a clip as long as asked and the pause cut took seconds back.
    - Every word is **remapped** onto the new, shorter timeline, and so is
      `hook_peak`, which the cold open reads afterwards (`hook_peak_offset`).
    - *Punch-ins.* A trigger phrase from `signals.TRIGGER_PHRASES`, a word
@@ -1524,7 +1545,18 @@ second pass over the finished clips, in three steps:
 
 **Captions** (`captions.py`) are ASS for libass, one event per word: the whole
 line on screen, the spoken word recoloured and popped with `\t` scale
-transforms. The four presets are complete looks, not knobs: *bold* (Montserrat
+transforms.
+
+**Right-to-left lines are laid out by hand.** The lit word is its own run of
+text, so it can take its own colour, and libass (as ffmpeg drives it) applies
+the Unicode bidi algorithm inside each run but places the runs left to right.
+Arabic captions came out back to front. `_rtl_line()` calls a line RTL when
+more of its letters are Arabic or Hebrew than Latin, Greek or Cyrillic; then
+every word gets its own run and `_visual_order()` emits them in reverse, keeping
+a stretch of non-RTL words ("GTA 6") in its own order inside the line, and
+`_rtl_word()` moves a word's closing `!`/`؟` to the side it ends on. It was
+checked by rendering frames and measuring where the lit word's yellow lands:
+first word furthest right, each later word further left. The four presets are complete looks, not knobs: *bold* (Montserrat
 Black, yellow), *punch* (Anton, two words, green), *clean* (sentence case on an
 opaque box; a see-through box shows darker patches where libass's per-run
 boxes overlap) and *comic* (Bangers, purple edge). The fonts ship in
@@ -1723,7 +1755,7 @@ leftovers:
 
 | # | Step | Why here |
 |---|---|---|
-| 1 | **Clip length** (`"between 20 and 40 seconds"`) | Reads identically to a timespan. Getting this order wrong turned a request for 20–40s clips into a single exact cut from 0:20 to 0:40, with ranking skipped entirely. The word `cut` is the app's explicit-span verb, so `cut` *straight before a time* (`_CUT_SPAN`: `cut 1:30 to 2:00`, `cut from 90 to 120`) hands the phrase to the range parser instead. Any `cut` used to, and `cut the boring parts` threw the length away. Ranges take a unit on both ends (`30s-60s`) and minutes (`30sec-1min`, `1-2 minutes`) |
+| 1 | **Clip length** (`"between 20 and 40 seconds"`) | Reads identically to a timespan. Getting this order wrong turned a request for 20–40s clips into a single exact cut from 0:20 to 0:40, with ranking skipped entirely. The word `cut` is the app's explicit-span verb, so `cut` *straight before a time* (`_CUT_SPAN`: `cut 1:30 to 2:00`, `cut from 90 to 120`) hands the phrase to the range parser instead. Any `cut` used to, and `cut the boring parts` threw the length away. Ranges take a unit on both ends (`30s-60s`) and minutes (`30sec-1min`, `1-2 minutes`). Since v1.31.4 every other form goes through one amount reader (`_AMOUNT`, `_amount()`: `45s`, `1.5 minutes`, `a minute`, `half a minute`, `a minute and a half`) with a **floor** (`more than`, `over`, `at least`, `minimum`, `1 minute+`, `60s or more` → `[v, 1.5v]`), a **ceiling** (`under`, `up to`, `no more than`, `30s or less` → `[0.6v, v]`) or a flat target (`±15%`). Before, `more than a minute` fell through to the "about a minute" rule, 50–70s, and a tester who asked for clips over a minute got every one under it; `2 minutes` and `more than 1 minute` were not read at all. Amounts after `first`/`last`/`whole` (`the first 10 minutes`) or past 240s are about the source and left alone |
 | 2 | **Time ranges** (`"14:45 to 15:30"`) | Stripped so `1:30-2:45` can never be mistaken for an aspect ratio later. Also reports whether a span came after `from`, which step 3 needs |
 | 3 | **Clip count** (`"5 clips"`) | Stripped so `5 shorts` can't *also* be read as a request for 9:16. Then `_span_is_length`: a count of two or more beside exactly one span, not after `from` and no longer than 240s, turns that span into the clip length. `5 clips of 0:30-1:00` is five 30–60s clips; one span can only ever cut one clip |
 | 4 | **Aspect ratio** | Explicit ratios and unambiguous words before loose platform names |
