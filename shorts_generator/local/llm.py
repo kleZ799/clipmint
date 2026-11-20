@@ -400,8 +400,19 @@ def _call_anthropic(content) -> str:
         raise RuntimeError(f"Claude is rate limiting this key: {e.message}") from e
     except anthropic.APIStatusError as e:
         raise RuntimeError(f"Claude returned an error ({e.status_code}): {e.message}") from e
+    except anthropic.APITimeoutError as e:
+        raise RuntimeError(f"Claude ({model}) took too long to answer and the request "
+                           f"timed out.") from e
     except anthropic.APIConnectionError as e:
-        raise RuntimeError("Could not reach Anthropic. Check the connection.") from e
+        # The SDK's own message is a bare "Connection error." The cause under
+        # it -- a certificate check, a proxy, DNS -- is what says whether this
+        # is the network or the machine, and a log from #26 had only the bare
+        # line to go on.
+        cause = e.__cause__ or e.__context__
+        why = (f" ({type(cause).__name__}: {str(cause).splitlines()[0][:120]})"
+               if cause and str(cause).strip() else "")
+        raise RuntimeError(f"Could not reach Anthropic{why}. Check the connection, "
+                           f"or a firewall or proxy in the way.") from e
 
     usage.record("anthropic", model)
     if message.stop_reason == "refusal":
