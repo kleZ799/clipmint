@@ -18,6 +18,9 @@ goes straight to your YouTube channel, now or on a schedule.
 A free alternative to Opus Clip, Klap and Vizard —
 **[see how it compares](docs/compare.md)**, including where they do more.
 
+Streaming GTA VI? **[Turn GTA 6 streams into Shorts](docs/gaming-clips.md)**:
+your reactions ranked, your webcam over the gameplay, clipped the same day.
+
 
 [![Download](https://img.shields.io/badge/⬇_Download_for_Windows-224_MB-ff0033?style=for-the-badge)](https://github.com/kleZ799/clipmint/releases/latest/download/ClipMint.exe)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
@@ -108,7 +111,8 @@ at, from the start, middle and end of what is said plus the video's own title
 and description, and picks the moments that kind of video is known for:
 
 - **Stream or gaming:** your reaction to the game, never a stretch of game
-  narration with you nowhere in it.
+  narration with you nowhere in it. GTA VI, Fortnite, Minecraft, any game:
+  [clipping game streams](docs/gaming-clips.md).
 - **Vlog:** the payoff of what happened, a plan falling apart, a first time.
 - **Podcast or interview:** the hot take, the confession, the argument while
   it is still heated, opened on the answer rather than the question.
