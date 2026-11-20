@@ -167,8 +167,9 @@ def run_encode(build_cmd: Callable[[List[str]], List[str]], what: str,
     and trying it ten times costs ten failed encodes.
     """
     name, label = video_encoder()
+    cmd = build_cmd(video_args(crf, preset))
     try:
-        return proc.run_checked(build_cmd(video_args(crf, preset)), what=what, cwd=cwd)
+        result = proc.run_checked(cmd, what=what, cwd=cwd)
     except RuntimeError as e:
         if name == CPU_ENCODER:
             raise
@@ -179,7 +180,30 @@ def run_encode(build_cmd: Callable[[List[str]], List[str]], what: str,
               f"redoing it on the CPU, and using the CPU for the rest of this run",
               flush=True)
         cpu = ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"]
-        return proc.run_checked(build_cmd(cpu), what=what, cwd=cwd)
+        cmd = build_cmd(cpu)
+        result = proc.run_checked(cmd, what=what, cwd=cwd)
+    _require_picture(cmd, what, cwd)
+    return result
+
+
+def _require_picture(cmd: List[str], what: str, cwd: Optional[str]) -> None:
+    """Fail an encode that wrote sound and no picture, instead of keeping it.
+
+    ffmpeg exits 0 when the part it was asked for has no video frames, and the
+    file plays as a black screen. See picture.py.
+    """
+    from . import picture
+
+    out = str(cmd[-1]) if cmd else ""
+    if not out.lower().endswith((".mp4", ".mov", ".mkv", ".webm")):
+        return
+    if cwd and not os.path.isabs(out):
+        out = os.path.join(cwd, out)
+    if picture.has_picture(out) is False:
+        raise RuntimeError(
+            f"{what} wrote sound with no picture: the source has no video frames "
+            f"in this part, so its picture probably stops before its sound does."
+        )
 
 
 # --- transcription --------------------------------------------------------
