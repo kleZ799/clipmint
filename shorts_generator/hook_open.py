@@ -44,8 +44,13 @@ FLASH_OUT = 0.12
 FLASH_IN = 0.2
 FLASH_COLOUR = "white"
 # If the peak is already inside this many seconds of the start, the clip opens
-# on it as it is and no replay is added.
-ALREADY_UP_FRONT = 3.0
+# on it as it is and no replay is added. It was 3s: a peak at 3-6s replayed
+# seconds the viewer then watched again a moment later, and a tester on a
+# gaming clip read that as "it clips the same part in the beginning". At 6s
+# the replayed slice starts no earlier than 5.2s into the clip, so it comes
+# round again more than 7 seconds after it was first shown -- a preview, not
+# a stutter.
+ALREADY_UP_FRONT = 6.0
 
 
 def budget(enabled: bool) -> float:
