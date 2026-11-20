@@ -238,6 +238,11 @@ CLIP_ATTEMPTS = 3
 # Retry button is still there once whatever it was has been put right.
 _PERMANENT = (
     "api_key_invalid", "api key not valid", "permission_denied", "unauthenticated",
+    # llm._final_error(): every provider tried, and the last one refused its key.
+    "refused the api key",
+    # accel._require_picture() and _within_picture(): the source has no frames
+    # there, and it will have none on the next attempt either.
+    "with no picture", "sound but no picture", "before anyone speaks",
     # config.require_*_key(): no key at all. Waiting won't make one appear.
     "_api_key is not set",
     # Ollama: a model that was never pulled, or none chosen. Ollama not
@@ -255,6 +260,38 @@ _PERMANENT = (
     "only serve this video to a signed-in account",
     "only serve this channel to a signed-in account",
 )
+
+
+def _clock(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
+
+
+def _within_picture(source_path: str, transcript: Dict) -> Dict:
+    """The transcript, cut back to where the source's picture stops.
+
+    The transcript runs as long as the sound. When the picture stops sooner,
+    every clip ranked from after that point renders as a black screen with
+    sound (see shorts_generator/picture.py), so ranking only gets to see the
+    part that can be watched. The transcript on disk is left whole.
+    """
+    from shorts_generator.picture import picture_seconds
+
+    sound = float(transcript.get("duration") or 0)
+    seconds = picture_seconds(source_path)
+    if seconds is None or not sound or seconds >= sound - 2:
+        return transcript
+    if seconds <= 0:
+        raise RuntimeError("This file has sound but no picture, so there is nothing "
+                           "to make a Short from. Use the video file itself.")
+    kept = [s for s in transcript["segments"] if float(s["end"]) <= seconds]
+    if not kept:
+        raise RuntimeError(f"This file's picture stops at {_clock(seconds)}, before "
+                           f"anyone speaks, so there is nothing to make a Short from.")
+    print(f"[source] the picture stops at {_clock(seconds)} but the sound runs to "
+          f"{_clock(sound)} - clips come from the first {_clock(seconds)} only",
+          flush=True)
+    return {**transcript, "segments": kept, "duration": seconds}
 
 
 def _is_permanent(e: BaseException) -> bool:
@@ -1201,6 +1238,7 @@ class JobStore:
                 raise RuntimeError(
                     "No speech found in this video — nothing to build clips from."
                 )
+            transcript = _within_picture(source_path, transcript)
 
             self._update(job, stage="rank", message=_STAGE_LABELS["rank"])
             # What the transcript cannot say. Measured once for the whole

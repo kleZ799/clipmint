@@ -6,9 +6,11 @@ from typing import Dict, List, Optional, Set, Tuple
 from .. import usage
 from ..version import SITE_URL
 from ..config import (
+    PROVIDER_LABELS,
     current_model,
     current_provider,
     gemini_keys,
+    misplaced_key,
     require_anthropic_key,
     require_gemini_key,
     require_groq_key,
@@ -438,8 +440,19 @@ def _call_anthropic(content) -> str:
         raise RuntimeError(f"Claude is rate limiting this key: {e.message}") from e
     except anthropic.APIStatusError as e:
         raise RuntimeError(f"Claude returned an error ({e.status_code}): {e.message}") from e
+    except anthropic.APITimeoutError as e:
+        raise RuntimeError(f"Claude ({model}) took too long to answer and the request "
+                           f"timed out.") from e
     except anthropic.APIConnectionError as e:
-        raise RuntimeError("Could not reach Anthropic. Check the connection.") from e
+        # The SDK's own message is a bare "Connection error." The cause under
+        # it -- a certificate check, a proxy, DNS -- is what says whether this
+        # is the network or the machine, and a log from #26 had only the bare
+        # line to go on.
+        cause = e.__cause__ or e.__context__
+        why = (f" ({type(cause).__name__}: {str(cause).splitlines()[0][:120]})"
+               if cause and str(cause).strip() else "")
+        raise RuntimeError(f"Could not reach Anthropic{why}. Check the connection, "
+                           f"or a firewall or proxy in the way.") from e
 
     usage.record("anthropic", model)
     if message.stop_reason == "refusal":
@@ -650,34 +663,48 @@ def _call_gemini_with(client, model: str, prompt: str, contents: Optional[list])
 # again on every remaining chunk, so the choice sticks for the process.
 _fallback_provider: Optional[str] = None
 _given_up: Set[str] = set()
+# Why each provider this run left behind was left, in order. When the last one
+# fails too, the error has to say what happened first: a run that began on
+# Gemini and died on a fallback's 401 otherwise reads as an OpenAI problem.
+_failures: List[str] = []
+_warned_misplaced: Set[str] = set()
+
+_KEY_FOR = {"gemini": require_gemini_key, "groq": require_groq_key,
+            "openrouter": require_openrouter_key, "openai": require_openai_key,
+            "anthropic": require_anthropic_key}
+
+
+def _key_usable(provider: str) -> bool:
+    """A key is saved for `provider`, and it is not plainly some other provider's."""
+    try:
+        key = _KEY_FOR[provider]()
+    except RuntimeError:
+        return False
+    owner = misplaced_key(provider, key)
+    if owner:
+        if provider not in _warned_misplaced:
+            _warned_misplaced.add(provider)
+            print(f"[llm] the key saved for {PROVIDER_LABELS[provider]} is from "
+                  f"{PROVIDER_LABELS[owner]}, so {PROVIDER_LABELS[provider]} "
+                  f"is skipped", flush=True)
+        return False
+    return bool(key)
 
 
 def _openai_is_configured() -> bool:
-    try:
-        return bool(require_openai_key())
-    except RuntimeError:
-        return False
+    return _key_usable("openai")
 
 
 def _groq_is_configured() -> bool:
-    try:
-        return bool(require_groq_key())
-    except RuntimeError:
-        return False
+    return _key_usable("groq")
 
 
 def _anthropic_is_configured() -> bool:
-    try:
-        return bool(require_anthropic_key())
-    except RuntimeError:
-        return False
+    return _key_usable("anthropic")
 
 
 def _openrouter_is_configured() -> bool:
-    try:
-        return bool(require_openrouter_key())
-    except RuntimeError:
-        return False
+    return _key_usable("openrouter")
 
 
 def _ollama_is_configured() -> bool:
@@ -734,6 +761,7 @@ def _next_provider(why: str) -> Optional[str]:
     _given_up.add(_fallback_provider or current_provider())
     for name, configured in _LADDER:
         if name not in _given_up and configured():
+            _failures.append(why)
             _switch_to(name, why)
             return name
     return None
@@ -875,6 +903,60 @@ def reset_fallback() -> None:
     _fallback_provider = None
     _key_rotation_deadline = None
     _given_up.clear()
+    _failures.clear()
+    _warned_misplaced.clear()
+
+
+def _is_auth_error(e: BaseException) -> bool:
+    msg = str(e).lower()
+    return (e.__class__.__name__ in ("AuthenticationError", "PermissionDeniedError")
+            or "invalid_api_key" in msg or "incorrect api key" in msg
+            or "invalid x-api-key" in msg
+            or ("401" in msg and ("api key" in msg or "unauthorized" in msg)))
+
+
+def _masked(key: str) -> str:
+    key = (key or "").strip()
+    return f"{key[:6]}…{key[-4:]}" if len(key) > 12 else "…"
+
+
+def _final_error(provider: str, e: BaseException) -> BaseException:
+    """What a run that has run out of providers should say.
+
+    The last provider's own error is kept as it is when nothing came before it
+    and it is not about the key: those messages are already specific, and
+    jobs._is_permanent reads them.
+    """
+    label = PROVIDER_LABELS.get(provider, provider)
+    if _is_auth_error(e):
+        try:
+            key = _KEY_FOR[provider]()
+        except (KeyError, RuntimeError):
+            key = ""
+        msg = f"{label} refused the API key saved for it ({_masked(key)})."
+        owner = misplaced_key(provider, key)
+        if owner:
+            other = PROVIDER_LABELS[owner]
+            msg += (f" That key is from {other}, saved under {label} by mistake. In "
+                    f"Settings, choose {other} as the provider and paste it there.")
+        else:
+            msg += f" Check it in your {label} account, then paste it again in Settings."
+    elif _failures or _warned_misplaced:
+        first = (str(e).strip().splitlines() or [type(e).__name__])[0][:160]
+        msg = f"{label} failed: {first.rstrip('.')}."
+    else:
+        return e
+    if _failures:
+        msg += " Before that: " + "; ".join(_failures) + "."
+    for skipped in sorted(_warned_misplaced):
+        try:
+            owner = misplaced_key(skipped, _KEY_FOR[skipped]())
+        except RuntimeError:
+            continue
+        name, other = PROVIDER_LABELS[skipped], PROVIDER_LABELS.get(owner, owner)
+        msg += (f" {name} was not tried: the key saved for it is from {other}. "
+                f"In Settings, choose {name} and paste your {name} key.")
+    return RuntimeError(msg)
 
 
 def _openrouter_model_supports_vision() -> bool:
@@ -910,20 +992,23 @@ def call_local_llm(prompt: str) -> str:
     """
     provider = _fallback_provider or current_provider()
 
-    if provider == "openai":
-        return call_openai_llm(prompt)
-    if provider in ("groq", "openrouter", "anthropic", "ollama"):
-        call = {"groq": call_groq_llm, "openrouter": call_openrouter_llm,
-                "anthropic": call_anthropic_llm, "ollama": call_ollama_llm}[provider]
+    if provider in ("openai", "groq", "openrouter", "anthropic", "ollama"):
+        call = {"openai": call_openai_llm, "groq": call_groq_llm,
+                "openrouter": call_openrouter_llm, "anthropic": call_anthropic_llm,
+                "ollama": call_ollama_llm}[provider]
         try:
             return call(prompt)
         except Exception as e:
             # The free tiers are the likeliest to be busy or rate limited, and
             # a run that has paid for a transcription should not end on that.
-            # Claude takes the same way out: a refused key or a declined
+            # The paid ones take the same way out: a refused key or a declined
             # request is no reason to lose the run when another key is set up.
-            if not _next_provider(f"{provider} failed ({str(e).splitlines()[0][:60]})"):
-                raise
+            # OpenAI used to be the exception, so a bad OpenAI key ended runs
+            # that Groq, set up right beside it, could have finished.
+            label = PROVIDER_LABELS.get(provider, provider)
+            first = (str(e).strip().splitlines() or [type(e).__name__])[0][:60]
+            if not _next_provider(f"{label} failed ({first})"):
+                raise _final_error(provider, e) from e
             return call_local_llm(prompt)
     if provider != "gemini":
         raise RuntimeError(
@@ -953,5 +1038,5 @@ def call_local_llm(prompt: str) -> str:
         # too, but failing over costs one request and losing the run costs
         # half an hour, so the trade is worth making either way.
         if not _next_provider(f"Gemini kept failing ({str(e).splitlines()[0][:60]})"):
-            raise
+            raise _final_error("gemini", e) from e
         return call_local_llm(prompt)

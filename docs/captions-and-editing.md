@@ -36,6 +36,9 @@ Pick a style under **Render → Edit → Captions**:
 | **Comic** | Comic-book capitals with a purple outline, the spoken word in gold | 3 |
 | **Off** | No captions | — |
 
+Arabic and Hebrew captions read right to left, with the first word on the
+right. A name or number inside the line, like "GTA 6", keeps its own order.
+
 ### Font, colour and placement
 
 Since v1.25.0, three things can be changed on top of any style. The style
@@ -126,6 +129,9 @@ third of your speaking level all the way through. So these are kept:
   build-up is part of why the clip was picked;
 - anything on a **stream** shorter than about a second, because a streamer's
   silence is usually the streamer watching the game.
+
+If you asked for a length ("more than a minute"), cutting pauses never takes a
+clip under it. The smallest pauses are put back first.
 
 "Um", "uh", "erm" and "hmm" are cut. "Like" and "you know" aren't: they're
 filler half the time and meaning the other half.

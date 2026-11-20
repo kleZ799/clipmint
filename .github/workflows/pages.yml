@@ -16,6 +16,7 @@ on:
       - "shorts_generator/version.py"   # SITE_URL: the site's own address
       - "docs/compare.md"
       - "docs/case-study.md"
+      - "docs/gaming-clips.md"
       - "assets/social-preview.png"
       - "assets/icon.png"
       - "assets/screenshots/01-create.png"
