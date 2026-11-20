@@ -593,6 +593,50 @@ def _fmt_ts(seconds: float) -> str:
 _SECS = r"(?:s\b|secs?\b|seconds?\b)"
 _MINS = r"(?:m\b|mins?\b|minutes?\b)"
 
+# One amount of time, in any of the ways people write it: "45s", "1.5 minutes",
+# "2 min", "a minute", "half a minute", "a minute and a half", "1+ minute".
+# _amount() turns the matched text into seconds.
+_AMOUNT = (r"(?P<q>half\s+a\s+minute"
+           r"|(?:(?:a|one)\s+)?minute\s+and\s+a\s+half"
+           r"|(?:a|one|two|three|four)\s+minutes?\b"
+           rf"|\d{{1,3}}(?:\.\d+)?\s*\+?\s*(?:{_SECS}|{_MINS}))")
+_WORD_NUMBERS = {"a": 1, "one": 1, "two": 2, "three": 3, "four": 4}
+
+# "more than", but not "no more than", which is the opposite.
+_AT_LEAST = (r"(?:over|above|at\s+least|min(?:imum)?(?:\s+of)?|not\s+(?:less|shorter)\s+than"
+             r"|no\s+(?:less|shorter)\s+than|(?<!no )(?<!not )(?:more|longer)\s+than)")
+_AT_MOST = (r"(?:under|below|at\s+most|max(?:imum)?(?:\s+of)?|up\s+to|within"
+            r"|no\s+(?:more|longer)\s+than|not\s+(?:more|longer)\s+than"
+            r"|(?<!no )(?<!not )(?:less|shorter)\s+than)")
+
+
+def _amount(text: str) -> float:
+    t = re.sub(r"\s+", " ", text.lower().replace("+", " ")).strip()
+    if t.startswith("half a minute"):
+        return 30.0
+    if "and a half" in t:
+        return 90.0
+    m = re.match(r"(a|one|two|three|four) minutes?", t)
+    if m:
+        return 60.0 * _WORD_NUMBERS[m.group(1)]
+    m = re.match(r"(\d{1,3}(?:\.\d+)?)\s*([a-z]+)", t)
+    value, unit = float(m.group(1)), m.group(2)
+    return value * 60 if unit.startswith("m") else value
+
+
+def _at_least(v: float) -> tuple:
+    # Room above the floor, so the ranker can still choose where to end.
+    return v, max(v + 10, v * 1.5)
+
+
+def _at_most(v: float) -> tuple:
+    return max(10.0, v * 0.6), v
+
+
+def _about(v: float) -> tuple:
+    return v * 0.85, v * 1.15
+
+
 _LENGTH_PATTERNS = [
     # a range: "20-40s", "30s-60s", "between 20 and 40 seconds". The unit on
     # the first number is optional; without it, "30s-60s" read as a flat 30s.
@@ -604,21 +648,39 @@ _LENGTH_PATTERNS = [
     # minutes: "1-2 minutes", "1 to 3 min"
     (rf"\b(?:between\s+)?(\d)\s*(?:-|–|—|to|and)\s*(\d)\s*{_MINS}",
      lambda m: (float(m.group(1)) * 60, float(m.group(2)) * 60)),
-    # an upper bound: "under 45s", "max 40 seconds", "no longer than 60s"
-    (r"\b(?:under|below|less than|at most|max(?:imum)?|no (?:longer|more) than)\s+"
-     r"(\d{1,3})\s*(?:s\b|secs?\b|seconds?\b)",
-     lambda m: (max(10.0, float(m.group(1)) * 0.6), float(m.group(1)))),
-    # a lower bound: "at least 30 seconds", "over 30s"
-    (r"\b(?:over|above|at least|min(?:imum)?|longer than|more than)\s+"
-     r"(\d{1,3})\s*(?:s\b|secs?\b|seconds?\b)",
-     lambda m: (float(m.group(1)), float(m.group(1)) * 1.5)),
-    # about a minute
-    (r"\b(?:about|around|roughly|~)?\s*(?:a|one)\s+minute\b",
-     lambda m: (50.0, 70.0)),
-    # a flat target: "30 seconds only", "30s clips", "30 second shorts"
-    (r"\b(\d{1,3})\s*(?:s\b|secs?\b|seconds?\b)",
-     lambda m: (float(m.group(1)) * 0.85, float(m.group(1)) * 1.15)),
+    # a lower bound: "more than a minute", "at least 30 seconds", "over 1 min".
+    # Checked before the upper bound, so "not less than a minute" stays a floor.
+    # It was missing for minutes: "more than a minute" fell through to "about
+    # a minute", 50-70s, and a tester who asked for clips over a minute got
+    # every one of them under it.
+    (rf"\b{_AT_LEAST}\s+{_AMOUNT}", lambda m: _at_least(_amount(m.group("q")))),
+    # an upper bound: "under 45s", "up to a minute", "no more than 2 minutes"
+    (rf"\b{_AT_MOST}\s+{_AMOUNT}", lambda m: _at_most(_amount(m.group("q")))),
+    # the same, said after the amount: "1 minute+", "60s or more", "1+ min",
+    # "30 seconds or less", "a minute max"
+    (rf"\b{_AMOUNT}\s*(?:\+|plus\b|or\s+(?:more|longer)\b|and\s+(?:up|above|over)\b)",
+     lambda m: _at_least(_amount(m.group("q")))),
+    (rf"\b(?P<q>\d{{1,3}}(?:\.\d+)?\s*\+\s*(?:{_SECS}|{_MINS}))",
+     lambda m: _at_least(_amount(m.group("q")))),
+    (rf"\b{_AMOUNT}\s*(?:or\s+(?:less|shorter)\b|max(?:imum)?\b|tops\b)",
+     lambda m: _at_most(_amount(m.group("q")))),
+    # a flat target: "about a minute", "30 seconds only", "2 minute clips"
+    (rf"\b(?:about\s+|around\s+|roughly\s+|approx(?:imately|\.)?\s+|~\s*)?{_AMOUNT}",
+     lambda m: _about(_amount(m.group("q")))),
 ]
+
+
+def _about_the_source(p: str, m: "re.Match") -> bool:
+    """An amount that is about the video, not the clip: "the first 10 minutes".
+
+    Also anything past the longest clip there is. "within 10 minutes" is not
+    a clip length anyone means, and reading it as one gave 4-minute clips.
+    """
+    before = p[:m.start()].rstrip()
+    if re.search(r"\b(?:first|last|opening|final|whole|entire|full)$", before):
+        return True
+    q = m.groupdict().get("q")
+    return bool(q) and _amount(q) > 240
 
 
 def _parse_clip_length(p: str, spec: LayoutSpec) -> tuple:
@@ -640,7 +702,7 @@ def _parse_clip_length(p: str, spec: LayoutSpec) -> tuple:
         return p, False
 
     for pattern, to_range in _LENGTH_PATTERNS:
-        m = re.search(pattern, p)
+        m = next((m for m in re.finditer(pattern, p) if not _about_the_source(p, m)), None)
         if not m:
             continue
         lo, hi = to_range(m)
@@ -875,8 +937,10 @@ a choice they made somewhere else in the app.
   [{{"count": 2, "want": "funny moments"}}, {{"count": 2, "want": "moments that ask the viewer a question"}}].
   "want" is a short plain-English description of that kind of moment.
 - "num_clips": how many clips in total, 1-30 (the sum of "asks" when there are groups)
-- "clip_seconds": [min, max] length of each clip in seconds, between 5 and 90.
-  "30 sec" is about [25, 35]; "short ones" is about [15, 30]; "about a minute" is [50, 70]
+- "clip_seconds": [min, max] length of each clip in seconds, between 5 and 240.
+  "30 sec" is about [25, 35]; "short ones" is about [15, 30]; "about a minute" is [50, 70];
+  "more than a minute" is [60, 90] -- never below what they set as the minimum;
+  "2 minutes" is about [100, 140]
 - "content_kind": what the SOURCE video is, only if they say so:
   "stream" | "vlog" | "podcast" | "tutorial" | "sports" | "other"
 - "aspect_ratio": "9:16" | "4:5" | "1:1" | "16:9"
@@ -946,10 +1010,12 @@ def _ask_llm(prompt: str) -> Dict:
 
 def _clip_seconds(value) -> Optional[List[float]]:
     try:
-        lo, hi = sorted(max(5.0, min(90.0, float(v))) for v in value)
+        lo, hi = sorted(max(5.0, min(240.0, float(v))) for v in value)
     except (TypeError, ValueError):
         return None
-    return [lo, hi] if hi - lo >= 1 else [max(5.0, lo - 3), min(90.0, hi + 3)]
+    # 240, the same ceiling the keywords use. At 90, "2 minute clips" -- which
+    # the keywords did not read then -- came back as clips of a minute and a half.
+    return [lo, hi] if hi - lo >= 1 else [max(5.0, lo - 3), min(240.0, hi + 3)]
 
 
 def _parse_with_llm(prompt: str, spec: LayoutSpec, already: set) -> None:
