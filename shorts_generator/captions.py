@@ -295,6 +295,52 @@ def _clean(word: str, preset: Dict) -> str:
     return text
 
 
+# Hebrew, Arabic (with Syriac, Thaana and the presentation forms), and the
+# punctuation those scripts put at a word's end.
+_RTL = re.compile(r"[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]")
+_LTR = re.compile(r"[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]")
+_TRAILING_MARKS = re.compile(r"([.!?,;:\u061F\u060C\u061B\u06D4\u2026]+)$")
+
+
+def _rtl_line(chunk: List[Dict]) -> bool:
+    """Whether a caption line reads right to left: more of its letters do."""
+    text = "".join(w["text"] for w in chunk)
+    return len(_RTL.findall(text)) > len(_LTR.findall(text))
+
+
+def _visual_order(chunk: List[Dict]) -> List[int]:
+    """The order to lay a right-to-left line's words out in, left to right.
+
+    Each word is its own run of text in the script (the lit word needs its own
+    colour), and libass orders the runs left to right whatever the script --
+    so Arabic captions came out back to front. The runs are put in reverse
+    here instead. A stretch of non-RTL words ("GTA 6") keeps its own order
+    inside the line, as it would on the page.
+    """
+    groups: List[List[int]] = []
+    last_rtl = None
+    for i, w in enumerate(chunk):
+        rtl = bool(_RTL.search(w["text"]))
+        if rtl or last_rtl is not False:
+            groups.append([i])
+        else:
+            groups[-1].append(i)
+        last_rtl = rtl
+    return [i for g in reversed(groups) for i in g]
+
+
+def _rtl_word(text: str) -> str:
+    """An RTL word's closing marks moved to where they show on its left.
+
+    Each word is laid out on its own, left to right, so "!" after Arabic would
+    sit on the word's right -- its start, not its end.
+    """
+    m = _TRAILING_MARKS.search(text)
+    if not m or m.start() == 0:
+        return text
+    return m.group(1) + text[:m.start()]
+
+
 def _joiner(words: List[Dict]) -> str:
     sample = "".join(str(w.get("word", "")) for w in words[:40])
     if not sample:
@@ -404,20 +450,29 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
             nxt = float(chunks[n + 1][0]["start"])
             chunk_end = nxt if nxt - float(chunk[-1]["end"]) < _JOIN_GAP else min(chunk_end, nxt)
 
+        rtl = _rtl_line(chunk)
+        order = _visual_order(chunk) if rtl else list(range(len(chunk)))
         for k, w in enumerate(chunk):
             start = float(w["start"]) if k else float(chunk[0]["start"])
             end = float(chunk[k + 1]["start"]) if k + 1 < len(chunk) else chunk_end
             if end - start < 0.02:
                 continue
             parts = []
-            for j, other in enumerate(chunk):
+            for j in order:
+                other = chunk[j]
+                text = _rtl_word(other["text"]) if rtl and _RTL.search(other["text"]) \
+                    else other["text"]
                 if j == k:
                     lit = f"\\1c{active}"
                     if preset["pop"]:
                         lit += "\\t(0,70,\\fscx116\\fscy116)\\t(70,150,\\fscx108\\fscy108)"
-                    parts.append(f"{{{lit}}}{other['text']}{{\\1c{primary}\\fscx100\\fscy100}}")
+                    parts.append(f"{{{lit}}}{text}{{\\1c{primary}\\fscx100\\fscy100}}")
+                elif rtl:
+                    # Its own run too, so libass cannot reorder words inside it
+                    # on top of the order set here.
+                    parts.append(f"{{\\1c{primary}}}{text}")
                 else:
-                    parts.append(other["text"])
+                    parts.append(text)
             lead = f"{{{pos}" + ("\\fad(60,0)" if k == 0 else "") + "}"
             events.append(
                 f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Cap,,0,0,0,,"
