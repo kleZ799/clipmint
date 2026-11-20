@@ -429,6 +429,16 @@ async def set_settings(req: SettingsRequest) -> dict:
     # it is just a reason to keep the wrong provider selected.
     if not key and not user_config.get(key_name):
         raise HTTPException(400, "Paste an API key first.")
+    # A key saved under the wrong provider is accepted without complaint and
+    # only fails mid-run, as a 401 naming a provider the person may never have
+    # chosen. Three people hit exactly that with a Gemini key filed as OpenAI's.
+    from shorts_generator.config import PROVIDER_LABELS, misplaced_key
+    owner = misplaced_key(provider, key) if key else None
+    if owner:
+        raise HTTPException(400, f"That key is from {PROVIDER_LABELS[owner]}, not "
+                                 f"{PROVIDER_LABELS[provider]}. Choose "
+                                 f"{PROVIDER_LABELS[owner]} as the provider, then "
+                                 f"paste it again.")
 
     values = {} if req.as_fallback else {"LLM_PROVIDER": provider}
     if key:
