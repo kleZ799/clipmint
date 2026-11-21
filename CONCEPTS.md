@@ -843,6 +843,22 @@ for it decide *how* is the same division of labour as SQL over hand-written
 loops. It also means the fonts have to ship with the app, or the same script
 renders differently on every machine.
 
+### Bidirectional text, and where it is applied
+
+Arabic and Hebrew are written right to left, and a line can mix them with
+left-to-right words and numbers. The **Unicode bidirectional algorithm** turns
+the order the text is *stored* in (logical order) into the order it is *drawn*
+in (visual order): runs of RTL letters are reversed, numbers and Latin words
+inside them keep their own direction. The catch is the unit it runs over. A
+renderer applies it to a paragraph, and libass, as ffmpeg drives it, treats each
+styled run of text as its own unit and then places the runs left to right. The
+karaoke captions make every lit word its own run, so each word was drawn
+correctly and the words were in the wrong order. The fix does the paragraph-level
+step itself: decide the line's direction from its letters, then emit the words
+already in visual order, keeping a left-to-right stretch ("GTA 6") intact inside
+it. The general lesson: know which layer applies an algorithm, and over what
+unit, before trusting it to.
+
 ### Measure the renderer, not the file
 
 Swapping a caption style's font has to keep the line the same width, or a
@@ -1253,6 +1269,16 @@ Two implementation details worth being able to defend:
   its own *quota*, so they do everything for a per-day 429. The same
   classification as below decides which response applies: a spent key moves to
   the next key, a busy Google moves to another company.
+- **A fallback's error hides the error that caused it.** The person sees how
+  the *last* rung failed, but the problem started on the first. Two people
+  reported "OpenAI: 401 Incorrect API key" while having chosen Gemini: Gemini
+  was busy, the ladder reached OpenAI, and the OpenAI slot held a Gemini key
+  pasted there by mistake. Every part of that message was true and none of it
+  pointed at the cause. Two fixes, both general: the run keeps the reason each
+  rung was left and puts that history into the final error (error *context*,
+  the same idea as exception chaining), and bad input is refused where it
+  enters — the key's prefix says whose it is — instead of where it is first
+  used, half an hour into a run. Fail at the boundary, not deep inside.
 
 ### Failing over on the right signal
 
