@@ -144,6 +144,24 @@ constrains it to have heard anything.
 that applies operator fusion, batching and quantisation. It is not a different
 model, it is the same weights executed more efficiently.
 
+### Why a 32-hour video ran out of memory
+
+Before the encoder sees anything, the audio becomes a **spectrogram** through a
+short-time Fourier transform (STFT). The audio is cut into overlapping windows
+every 10 ms, and each window becomes 201 complex frequency bins (a 400-sample FFT
+gives 400/2 + 1). Each bin is a complex64, 8 bytes. That is 100 × 201 × 8 ≈
+161 KB per second, or **0.58 GB per hour**, and faster-whisper builds it for the
+whole file at once. Memory grows **linearly with length**, with no ceiling. For a
+32-hour stream it came to one 17.3 GB array, and the run died.
+
+The fix is the usual one for a linear-memory pass over a stream: **process it in
+bounded chunks**. Whisper only ever looks at 30-second windows, so nothing needs
+the whole spectrogram at once. Feeding it half an hour at a time keeps peak
+memory constant whatever the length, measured at 1.6 GB. The cost is a cut
+every 30 minutes, which can split a sentence. Saving each finished chunk turns a
+long, all-or-nothing job into one that can resume, the same idea as the
+per-chunk checkpoints in the ranking.
+
 ### Quantisation
 
 The code picks `float16` on GPU and `int8` on CPU.
