@@ -59,6 +59,11 @@ A four-hour stream takes about half an hour on a PC with an NVIDIA GPU (about
 and transcribing the stream, and that work is saved, so asking again for
 different clips from the same stream starts at the ranking.
 
+A whole playthrough in one video works too, even one over 30 hours long. It's
+transcribed half an hour at a time and saved as it goes, so if the app closes
+you pick up where it stopped. Expect a big download, and a few hours of
+transcribing on the CPU.
+
 ## Prompts that work
 
 | Type this | It does |
