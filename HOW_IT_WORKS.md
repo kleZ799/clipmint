@@ -2192,6 +2192,21 @@ fallback in [§9](#9-seo-the-packaging-step)), then into the filename on disk.
   speech/music content — a stream with a game score under the mic loses real
   speech to it. Enable with `LOCAL_WHISPER_VAD_FILTER=true`.
 
+**Long sources go through in slices.** faster-whisper turns the whole audio
+into one spectrogram before it decodes a word: 201 complex64 bins every 10 ms,
+about 0.58 GB per hour on top of the samples. A tester's 32-hour stream asked for
+`(1, 11583259, 201)` in a single array, 17.3 GB, and died with
+`ArrayMemoryError` on every retry. Since v1.31.6, a source longer than 45 minutes
+(`SLICE_SECONDS * 1.5`) is cut into 30-minute slices. `_read_slice()` has ffmpeg
+seek to each one and pipe it out as 16 kHz mono `s16le`, so Python never holds
+more than one slice. Segment times are shifted by the slice's start. Each
+finished slice goes into `<video>.partial.json` beside the cache, so a crash or
+a stop resumes at the next slice. The file is deleted once the `.srt` is
+written, and it is ignored if the slice length, model or duration differ. On
+that stream, a 30-minute slice from hour 20 peaked at **1.6 GB** for the whole
+process, and the run took 169s on the CPU with `small`. Shorter sources keep the
+single-pass path unchanged.
+
 **The cache** is an `.srt` written next to the video, validated by modification
 time (`cache_mtime >= source_mtime`). SRT rather than JSON because it's a format
 the user can open, edit, and hand to a subtitle tool.
