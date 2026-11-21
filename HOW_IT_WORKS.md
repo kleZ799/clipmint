@@ -3082,6 +3082,18 @@ checked, so they swapped their Gemini key again and again. Three things changed:
   key saved for it is from Google Gemini". "refused the api key" is in
   `jobs._PERMANENT`, so the stage is not retried three times first.
 
+**A 403 is not a bad key.** Until v1.31.4 `_is_auth_error()` counted the
+`openai` client's `PermissionDeniedError` as a refused key, so a tester whose
+Groq and OpenAI both answered 403 was told to check an OpenAI key that worked.
+A 401 means the provider does not know the key. A 403 means it read the key
+and still said no: Groq answers a bare "Forbidden" to countries and networks it
+does not serve, OpenAI sends `unsupported_country_region_territory`, and a key
+without access to the chosen model gets a 403 as well. `_is_blocked()` now
+catches 403s first, and `_blocked_message()` quotes the provider's own words
+and names the fix: another model, another network, or a provider that does not
+block by region (OpenRouter, or Ollama on the computer itself). Its messages
+contain "turned down the request", which is in `jobs._PERMANENT`.
+
 **OpenRouter** joined in v1.29.0, the same way Groq did: the `openai` client with
 `base_url` at `openrouter.ai/api/v1`. Its default model is `openrouter/free`,
 OpenRouter's own router across whichever free models are up, so it never bills.
