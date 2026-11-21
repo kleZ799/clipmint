@@ -610,6 +610,12 @@ part of the video again, because a transcript read back from disk reports its
 length a few seconds differently from a fresh one. Chunks already ranked are
 kept now, so carrying on a long VOD doesn't spend your API allowance twice.
 
+Transcribing a long video works the same way. Anything over 45 minutes is
+transcribed half an hour at a time, and each half hour is saved as it finishes.
+A crash five hours into a day-long stream loses at most the half hour it was on.
+That's also what lets a video of any length through. A 32-hour stream used to
+run out of memory before transcribing a word, and now it needs about 1.6 GB.
+
 ### When YouTube asks if you're a bot
 
 Sometimes YouTube stops a download and says *"Sign in to confirm you're not a
