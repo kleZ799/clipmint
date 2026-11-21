@@ -20,6 +20,29 @@ from ..config import (
 
 PROVIDERS = ("gemini", "groq", "openrouter", "openai", "anthropic", "ollama")
 
+# OpenRouter model IDs known to support vision (image) input.
+# "openrouter/free" and "openrouter/auto" may route to text-only models,
+# so they are excluded — a 404 there is permanent, not transient.
+OPENROUTER_VISION_MODELS = {
+    "google/gemma-4-31b-it:free",
+    "google/gemma-3-27b-it:free",
+    "meta-llama/llama-4-scout:free",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "openai/gpt-4o",
+    "openai/gpt-4o-mini",
+    "anthropic/claude-3.5-sonnet",
+    "anthropic/claude-3-haiku",
+    "google/gemini-flash-1.5",
+    "google/gemini-pro-1.5",
+}
+
+# Wall-clock cap across ALL Gemini key rotation attempts. Each key's retry
+# budget is up to ~4 minutes; with many keys that is 30+ minutes of apparent
+# freeze. This hard cap makes the pipeline fall back to Groq/OpenRouter/OpenAI
+# within 5 minutes regardless of how many keys are configured.
+_KEY_ROTATION_MAX_SECONDS = 300
+_key_rotation_deadline: Optional[float] = None
+
 # Models whose name says they are not for ranking text.
 _NON_TEXT = ("image", "tts", "embed", "robotics", "computer-use", "transcribe",
              "omni", "audio", "veo", "imagen")
@@ -95,7 +118,12 @@ class DailyQuotaExceeded(RuntimeError):
 
 
 def call_openai_llm(prompt: str) -> str:
-    """OpenAI Chat Completions backend used by --mode local."""
+    """OpenAI Chat Completions backend used by --mode local.
+
+    Supports any OpenAI-compatible endpoint via OPENAI_BASE_URL — set it to
+    http://localhost:1234/v1 for LM Studio, http://localhost:11434/v1 for
+    Ollama, or any other OpenAI-compatible API base URL.
+    """
     try:
         from openai import OpenAI  # type: ignore
     except ImportError as e:
@@ -105,7 +133,7 @@ def call_openai_llm(prompt: str) -> str:
         ) from e
 
     model = current_model("openai")
-    client = OpenAI(api_key=require_openai_key())
+    client = _openai_client()
     response = client.chat.completions.create(
         model=model,
         temperature=0.7,
@@ -113,6 +141,18 @@ def call_openai_llm(prompt: str) -> str:
     )
     usage.record("openai", model)
     return response.choices[0].message.content or ""
+
+
+def _openai_client():
+    """Build an OpenAI client, honouring any custom base URL."""
+    from openai import OpenAI  # type: ignore
+    from .. import user_config
+    from ..config import OPENAI_BASE_URL
+    base_url = user_config.get("OPENAI_BASE_URL", OPENAI_BASE_URL) or None
+    kwargs = {"api_key": require_openai_key()}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAI(**kwargs)
 
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
@@ -466,7 +506,13 @@ def call_gemini_llm(prompt: str, contents: Optional[list] = None) -> str:
 
     `contents`, when given, is sent instead of `prompt` -- a list of text and
     image parts, for the calls that have to look at frames.
+
+    A wall-clock deadline is set on the first call of a run. If retrying across
+    multiple keys takes longer than _KEY_ROTATION_MAX_SECONDS total, the error
+    propagates immediately so the caller can fall back to another provider
+    rather than freezing for 30+ minutes.
     """
+    global _key_rotation_deadline
     try:
         from google import genai  # type: ignore
     except ImportError as e:
@@ -477,7 +523,20 @@ def call_gemini_llm(prompt: str, contents: Optional[list] = None) -> str:
 
     model = current_model("gemini")
     keys = gemini_keys() or [require_gemini_key()]
+    # Set the deadline once per run (reset by reset_fallback on a new job).
+    # When other providers are waiting on the ladder, fail over in 30 seconds
+    # rather than the full 5 minutes — the whole point of a ladder is to not
+    # waste time on a provider that is down.
+    if _key_rotation_deadline is None:
+        has_ladder = any(cfg() for _, cfg in _LADDER)
+        cap = 30 if has_ladder else _KEY_ROTATION_MAX_SECONDS
+        _key_rotation_deadline = time.time() + cap
     while True:
+        if time.time() > _key_rotation_deadline:
+            raise RuntimeError(
+                f"Gemini kept failing across all {len(keys)} key(s) for "
+                f"{_KEY_ROTATION_MAX_SECONDS}s — switching provider"
+            )
         index = _first_live_key(keys, model)
         try:
             return _call_gemini_with(genai.Client(api_key=keys[index]), model,
@@ -548,7 +607,13 @@ def _call_gemini_with(client, model: str, prompt: str, contents: Optional[list])
     # Losing a chunk that late costs the whole ranking pass on a long video,
     # because a chunk is only checkpointed once it succeeds. The extra three
     # attempts sit at the 60s cap, so patience runs to about four minutes.
-    attempts = 8
+    #
+    # But when other providers are configured, patience is wasteful: a 503
+    # from Gemini when OpenRouter or Groq is available should fail over in
+    # seconds, not four minutes. Two attempts + the wall-clock deadline are
+    # enough to tell a one-second blip from a sustained outage.
+    has_fallbacks = any(cfg() for _, cfg in _LADDER)
+    attempts = 2 if has_fallbacks else 8
     last_error = None
     for attempt in range(attempts):
         try:
@@ -675,24 +740,6 @@ def _ollama_is_configured() -> bool:
     return up
 
 
-# Who to try when the preferred provider gives up, in order. The free ones
-# before OpenAI, because OpenAI has no free tier: falling back should not
-# quietly start spending money. OpenRouter after Groq because its default is
-# the free router, which is slower and less predictable than Groq's own model.
-# Claude last: it is paid too, and it arrived after people had already set
-# OpenAI up as their paid fallback, so it does not jump ahead of it.
-# Ollama after the free cloud ones -- it is free too, but a small local model
-# ranks worse and slower -- and before the paid ones, so a run with a local
-# model to fall back on never starts spending money.
-_LADDER = (
-    ("groq", _groq_is_configured),
-    ("openrouter", _openrouter_is_configured),
-    ("ollama", _ollama_is_configured),
-    ("openai", _openai_is_configured),
-    ("anthropic", _anthropic_is_configured),
-)
-
-
 def _switch_to(provider: str, why: str) -> None:
     global _fallback_provider
     _fallback_provider = provider
@@ -754,7 +801,8 @@ def _openai_compatible_vision(parts: list, provider: str) -> str:
     elif provider == "openrouter":
         client, model = _openrouter_client(), current_model("openrouter")
     else:
-        client, model = OpenAI(api_key=require_openai_key()), current_model("openai")
+        # Use _openai_client() so the custom base URL is honoured for vision too.
+        client, model = _openai_client(), current_model("openai")
     response = client.chat.completions.create(
         model=model,
         temperature=0.1,
@@ -784,6 +832,26 @@ def _gemini_spent_today() -> bool:
     return len(gemini_keys()) <= 1
 
 
+# Who to try when the preferred provider gives up, in order. Gemini first
+# when it has keys left — nine keys on the free tier is the deepest pool.
+# Then the other free ones before OpenAI, because OpenAI has no free tier:
+# falling back should not quietly start spending money. OpenRouter after Groq
+# because its default is the free router, which is slower and less predictable
+# than Groq's own model. Claude last: it is paid too, and it arrived after
+# people had already set OpenAI up as their paid fallback, so it does not
+# jump ahead of it. Ollama after the free cloud ones -- it is free too, but
+# a small local model ranks worse and slower -- and before the paid ones, so
+# a run with a local model to fall back on never starts spending money.
+_LADDER = (
+    ("gemini", _gemini_is_configured),
+    ("groq", _groq_is_configured),
+    ("openrouter", _openrouter_is_configured),
+    ("ollama", _ollama_is_configured),
+    ("openai", _openai_is_configured),
+    ("anthropic", _anthropic_is_configured),
+)
+
+
 def vision_images_per_request() -> int:
     """How many frames one vision request may carry on the provider in use."""
     return _IMAGES_PER_REQUEST.get(_fallback_provider or current_provider(), 5)
@@ -796,6 +864,11 @@ def call_vision_llm(parts: list) -> str:
     provider in use is asked first, then any other configured one -- looking
     at a clip is worth one failover, since the alternative is a title written
     blind -- and a provider that cannot take this many images is skipped.
+
+    OpenRouter with openrouter/free or openrouter/auto is skipped because those
+    routers pick text-only models. A 404 "no endpoints found that support image
+    input" from OpenRouter is permanent for that model, not a transient failure,
+    so it must not be treated as a retryable error.
     """
     images = sum(1 for p in parts if not isinstance(p, str))
     first = _fallback_provider or current_provider()
@@ -811,6 +884,12 @@ def call_vision_llm(parts: list) -> str:
             continue
         if images > _IMAGES_PER_REQUEST[name]:
             continue
+        # Skip OpenRouter if the model is not known to support vision.
+        # openrouter/free and openrouter/auto may route to text-only models;
+        # a 404 from them is permanent for that model, not worth printing as
+        # a failure or propagating as an exception.
+        if name == "openrouter" and not _openrouter_model_supports_vision():
+            continue
         try:
             if name == "gemini":
                 return call_gemini_llm("", contents=_as_gemini_parts(parts))
@@ -821,15 +900,21 @@ def call_vision_llm(parts: list) -> str:
             return _openai_compatible_vision(parts, name)
         except Exception as e:
             last = e
+            err_str = str(e).splitlines()[0][:100]
+            # A 404 on OpenRouter means the model doesn't support images — not
+            # a transient error, so don't print it as a provider failure.
+            if name == "openrouter" and "404" in str(e):
+                continue
             print(f"[vision] {name} could not look at the frames "
-                  f"({str(e).splitlines()[0][:100]})", flush=True)
+                  f"({err_str})", flush=True)
     raise last or RuntimeError("no provider that can look at images is configured")
 
 
 def reset_fallback() -> None:
     """Forget a previous switch, so a new run re-checks the preferred provider."""
-    global _fallback_provider
+    global _fallback_provider, _key_rotation_deadline
     _fallback_provider = None
+    _key_rotation_deadline = None
     _given_up.clear()
     _failures.clear()
     _warned_misplaced.clear()
@@ -887,6 +972,31 @@ def _final_error(provider: str, e: BaseException) -> BaseException:
     return RuntimeError(msg)
 
 
+def no_providers_left() -> bool:
+    """True when every configured provider has already been given up on this run.
+
+    Used by callers (e.g. generate_seo) to tell 'all providers exhausted' from
+    'one provider rate-limited but others are available' — the latter is handled
+    inside call_local_llm automatically, so the caller should not stop early.
+    """
+    given_up_now = _given_up | {_fallback_provider or current_provider()}
+    return all(name in given_up_now or not cfg()
+               for name, cfg in _LADDER)
+
+
+def _openrouter_model_supports_vision() -> bool:
+    """Return True only when the configured OpenRouter model is known to handle images.
+
+    openrouter/free and openrouter/auto may route to text-only models. Sending
+    images to them causes a permanent 404 "no endpoints found that support image
+    input", which is not a transient error — skipping them entirely is correct.
+    """
+    m = current_model("openrouter")
+    if m in ("openrouter/free", "openrouter/auto"):
+        return False
+    return m in OPENROUTER_VISION_MODELS
+
+
 def call_local_llm(prompt: str) -> str:
     """Dispatch to the configured local LLM provider.
 
@@ -907,10 +1017,23 @@ def call_local_llm(prompt: str) -> str:
     """
     provider = _fallback_provider or current_provider()
 
+<<<<<<< HEAD
+    if provider == "openai":
+        try:
+            return call_openai_llm(prompt)
+        except Exception as e:
+            if not _next_provider(f"openai failed ({str(e).splitlines()[0][:60]})"):
+                raise
+            return call_local_llm(prompt)
+    if provider in ("groq", "openrouter", "anthropic", "ollama"):
+        call = {"groq": call_groq_llm, "openrouter": call_openrouter_llm,
+                "anthropic": call_anthropic_llm, "ollama": call_ollama_llm}[provider]
+=======
     if provider in ("openai", "groq", "openrouter", "anthropic", "ollama"):
         call = {"openai": call_openai_llm, "groq": call_groq_llm,
                 "openrouter": call_openrouter_llm, "anthropic": call_anthropic_llm,
                 "ollama": call_ollama_llm}[provider]
+>>>>>>> e75cdb00b83253ba25bf4721f3786ba9e877b0e5
         try:
             return call(prompt)
         except Exception as e:

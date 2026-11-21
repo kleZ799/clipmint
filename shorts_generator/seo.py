@@ -1359,10 +1359,17 @@ def generate_seo(
     # them -- and those went to YouTube. A clip the model skipped is worth
     # another question before it is worth a fallback.
     #
-    # Except when the day's quota is gone. Titles are the last thing a run
+    # Except when every provider is gone. Titles are the last thing a run
     # asks for, after ranking and looking have spent their share, so on a
     # long stream this is the step that meets the limit -- and asking again
-    # one clip at a time only hears the same answer ten times.
+    # one clip at a time only hears the same answer ten times. But a 429 from
+    # one provider is handled inside call_local_llm by trying the next one;
+    # only stop early when no provider is left at all.
+    try:
+        from shorts_generator.local.llm import no_providers_left as _no_providers_left
+    except ImportError:
+        def _no_providers_left() -> bool:  # type: ignore[misc]
+            return True
     by_index: Dict[int, Dict] = {}
     todo = list(range(1, len(highlights) + 1))
     out_of_quota = ""
@@ -1381,7 +1388,10 @@ def generate_seo(
                       flush=True)
                 if errors is not None and (attempt == 2 or _is_quota(e)):
                     errors.append(str(e))
-                if _is_quota(e):
+                # Only stop the whole batch when every provider is exhausted.
+                # call_local_llm already cascades through providers internally,
+                # so reaching here with a quota error means nothing is left.
+                if _is_quota(e) and _no_providers_left():
                     out_of_quota = str(e)
                     break
         todo = [i for i in todo if i not in by_index]
