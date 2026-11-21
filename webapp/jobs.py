@@ -240,6 +240,9 @@ _PERMANENT = (
     "api_key_invalid", "api key not valid", "permission_denied", "unauthenticated",
     # llm._final_error(): every provider tried, and the last one refused its key.
     "refused the api key",
+    # llm._blocked_message(): a 403 -- this country, network or model is not
+    # served, and it will not be on the next attempt either.
+    "turned down the request",
     # accel._require_picture() and _within_picture(): the source has no frames
     # there, and it will have none on the next attempt either.
     "with no picture", "sound but no picture", "before anyone speaks",
