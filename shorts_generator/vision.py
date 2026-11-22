@@ -42,8 +42,8 @@ VisionFn = Callable[[List[Part]], str]
 # in one or two requests.
 FRAMES_PER_CLIP = 4
 # The long side of each frame sent. HUD text is still legible at this size,
-# and every doubling of it roughly quadruples what the request costs.
-FRAME_LONG_SIDE = 768
+# and keeping it 640px keeps multi-clip vision requests fast and reliable.
+FRAME_LONG_SIDE = 640
 
 # What kinds of video there are, as the metadata writer needs to tell them
 # apart. A podcast clip filed under "gameplay" reaches nobody.
@@ -107,7 +107,10 @@ def grab_frame(path: str, t: float, long_side: int = FRAME_LONG_SIDE) -> Optiona
              "-frames:v", "1", "-vf", scale, "-q:v", "4",
              "-f", "image2pipe", "-c:v", "mjpeg", "-"],
             capture_output=True,
+            timeout=25,
         ).stdout
+    except proc.Cancelled:
+        raise
     except Exception:
         return None
     return out or None
@@ -223,9 +226,13 @@ def describe_clips(
             parts.append(_clip_block(n, str(clips[i].get("said") or "")))
             parts.extend((jpg, "image/jpeg") for jpg in frames[i])
 
+        print(f"[vision] looking at clips {chunk[0] + 1}-{chunk[-1] + 1} of "
+              f"{len(clips)}...", flush=True)
         try:
             parsed = _parse_json_loose(vision_fn(parts))
         except Exception as e:
+            if isinstance(e, proc.Cancelled):
+                raise
             print(f"[vision] could not look at clips {chunk[0] + 1}-{chunk[-1] + 1} "
                   f"({str(e).splitlines()[0][:120]}) - their titles come from "
                   f"their words alone", flush=True)

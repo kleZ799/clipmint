@@ -62,8 +62,32 @@ OPENROUTER_VISION_MODELS = {
 _NON_TEXT = ("image", "tts", "embed", "robotics", "computer-use", "transcribe",
              "omni", "audio", "veo", "imagen")
 
+_TEXT_TIMEOUT_SEC = 90.0
+_VISION_TIMEOUT_SEC = 60.0
+_META_TIMEOUT_SEC = 15.0
+
 _model_cache: Tuple[float, List[str]] = (0.0, [])
 _MODEL_CACHE_SECONDS = 600
+
+
+def _gemini_client(api_key: str, timeout_sec: float = _TEXT_TIMEOUT_SEC):
+    """Build a Gemini client with finite timeout and SDK retries disabled."""
+    try:
+        from google import genai  # type: ignore
+        from google.genai import types  # type: ignore
+    except ImportError as e:
+        raise RuntimeError(
+            "google-genai is required for LLM_PROVIDER=gemini. Install it with:\n"
+            "    pip install -r requirements-local.txt"
+        ) from e
+
+    return genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=max(1000, int(timeout_sec * 1000)),
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
 
 
 def list_gemini_models(force: bool = False) -> List[str]:
@@ -73,9 +97,9 @@ def list_gemini_models(force: bool = False) -> List[str]:
     if cached and not force and (time.time() - age) < _MODEL_CACHE_SECONDS:
         return cached
 
+    client = None
     try:
-        from google import genai  # type: ignore
-        client = genai.Client(api_key=require_gemini_key())
+        client = _gemini_client(require_gemini_key(), _META_TIMEOUT_SEC)
         names = []
         for m in client.models.list():
             name = str(m.name or "").replace("models/", "")
@@ -89,6 +113,12 @@ def list_gemini_models(force: bool = False) -> List[str]:
     except Exception as e:
         print(f"[llm] could not list models ({e}); using the built-in list", flush=True)
         return []
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
     names.sort()
     _model_cache = (time.time(), names)
@@ -97,9 +127,9 @@ def list_gemini_models(force: bool = False) -> List[str]:
 
 def check_gemini_model(model: str) -> Optional[str]:
     """Try the model once. Returns None if it works, else why it does not."""
+    client = None
     try:
-        from google import genai  # type: ignore
-        client = genai.Client(api_key=require_gemini_key())
+        client = _gemini_client(require_gemini_key(), _META_TIMEOUT_SEC)
         client.models.generate_content(model=model, contents="hi",
                                        config={"max_output_tokens": 1})
         return None
@@ -112,6 +142,12 @@ def check_gemini_model(model: str) -> Optional[str]:
         if "503" in msg:
             return f"{model} is temporarily unavailable — try another."
         return f"{model} could not be used: {msg.splitlines()[0][:120]}"
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 class DailyQuotaExceeded(RuntimeError):
@@ -122,7 +158,7 @@ class DailyQuotaExceeded(RuntimeError):
 # Provider clients & single-attempt callers (no internal retry sleeps!)
 # ---------------------------------------------------------------------------
 
-def _openai_client(api_key: Optional[str] = None):
+def _openai_client(api_key: Optional[str] = None, timeout: float = _TEXT_TIMEOUT_SEC):
     """Build an OpenAI client, honouring any custom base URL.
 
     If a key is provided/stored, it is always used. When a custom base URL is
@@ -137,7 +173,7 @@ def _openai_client(api_key: Optional[str] = None):
             key = "none"
         else:
             key = require_openai_key()
-    kwargs: dict = {"api_key": key, "timeout": 120.0}
+    kwargs: dict = {"api_key": key, "timeout": timeout, "max_retries": 0}
     if base_url:
         kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
@@ -154,12 +190,15 @@ def call_openai_llm(prompt: str, api_key: Optional[str] = None) -> str:
         ) from e
 
     model = current_model("openai")
-    client = _openai_client(api_key=api_key)
-    response = client.chat.completions.create(
-        model=model,
-        temperature=0.7,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    client = _openai_client(api_key=api_key, timeout=_TEXT_TIMEOUT_SEC)
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.7,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    finally:
+        client.close()
     usage.record("openai", model)
     return response.choices[0].message.content or ""
 
@@ -179,13 +218,21 @@ def call_groq_llm(prompt: str, api_key: Optional[str] = None) -> str:
 
     model = current_model("groq")
     key = (api_key if api_key is not None else require_groq_key()).strip()
-    client = OpenAI(api_key=key, base_url=GROQ_BASE_URL, timeout=120.0)
-    response = client.chat.completions.create(
-        model=model,
-        temperature=0.2,
-        response_format={"type": "json_object"},
-        messages=[{"role": "user", "content": prompt}],
+    client = OpenAI(
+        api_key=key,
+        base_url=GROQ_BASE_URL,
+        timeout=_TEXT_TIMEOUT_SEC,
+        max_retries=0,
     )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+    finally:
+        client.close()
     usage.record("groq", model)
     return response.choices[0].message.content or ""
 
@@ -194,14 +241,15 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 _OPENROUTER_HEADERS = {"X-Title": "ClipMint", "HTTP-Referer": SITE_URL}
 
 
-def _openrouter_client(api_key: Optional[str] = None):
+def _openrouter_client(api_key: Optional[str] = None, timeout: float = _TEXT_TIMEOUT_SEC):
     from openai import OpenAI  # type: ignore
     key = (api_key if api_key is not None else require_openrouter_key()).strip()
     return OpenAI(
         api_key=key,
         base_url=OPENROUTER_BASE_URL,
         default_headers=_OPENROUTER_HEADERS,
-        timeout=120.0,
+        timeout=timeout,
+        max_retries=0,
     )
 
 
@@ -216,11 +264,15 @@ def call_openrouter_llm(prompt: str, api_key: Optional[str] = None) -> str:
         ) from e
 
     model = current_model("openrouter")
-    response = _openrouter_client(api_key=api_key).chat.completions.create(
-        model=model,
-        temperature=0.2,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    client = _openrouter_client(api_key=api_key, timeout=_TEXT_TIMEOUT_SEC)
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    finally:
+        client.close()
     usage.record("openrouter", model)
     text = response.choices[0].message.content or ""
     if not text.strip():
@@ -353,7 +405,8 @@ _ANTHROPIC_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _ANTHROPIC_MAX_TOKENS = 32000
 
 
-def _call_anthropic(content, api_key: Optional[str] = None) -> str:
+def _call_anthropic(content, api_key: Optional[str] = None,
+                    timeout: float = _TEXT_TIMEOUT_SEC) -> str:
     """One request to Claude."""
     try:
         import anthropic  # type: ignore
@@ -365,7 +418,7 @@ def _call_anthropic(content, api_key: Optional[str] = None) -> str:
 
     model = current_model("anthropic")
     key = (api_key if api_key is not None else require_anthropic_key()).strip()
-    client = anthropic.Anthropic(api_key=key)
+    client = anthropic.Anthropic(api_key=key, timeout=timeout, max_retries=0)
     request = {
         "model": model,
         "max_tokens": _ANTHROPIC_MAX_TOKENS,
@@ -400,6 +453,8 @@ def _call_anthropic(content, api_key: Optional[str] = None) -> str:
                if cause and str(cause).strip() else "")
         raise RuntimeError(f"Could not reach Anthropic{why}. Check the connection, "
                            f"or a firewall or proxy in the way.") from e
+    finally:
+        client.close()
 
     usage.record("anthropic", model)
     if message.stop_reason == "refusal":
@@ -451,26 +506,25 @@ def _as_openai_content(parts: list) -> list:
 
 def _call_gemini_once(api_key: str, model: str, prompt: str,
                       contents: Optional[list] = None) -> str:
-    """Single non-sleeping Gemini request on one key."""
-    try:
-        from google import genai  # type: ignore
-    except ImportError as e:
-        raise RuntimeError(
-            "google-genai is required for LLM_PROVIDER=gemini. Install it with:\n"
-            "    pip install -r requirements-local.txt"
-        ) from e
-
+    """Single non-sleeping Gemini request on one key with finite timeout."""
+    timeout_sec = _VISION_TIMEOUT_SEC if contents is not None else _TEXT_TIMEOUT_SEC
     config = {
         "temperature": 0.2,
         "response_mime_type": "application/json",
         "max_output_tokens": 32768,
     }
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=model,
-        contents=contents if contents is not None else prompt,
-        config=config,
-    )
+    client = _gemini_client(api_key, timeout_sec=timeout_sec)
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=contents if contents is not None else prompt,
+            config=config,
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
     usage.record("gemini", model)
     text = response.text or ""
     if not text.strip():
@@ -497,8 +551,8 @@ def call_gemini_llm(prompt: str, contents: Optional[list] = None) -> str:
 # ---------------------------------------------------------------------------
 
 GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-_IMAGES_PER_REQUEST = {"gemini": 20, "openai": 20, "groq": 5, "openrouter": 5,
-                       "anthropic": 20, "ollama": 5}
+_IMAGES_PER_REQUEST = {"gemini": 15, "openai": 15, "groq": 5, "openrouter": 5,
+                       "anthropic": 15, "ollama": 5}
 
 
 def _openrouter_model_supports_vision() -> bool:
@@ -513,17 +567,28 @@ def _openai_compatible_vision(parts: list, provider: str,
     from openai import OpenAI  # type: ignore
     if provider == "groq":
         key = (api_key if api_key is not None else require_groq_key()).strip()
-        client, model = OpenAI(api_key=key, base_url=GROQ_BASE_URL, timeout=120.0), GROQ_VISION_MODEL
+        client = OpenAI(
+            api_key=key,
+            base_url=GROQ_BASE_URL,
+            timeout=_VISION_TIMEOUT_SEC,
+            max_retries=0,
+        )
+        model = GROQ_VISION_MODEL
     elif provider == "openrouter":
-        client, model = _openrouter_client(api_key=api_key), current_model("openrouter")
+        client = _openrouter_client(api_key=api_key, timeout=_VISION_TIMEOUT_SEC)
+        model = current_model("openrouter")
     else:
-        client, model = _openai_client(api_key=api_key), current_model("openai")
-    response = client.chat.completions.create(
-        model=model,
-        temperature=0.1,
-        response_format={"type": "json_object"},
-        messages=[{"role": "user", "content": _as_openai_content(parts)}],
-    )
+        client = _openai_client(api_key=api_key, timeout=_VISION_TIMEOUT_SEC)
+        model = current_model("openai")
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": _as_openai_content(parts)}],
+        )
+    finally:
+        client.close()
     usage.record(provider, model)
     return response.choices[0].message.content or ""
 
@@ -1024,7 +1089,11 @@ def _invoke_slot(slot: Dict, prompt: str = "",
                 key, current_model("gemini"), "", contents=_as_gemini_parts(vision_parts)
             )
         if p == "anthropic":
-            return _call_anthropic(_as_anthropic_content(vision_parts), api_key=key)
+            return _call_anthropic(
+                _as_anthropic_content(vision_parts),
+                api_key=key,
+                timeout=_VISION_TIMEOUT_SEC,
+            )
         if p == "ollama":
             if not _ollama_up_cached():
                 raise OllamaError("Ollama is not running")
@@ -1050,6 +1119,9 @@ def _invoke_slot(slot: Dict, prompt: str = "",
 
 def _cooldown_for(e: BaseException, prior_fails: int) -> Tuple[float, str]:
     msg = str(e)
+    low = msg.lower()
+    if "timed out" in low or "timeout" in low or "timeout" in type(e).__name__.lower():
+        return 15.0, "timed out"
     m = re.search(r"retry in ([0-9.]+)s", msg, re.IGNORECASE)
     if m:
         return max(2.0, min(120.0, float(m.group(1)) + 1.0)), "rate limited"
@@ -1078,8 +1150,9 @@ def _dispatch_pool(prompt: str = "", vision_parts: Optional[list] = None,
             "(or choose an Ollama model)."
         )
 
-    call_budget = 120.0 if len(slots) > 1 else 240.0
+    call_budget = 95.0 if vision_parts is not None else (150.0 if len(slots) > 1 else 240.0)
     deadline = time.monotonic() + call_budget
+    attempts = 0
     last_err: Optional[BaseException] = None
     last_provider = slots[0]["provider"]
     saw_daily_quota = False
@@ -1088,7 +1161,10 @@ def _dispatch_pool(prompt: str = "", vision_parts: Optional[list] = None,
 
     while True:
         proc.wait_if_paused()
+        proc.raise_if_cancelled()
         now = time.monotonic()
+        if attempts > 0 and now >= deadline:
+            break
         chosen: Optional[Dict] = None
         wait_for: Optional[float] = None
 
@@ -1133,6 +1209,7 @@ def _dispatch_pool(prompt: str = "", vision_parts: Optional[list] = None,
                 continue
 
         # Run the chosen slot outside _pool_lock so parallel workers run concurrently.
+        attempts += 1
         sid = chosen["id"]
         prov = chosen["provider"]
         try:
@@ -1142,6 +1219,8 @@ def _dispatch_pool(prompt: str = "", vision_parts: Optional[list] = None,
                 _key_fail_count.pop(sid, None)
             return text
         except Exception as e:
+            if isinstance(e, proc.Cancelled):
+                raise
             last_err = e
             last_provider = prov
             msg = str(e)

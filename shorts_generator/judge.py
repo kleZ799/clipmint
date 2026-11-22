@@ -35,7 +35,7 @@ import json
 import re
 from typing import Callable, Dict, List, Optional, Sequence
 
-from . import content_kinds
+from . import content_kinds, proc
 from .vision import Part, grab_frame
 
 VisionFn = Callable[[List[Part]], str]
@@ -180,9 +180,13 @@ def judge(
             parts.append(_block(n, h, said_fn(h)))
             parts.extend((jpg, "image/jpeg") for jpg in shots)
 
+        print(f"[judge] looking at candidates {lo + 1}-{lo + len(batch)} of "
+              f"{len(highlights)}...", flush=True)
         try:
             parsed = _parse(vision_fn(parts))
         except Exception as e:
+            if isinstance(e, proc.Cancelled):
+                raise
             print(f"[judge] could not look at candidates {lo + 1}-{lo + len(batch)} "
                   f"({str(e).splitlines()[0][:120]}) - they keep their rank", flush=True)
             continue

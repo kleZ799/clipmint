@@ -1314,6 +1314,9 @@ class JobStore:
                             kind=content.get("kind") or "",
                             images_per_request=vision_images_per_request())
             except Exception as e:  # noqa: BLE001 - a second opinion is never worth the run
+                from shorts_generator import proc
+                if isinstance(e, proc.Cancelled):
+                    raise
                 print(f"[judge] skipped ({e})", flush=True)
 
             # Best first, and it stays that way all the way to the grid: the
@@ -1592,6 +1595,9 @@ def _look_at_clips(job: Job, highlights: List[Dict], source_path: Optional[str],
                                 candidates=candidates,
                                 images_per_request=vision_images_per_request())
     except Exception as e:  # noqa: BLE001 - never worth losing a run over
+        from shorts_generator import proc
+        if isinstance(e, proc.Cancelled):
+            raise
         print(f"[vision] skipped ({e})", flush=True)
         return
     for i, scene in zip(idx, scenes):
