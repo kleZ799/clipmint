@@ -3,6 +3,8 @@
 Reads a local media file and returns the same shape the highlight generator
 expects: {duration, segments[start, end, text]}.
 """
+import json
+import math
 import os
 import re
 import time
@@ -260,6 +262,135 @@ def _resolve_device() -> str:
     return device
 
 
+# Whisper turns the whole audio into one spectrogram before it decodes a word:
+# 201 complex64 values per 10 ms, about 0.58 GB an hour on top of the samples
+# themselves. A 32-hour stream asked for 17.3 GB in a single array and died
+# with ArrayMemoryError, then again on every retry. So a long source goes
+# through in slices, each read by ffmpeg straight to 16 kHz mono, and memory
+# stays at what half an hour needs however long the video is.
+SLICE_SECONDS = 1800
+
+
+def _source_seconds(media_path: str) -> float:
+    """How long the source is, or 0 when ffprobe cannot say.
+
+    Read as bytes: ffprobe's messages quote the file name, and decoding a name
+    like "GTA 6 ⧸ 【PS5 PRO】" in the Windows code page crashed the reader.
+    """
+    try:
+        r = proc.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                      "-of", "csv=p=0", media_path], capture_output=True)
+        return float((r.stdout or b"").decode("ascii", "replace").strip() or 0)
+    except (ValueError, OSError):
+        return 0.0
+
+
+def _read_slice(media_path: str, start: float, length: float):
+    """One slice of the first audio track, as Whisper's float32 16 kHz mono."""
+    import numpy as np
+    r = proc.run(["ffmpeg", "-nostdin", "-v", "error", "-ss", f"{start:.3f}",
+                  "-i", media_path, "-t", f"{length:.3f}", "-map", "0:a:0", "-vn",
+                  "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+                 capture_output=True)
+    if r.returncode != 0:
+        said = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        raise RuntimeError(f"ffmpeg could not read the audio at {_mmss(start)}: "
+                           f"{said[-1] if said else f'exit status {r.returncode}'}")
+    return np.frombuffer(r.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+def _partial_path(media_path: str) -> Path:
+    """Where finished slices are kept until the whole transcript is written."""
+    return _transcript_cache_path(media_path).with_suffix(".partial.json")
+
+
+def _load_partial(path: Path, total: float) -> Dict:
+    """Slices an earlier attempt finished, if they were cut the same way."""
+    fresh = {"slice": SLICE_SECONDS, "total": total, "model": LOCAL_WHISPER_MODEL,
+             "language": None, "done": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return fresh
+    if (data.get("slice") != SLICE_SECONDS or data.get("model") != LOCAL_WHISPER_MODEL
+            or abs(float(data.get("total", 0)) - total) > 1
+            or not isinstance(data.get("done"), dict)):
+        return fresh
+    return data
+
+
+def _transcribe_in_slices(media_path: str, total: float, kwargs: Dict,
+                          device: str, compute_type: str) -> Dict:
+    """Transcribe a long source half an hour at a time, saving each slice.
+
+    Each finished slice is written beside the transcript cache, so a crash, a
+    stop or a closed app hours into a long stream resumes at the next slice
+    instead of at the start. The language heard in the first slice is kept for
+    the rest when Whisper is sure of it, so one quiet slice of music cannot
+    switch a stream's transcript into another language halfway through.
+    """
+    from faster_whisper import WhisperModel  # type: ignore
+
+    partial = _partial_path(media_path)
+    state = _load_partial(partial, total)
+    done = state["done"]
+    count = math.ceil(total / SLICE_SECONDS)
+    print(f"[transcribe/local] {_mmss(total)} of audio - transcribing it in {count} "
+          f"slices of {SLICE_SECONDS // 60} minutes, so memory stays at what one "
+          f"slice needs", flush=True)
+    if done:
+        print(f"[transcribe/local] resuming: {len(done)} of {count} slices were "
+              f"already transcribed", flush=True)
+
+    model = None
+    last_said = 0.0
+    for i in range(count):
+        if str(i) in done:
+            continue
+        start = i * SLICE_SECONDS
+        audio = _read_slice(media_path, start, min(SLICE_SECONDS, total - start))
+        while True:
+            if model is None:
+                model = WhisperModel(LOCAL_WHISPER_MODEL, device=device,
+                                     compute_type=compute_type)
+            try:
+                segments_iter, info = model.transcribe(
+                    **dict(kwargs, audio=audio,
+                           language=kwargs.get("language") or state.get("language")))
+                out = []
+                for s in segments_iter:
+                    proc.wait_if_paused()
+                    at = start + float(s.end)
+                    now = time.time()
+                    if now - last_said >= 2.5:
+                        last_said = now
+                        print(f"[transcribe/local] {min(99, int(100 * at / total))}% "
+                              f"- {_mmss(at)} of {_mmss(total)}", flush=True)
+                    out.append({"start": start + float(s.start), "end": at,
+                                "text": (s.text or "").strip()})
+                break
+            except Exception as e:
+                if device != "cuda":
+                    raise
+                from .. import accel
+                accel.mark_cuda_failed()
+                print(f"[transcribe/local] the GPU stopped partway "
+                      f"({str(e).splitlines()[0][:120]}) - finishing on the CPU",
+                      flush=True)
+                device, compute_type, model = "cpu", "int8", None
+        if (not state.get("language") and not kwargs.get("language")
+                and float(getattr(info, "language_probability", 0) or 0) >= 0.8):
+            state["language"] = getattr(info, "language", None)
+        done[str(i)] = out
+        try:
+            partial.write_text(json.dumps(state), encoding="utf-8")
+        except OSError:
+            pass    # costs the resume, not the run
+
+    segments = [seg for i in range(count) for seg in done.get(str(i), [])]
+    return {"duration": total, "segments": segments}
+
+
 def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
     """Run faster-whisper on a local file path, caching the result as .srt."""
     cache_path = _find_cached_transcript(media_path)
@@ -307,6 +438,20 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
         transcribe_kwargs["vad_parameters"] = LOCAL_WHISPER_VAD_PARAMETERS
     else:
         transcribe_kwargs["vad_filter"] = False
+
+    total_seconds = _source_seconds(media_path)
+    if total_seconds > SLICE_SECONDS * 1.5:
+        transcript = _transcribe_in_slices(media_path, total_seconds, transcribe_kwargs,
+                                           device, compute_type)
+        print(f"[transcribe/local] {len(transcript['segments'])} segments, "
+              f"{total_seconds:.0f}s of audio", flush=True)
+        cache_path = _write_srt_cache(media_path, transcript)
+        print(f"[transcribe/local] wrote cache: {cache_path}", flush=True)
+        try:
+            _partial_path(media_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        return transcript
 
     def _run(dev: str, ct: str):
         """Transcribe end to end on one device, returning finished segments.

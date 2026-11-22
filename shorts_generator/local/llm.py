@@ -920,12 +920,65 @@ def reset_fallback() -> None:
     _warned_misplaced.clear()
 
 
+def _is_blocked(e: BaseException) -> bool:
+    """A 403: the provider read the key and still turned the request down.
+
+    That is not a bad key, and calling it one sent a tester round in circles
+    pasting a working key again. Groq answers a bare "Forbidden" to countries
+    and networks it does not serve, OpenAI says so with a code, and a key
+    without access to the chosen model gets a 403 too.
+    """
+    return (e.__class__.__name__ == "PermissionDeniedError"
+            or getattr(e, "status_code", None) == 403)
+
+
 def _is_auth_error(e: BaseException) -> bool:
+    """A 401: the key itself is wrong. A 403 is _is_blocked, not this."""
+    if _is_blocked(e):
+        return False
     msg = str(e).lower()
-    return (e.__class__.__name__ in ("AuthenticationError", "PermissionDeniedError")
+    return (e.__class__.__name__ == "AuthenticationError"
             or "invalid_api_key" in msg or "incorrect api key" in msg
             or "invalid x-api-key" in msg
             or ("401" in msg and ("api key" in msg or "unauthorized" in msg)))
+
+
+def _provider_said(e: BaseException) -> str:
+    """The provider's own words, without the client's "Error code: 403 - {...}"."""
+    detail = getattr(e, "message", None)
+    body = getattr(e, "body", None)
+    if isinstance(body, dict):
+        inner = body.get("error", body)
+        if isinstance(inner, dict) and inner.get("message"):
+            detail = inner["message"]
+    detail = str(detail or e).strip().splitlines()[0] if str(detail or e).strip() else ""
+    return detail[:200].rstrip(".")
+
+
+def _blocked_message(provider: str, e: BaseException) -> str:
+    """Why a 403 happened, in words that point at the fix rather than the key."""
+    label = PROVIDER_LABELS.get(provider, provider)
+    said = _provider_said(e)
+    low = f"{said} {getattr(e, 'code', '') or ''}".lower()
+    if "country" in low or "region" in low or "territory" in low:
+        return (f"{label} turned down the request: it does not serve your country or "
+                f"region ({said}). The key is fine. In Settings, choose OpenRouter, or "
+                f"Ollama on this computer, instead.")
+    if "model" in low:
+        model = current_model(provider)
+        return (f"{label} turned down the request: this key cannot use {model} "
+                f"({said}). The key is fine. In Settings, pick another {label} model.")
+    return (f"{label} turned down the request (403 {said or 'Forbidden'}). The key was "
+            f"read, so pasting it again will not help: {label} blocks some countries "
+            f"and networks. Try without a VPN or on another network, or in Settings "
+            f"choose OpenRouter, or Ollama on this computer, instead.")
+
+
+def _short_reason(e: BaseException) -> str:
+    """One line on why a provider gave up, for the "Before that" list."""
+    if _is_blocked(e):
+        return f"403 {_provider_said(e) or 'Forbidden'}"
+    return (str(e).strip().splitlines() or [type(e).__name__])[0][:60]
 
 
 def _masked(key: str) -> str:
@@ -941,7 +994,9 @@ def _final_error(provider: str, e: BaseException) -> BaseException:
     jobs._is_permanent reads them.
     """
     label = PROVIDER_LABELS.get(provider, provider)
-    if _is_auth_error(e):
+    if _is_blocked(e):
+        msg = _blocked_message(provider, e)
+    elif _is_auth_error(e):
         try:
             key = _KEY_FOR[provider]()
         except (KeyError, RuntimeError):
@@ -1044,8 +1099,7 @@ def call_local_llm(prompt: str) -> str:
             # OpenAI used to be the exception, so a bad OpenAI key ended runs
             # that Groq, set up right beside it, could have finished.
             label = PROVIDER_LABELS.get(provider, provider)
-            first = (str(e).strip().splitlines() or [type(e).__name__])[0][:60]
-            if not _next_provider(f"{label} failed ({first})"):
+            if not _next_provider(f"{label} failed ({_short_reason(e)})"):
                 raise _final_error(provider, e) from e
             return call_local_llm(prompt)
     if provider != "gemini":

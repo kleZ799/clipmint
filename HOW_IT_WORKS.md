@@ -2192,6 +2192,21 @@ fallback in [§9](#9-seo-the-packaging-step)), then into the filename on disk.
   speech/music content — a stream with a game score under the mic loses real
   speech to it. Enable with `LOCAL_WHISPER_VAD_FILTER=true`.
 
+**Long sources go through in slices.** faster-whisper turns the whole audio
+into one spectrogram before it decodes a word: 201 complex64 bins every 10 ms,
+about 0.58 GB per hour on top of the samples. A tester's 32-hour stream asked for
+`(1, 11583259, 201)` in a single array, 17.3 GB, and died with
+`ArrayMemoryError` on every retry. Since v1.31.6, a source longer than 45 minutes
+(`SLICE_SECONDS * 1.5`) is cut into 30-minute slices. `_read_slice()` has ffmpeg
+seek to each one and pipe it out as 16 kHz mono `s16le`, so Python never holds
+more than one slice. Segment times are shifted by the slice's start. Each
+finished slice goes into `<video>.partial.json` beside the cache, so a crash or
+a stop resumes at the next slice. The file is deleted once the `.srt` is
+written, and it is ignored if the slice length, model or duration differ. On
+that stream, a 30-minute slice from hour 20 peaked at **1.6 GB** for the whole
+process, and the run took 169s on the CPU with `small`. Shorter sources keep the
+single-pass path unchanged.
+
 **The cache** is an `.srt` written next to the video, validated by modification
 time (`cache_mtime >= source_mtime`). SRT rather than JSON because it's a format
 the user can open, edit, and hand to a subtitle tool.
@@ -3081,6 +3096,18 @@ checked, so they swapped their Gemini key again and again. Three things changed:
   OpenAI by mistake…", or "Google Gemini failed: 503… OpenAI was not tried: the
   key saved for it is from Google Gemini". "refused the api key" is in
   `jobs._PERMANENT`, so the stage is not retried three times first.
+
+**A 403 is not a bad key.** Until v1.31.4 `_is_auth_error()` counted the
+`openai` client's `PermissionDeniedError` as a refused key, so a tester whose
+Groq and OpenAI both answered 403 was told to check an OpenAI key that worked.
+A 401 means the provider does not know the key. A 403 means it read the key
+and still said no: Groq answers a bare "Forbidden" to countries and networks it
+does not serve, OpenAI sends `unsupported_country_region_territory`, and a key
+without access to the chosen model gets a 403 as well. `_is_blocked()` now
+catches 403s first, and `_blocked_message()` quotes the provider's own words
+and names the fix: another model, another network, or a provider that does not
+block by region (OpenRouter, or Ollama on the computer itself). Its messages
+contain "turned down the request", which is in `jobs._PERMANENT`.
 
 **OpenRouter** joined in v1.29.0, the same way Groq did: the `openai` client with
 `base_url` at `openrouter.ai/api/v1`. Its default model is `openrouter/free`,
