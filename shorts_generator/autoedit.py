@@ -24,6 +24,7 @@ back the clip it was given if anything goes wrong.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import os
 import re
 import shutil
@@ -43,6 +44,8 @@ Span = Tuple[float, float]
 # a filler in.
 FILLERS = {"um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm", "hm", "mm", "mmm",
            "ah", "ahh", "eh"}
+# Trailing verbal throat-clears ONLY stripped right at t=0 when followed by a pause.
+_LEAD_FILLERS = {"so", "okay", "ok", "well", "like", "yeah"}
 
 # A pause longer than this is dead air. Talking videos run tighter than
 # streams, where a beat of silence is usually the streamer watching the game.
@@ -51,8 +54,8 @@ _GAP_DEFAULT = 0.55
 # How much of a cut pause is kept either side, so speech still breathes.
 _PAD = {"stream": 0.16}
 _PAD_DEFAULT = 0.1
-_LEAD_KEEP = 0.12       # before the first word
-_TAIL_KEEP = 0.45       # after the last word -- room for the reaction
+_LEAD_KEEP = 0.06       # tight Frame-1 intro margin before first real word
+_TAIL_KEEP = 0.22       # tight loopable outro after the last word (when quiet)
 _MIN_CUT = 0.15         # a shorter cut is a stutter, not an edit
 _MIN_KEEP = 0.2
 _MAX_SEGMENTS = 40
@@ -221,6 +224,9 @@ class Plan:
     # Where someone moved the captions to, as a fraction of the frame's
     # height (framing.caption_y), or None for the layout's own place.
     caption_y: Optional[float] = None
+    # Post-cut cold open window (a, b) merged into this final filtergraph pass.
+    cold_open: Optional[Span] = None
+    from_intermediate: bool = False
 
     def caption_height(self, opts: "Options") -> float:
         """Where the middle of the caption goes, as a fraction of the height."""
@@ -305,11 +311,21 @@ def plan_cuts(words: List[Dict], duration: float, track=None, kind: str = "other
         return track.peak(a, b) <= threshold
 
     cuts: List[Span] = []
-    first = float(words[0]["start"])
-    if first > _LEAD_KEEP + _MIN_CUT and quiet(-_EDGE, first):
+    # Trim leading silence + up to 2 leading verbal throat-clears ("um", "so...", "okay...")
+    # when followed by a pause so Frame 1 opens cleanly on real speech.
+    real_idx = 0
+    while real_idx < min(2, len(words) - 1):
+        nw = _norm(words[real_idx].get("word"))
+        gap_after = float(words[real_idx + 1]["start"]) - float(words[real_idx]["end"])
+        if nw in FILLERS or (nw in _LEAD_FILLERS and gap_after >= 0.18):
+            real_idx += 1
+        else:
+            break
+    first = float(words[real_idx]["start"])
+    if first > _LEAD_KEEP + 0.08 and (real_idx > 0 or quiet(-_EDGE, first)):
         cuts.append((0.0, first - _LEAD_KEEP))
 
-    for prev, nxt in zip(words, words[1:]):
+    for prev, nxt in zip(words[real_idx:], words[real_idx + 1:]):
         a, b = float(prev["end"]), float(nxt["start"])
         if b - a > gap_limit and quiet(a, b):
             cuts.append((a + pad, b - pad))
@@ -429,7 +445,8 @@ def _anchor(layout: str, cam_panel_fraction: float) -> Tuple[float, float]:
 
 
 def plan_punch_ins(words: List[Dict], duration: float, keeps: List[Span],
-                   layout: str) -> List[Tuple[float, float, float]]:
+                   layout: str,
+                   payoff_offset: Optional[float] = None) -> List[Tuple[float, float, float]]:
     """(start, end, zoom) windows on the new timeline."""
     from .signals import TRIGGER_PHRASES
 
@@ -438,6 +455,12 @@ def plan_punch_ins(words: List[Dict], duration: float, keeps: List[Span],
     norm = [_norm(w.get("word")) for w in words]
     loud = sorted(float(w.get("loud") or 0) for w in words)
     loud_bar = loud[int(len(loud) * 0.9)] if loud else 0.0
+
+    payoff_idx: Optional[int] = None
+    if payoff_offset is not None and 0.4 <= payoff_offset <= duration:
+        nearest = min(range(len(words)), key=lambda idx: abs(float(words[idx]["start"]) - payoff_offset))
+        if abs(float(words[nearest]["start"]) - payoff_offset) <= 1.5:
+            payoff_idx = nearest
 
     scored: List[Tuple[float, int]] = []
     for i, w in enumerate(words):
@@ -450,6 +473,8 @@ def plan_punch_ins(words: List[Dict], duration: float, keeps: List[Span],
             score = max(score, 0.6)
         if loud_bar > 0 and float(w.get("loud") or 0) >= loud_bar:
             score = max(score, 0.5)
+        if payoff_idx == i:
+            score = max(score, 0.85)
         if score:
             scored.append((score, i))
 
@@ -529,7 +554,9 @@ def plan_emoji(words: List[Dict], duration: float) -> List[Tuple[float, float, s
 
 def analyse(path: str, highlight: Dict, opts: Options,
             language: Optional[str] = None,
-            llm_fn: Optional[Callable[[str], str]] = None) -> Optional[Plan]:
+            llm_fn: Optional[Callable[[str], str]] = None,
+            initial_prompt: Optional[str] = None,
+            from_intermediate: bool = False) -> Optional[Plan]:
     """Listen to a rendered clip and decide its edit. None if there is none."""
     from . import words as words_mod
     from .hinglish import words_to_hinglish
@@ -545,7 +572,8 @@ def analyse(path: str, highlight: Dict, opts: Options,
 
     plan = Plan(path=path, duration=duration, width=width, height=height,
                 has_audio=has_audio, keeps=[(0.0, duration)],
-                caption_y=framing.caption_y(highlight.get("caption_y")))
+                caption_y=framing.caption_y(highlight.get("caption_y")),
+                from_intermediate=from_intermediate)
 
     given = highlight.get("heard_words")
     if not opts.needs_words:
@@ -553,9 +581,8 @@ def analyse(path: str, highlight: Dict, opts: Options,
     elif isinstance(given, list) and given:
         spoken = [dict(w) for w in given]
     else:
-        spoken = words_mod.transcribe_words(path, language) if has_audio else []
-    # Hindi comes back from Whisper in Devanagari; captions for it are read
-    # in Hinglish. Words saved by an older version are rewritten the same way.
+        spoken = (words_mod.transcribe_words(path, language, initial_prompt=initial_prompt)
+                  if has_audio else [])
     spoken = words_to_hinglish(spoken, llm_fn)
     plan.heard = [{"start": w["start"], "end": w["end"], "word": w["word"]} for w in spoken]
     fixed = highlight.get("caption_words")
@@ -575,34 +602,54 @@ def analyse(path: str, highlight: Dict, opts: Options,
             at = float(peak) - float(start)
             if 0 <= at <= duration:
                 protect = (at - _PROTECT_BEFORE_PEAK, at + _PROTECT_AFTER_PEAK)
-        # The length typed into the prompt, not the cut's target with the
-        # cold open's room taken off: the cold open is not always added, and
-        # when it is, a clip a little over the floor is no one's complaint.
         asked = highlight.get("duration_asked") or []
         floor = float(asked[0]) if asked else 0.0
         plan.keeps = plan_cuts(spoken, duration, track, opts.kind, protect, floor)
 
     plan.words = remap_words(spoken, plan.keeps) if plan.cut else spoken
     plan.caption_words = remap_words(shown, plan.keeps) if plan.cut else shown
+
+    src_start = highlight.get("start_time")
+    peak_val = highlight.get("hook_peak")
+    if peak_val is not None and src_start is not None:
+        at = float(peak_val) - float(src_start)
+        if 0 <= at <= duration:
+            plan.peak = remap(at, plan.keeps) if plan.cut else at
+
+    payoff_offset = None
+    payoff_val = highlight.get("payoff_time")
+    if payoff_val is not None and src_start is not None:
+        pat = float(payoff_val) - float(src_start)
+        if 0 <= pat <= duration:
+            payoff_offset = remap(pat, plan.keeps) if plan.cut else pat
+
+    new_duration = plan.new_duration
+    if opts.hook_replay and new_duration > 0:
+        from . import hook_open
+        anchor = payoff_offset if (opts.kind not in ("stream", "sports") and payoff_offset is not None) else plan.peak
+        if anchor is None:
+            anchor = payoff_offset if payoff_offset is not None else plan.peak
+        probe_h = dict(highlight)
+        if anchor is not None:
+            probe_h["_clip_anchor_offset"] = anchor
+        plan.cold_open = hook_open.choose_window(
+            probe_h, new_duration, words=plan.words, kind=opts.kind
+        )
+
     if opts.captions != captions.OFF or opts.title_on_screen:
         seo = highlight.get("seo") or {}
-        # The hook line rides with the captions; a title asked for by name is
-        # shown even with captions off.
         plan.hook = str(seo.get("hook_text") or "").strip() if opts.captions != captions.OFF else ""
         if opts.title_on_screen:
-            # Hashtags belong in the description, not burned into the picture.
             title = re.sub(r"\s+", " ", re.sub(r"#\w+", "", str(
                 seo.get("title") or highlight.get("title") or ""))).strip(" |-")
             if title:
                 plan.hook, plan.hook_is_title = title, True
-        peak, start = highlight.get("hook_peak"), highlight.get("start_time")
-        if peak is not None and start is not None:
-            at = float(peak) - float(start)
-            if 0 <= at <= duration:
-                plan.peak = remap(at, plan.keeps) if plan.cut else at
-    new_duration = plan.new_duration
+
     if opts.punch_ins and plan.words:
-        plan.zooms = plan_punch_ins(plan.words, new_duration, plan.keeps, opts.layout)
+        plan.zooms = plan_punch_ins(
+            plan.words, new_duration, plan.keeps, opts.layout,
+            payoff_offset=payoff_offset,
+        )
     if opts.emoji and plan.words:
         plan.emoji = plan_emoji(plan.words, new_duration)
     return plan
@@ -615,13 +662,14 @@ def _between(spans) -> str:
 
 
 def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
-                 fonts_dir: Optional[str], first_extra_input: int = 1
+                 fonts_dir: Optional[str], first_extra_input: int = 1,
+                 loudnorm_filter: Optional[str] = None
                  ) -> Tuple[str, List[List[str]], bool, str]:
     """The filtergraph for a plan: (graph, extra inputs, audio cut, video pad).
 
-    Extra inputs are argument lists ([-t, 3, -i, path]) in input order,
-    starting at input index `first_extra_input`. The graph is "" when the
-    plan changes nothing.
+    Merges jump-cuts, Lanczos punch-ins, B-roll, emoji, logo, ASS captions,
+    merged cold-open replay, and 2-pass linear EBU R128 loudness mastering into
+    one single FFmpeg encode.
     """
     W, H = plan.width, plan.height
     chains: List[str] = []
@@ -634,20 +682,21 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         return f"v{n}"
 
     cur = "0:v"
-    audio_cut = False
+    a_cur = "0:a"
+    audio_filtered = False
     if plan.cut:
         k = len(plan.keeps)
         if k > 1:
             chains.append(f"[0:v]split={k}" + "".join(f"[vs{i}]" for i in range(k)))
             if plan.has_audio:
-                chains.append(f"[0:a]asplit={k}" + "".join(f"[as{i}]" for i in range(k)))
+                chains.append(f"[{a_cur}]asplit={k}" + "".join(f"[as{i}]" for i in range(k)))
         seg = []
         for i, (a, b) in enumerate(plan.keeps):
             src_v = f"vs{i}" if k > 1 else "0:v"
             chains.append(f"[{src_v}]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[vt{i}]")
             seg.append(f"[vt{i}]")
             if plan.has_audio:
-                src_a = f"as{i}" if k > 1 else "0:a"
+                src_a = f"as{i}" if k > 1 else a_cur
                 fade = min(0.012, (b - a) / 4)
                 chains.append(
                     f"[{src_a}]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,"
@@ -656,19 +705,19 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
                 seg.append(f"[at{i}]")
         out = label()
         if plan.has_audio:
-            chains.append("".join(seg) + f"concat=n={k}:v=1:a=1[{out}][acut]")
-            audio_cut = True
+            a_out = label()
+            chains.append("".join(seg) + f"concat=n={k}:v=1:a=1[{out}][{a_out}]")
+            a_cur = a_out
+            audio_filtered = True
         else:
             chains.append("".join(seg) + f"concat=n={k}:v=1:a=0[{out}]")
         cur = out
 
-    # Punch-ins: one zoomed copy per zoom level, laid over the frame only
-    # while it is wanted. Crops are fixed-size, so nothing reconfigures mid-clip.
+    # Punch-ins: Lanczos zoom for razor-sharp faces & captions stay on top afterwards.
     ax, ay = _anchor(opts.layout, opts.cam_panel_fraction)
     levels: Dict[float, List[Span]] = {}
     for a, b, z in plan.zooms:
         levels.setdefault(z, []).append((a, b))
-    # The smaller zoom first, so an emphasis punch lands on top of it.
     for z in sorted(levels):
         zw = int(-(-W * z // 2) * 2)
         zh = int(-(-H * z // 2) * 2)
@@ -677,7 +726,7 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         base, zoom, out = label(), label(), label()
         chains.append(f"[{cur}]split=2[{base}][{zoom}]")
         zoomed = label()
-        chains.append(f"[{zoom}]scale={zw}:{zh},crop={W}:{H}:{x}:{y}[{zoomed}]")
+        chains.append(f"[{zoom}]scale={zw}:{zh}:flags=lanczos,crop={W}:{H}:{x}:{y}[{zoomed}]")
         chains.append(f"[{base}][{zoomed}]overlay=0:0:enable='{_between(levels[z])}'[{out}]")
         cur = out
 
@@ -702,7 +751,6 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         size = int(min(W, H) * 0.15) // 2 * 2
         y_cap = plan.caption_height(opts)
         if opts.layout == "stacked":
-            # Beside the caption on the gameplay side, never over the face.
             ex, ey = int(W * 0.78 - size / 2), int(H * y_cap + H * 0.05)
         else:
             ex, ey = int(W / 2 - size / 2), int(H * y_cap - H * 0.08 - size)
@@ -710,8 +758,6 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         bounce = int(H * 0.035)
         total = plan.new_duration
         for at, secs, name in plan.emoji:
-            # Only as long as it is on screen: a looped still is decoded
-            # frame by frame for as long as its input lasts.
             inputs.append(["-loop", "1", "-framerate", "30",
                            "-t", f"{min(total, at + secs + 0.1):.3f}",
                            "-i", str((folder / f"{name}.png").resolve())])
@@ -727,14 +773,11 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
             idx += 1
 
     if opts.logo and os.path.exists(opts.logo):
-        # Under the captions, over everything else, in the corner asked for.
-        # Scaled to a box so a wide wordmark and a square icon both fit.
         box = int(min(W, H) * brand_size()) // 2 * 2
         margin = int(min(W, H) * 0.04)
         right = opts.logo_corner.endswith("right")
         bottom = opts.logo_corner.startswith("bottom")
         x = f"W-w-{margin}" if right else str(margin)
-        # Bottom corners sit above the band every app covers with its own UI.
         y = f"H-h-{int(H * 0.2)}" if bottom else str(margin)
         inputs.append(["-loop", "1", "-framerate", "30",
                        "-t", f"{plan.new_duration:.3f}",
@@ -753,9 +796,45 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         chains.append(f"[{cur}]{opt}[{out}]")
         cur = out
 
-    if cur == "0:v":
-        return "", inputs, audio_cut, cur
-    return ";".join(chains), inputs, audio_cut, cur
+    # Merged Cold Open: slices the edited stream (with captions + hook banner intact)
+    # and prepends it cleanly in this same encode pass.
+    if plan.cold_open is not None:
+        from . import hook_open
+        ca, cb = plan.cold_open
+        out_at = max(0.0, (cb - ca) - hook_open.FLASH_OUT)
+        flash_out = f"fade=t=out:st={out_at:.3f}:d={hook_open.FLASH_OUT:.3f}:color={hook_open.FLASH_COLOUR}"
+        flash_in = f"fade=t=in:st=0:d={hook_open.FLASH_IN:.3f}:color={hook_open.FLASH_COLOUR}"
+        va, vb, vh, vm, vco = label(), label(), label(), label(), label()
+        chains.append(f"[{cur}]split=2[{va}][{vb}]")
+        chains.append(f"[{va}]trim=start={ca:.3f}:end={cb:.3f},setpts=PTS-STARTPTS,{flash_out}[{vh}]")
+        chains.append(f"[{vb}]setpts=PTS-STARTPTS,{flash_in}[{vm}]")
+        if plan.has_audio:
+            aa, ab, ah, am, aco = label(), label(), label(), label(), label()
+            chains.append(f"[{a_cur}]asplit=2[{aa}][{ab}]")
+            chains.append(
+                f"[{aa}]atrim=start={ca:.3f}:end={cb:.3f},asetpts=PTS-STARTPTS,"
+                f"afade=t=out:st={out_at:.3f}:d={hook_open.FLASH_OUT:.3f}[{ah}]"
+            )
+            chains.append(
+                f"[{ab}]asetpts=PTS-STARTPTS,afade=t=in:st=0:d={hook_open.FLASH_IN:.3f}[{am}]"
+            )
+            chains.append(f"[{vh}][{ah}][{vm}][{am}]concat=n=2:v=1:a=1[{vco}][{aco}]")
+            a_cur = aco
+            audio_filtered = True
+        else:
+            chains.append(f"[{vh}][{vm}]concat=n=2:v=1:a=0[{vco}]")
+        cur = vco
+
+    # Final audio mastering: always output as [acut] when any audio filter applies.
+    if plan.has_audio and loudnorm_filter:
+        chains.append(f"[{a_cur}]{loudnorm_filter}[acut]")
+        audio_filtered = True
+    elif plan.has_audio and audio_filtered:
+        chains.append(f"[{a_cur}]anull[acut]")
+
+    if cur == "0:v" and not audio_filtered:
+        return "", inputs, False, cur
+    return ";".join(chains), inputs, audio_filtered, cur
 
 
 def brand_size() -> float:
@@ -772,8 +851,8 @@ def hook_windows(plan: Plan, opts: Options) -> List[Tuple[float, float]]:
     """When the hook line is on screen, in this clip's seconds.
 
     Always the opening. And when a cold open will be put on the front
-    afterwards, also the slice it will replay -- hook_open's own window --
-    so the line is up in the viewer's first second, not two seconds in.
+    afterwards (either merged in build_filter or via hook_open), also the
+    slice it replays -- so the hook banner appears immediately in frame 0.
     """
     if not plan.hook:
         return []
@@ -784,7 +863,11 @@ def hook_windows(plan: Plan, opts: Options) -> List[Tuple[float, float]]:
         # Up the whole time, so a cold open's replayed slice carries it too.
         return [(0.0, length)]
     windows = [(0.0, min(captions.HOOK_SECONDS, length))]
-    if opts.hook_replay and plan.peak is not None and plan.peak >= hook_open.ALREADY_UP_FRONT:
+    if plan.cold_open is not None:
+        ca, cb = plan.cold_open
+        if cb - ca >= 0.8 and ca > windows[0][1]:
+            windows.append((ca, cb))
+    elif opts.hook_replay and plan.peak is not None and plan.peak >= hook_open.ALREADY_UP_FRONT:
         a = max(0.0, plan.peak - hook_open.REPLAY_LEAD)
         b = min(length, a + hook_open.REPLAY_SECONDS)
         if b - a >= 0.8 and a > windows[0][1]:
@@ -822,17 +905,24 @@ def render(plan: Plan, opts: Options) -> Dict:
                 if captions.copy_font(style, Path(work) / "fonts", opts.caption_font):
                     fonts = "fonts"
 
-        graph, extra, audio_cut, video = build_filter(plan, opts, ass_name, fonts)
+        src = os.path.abspath(plan.path)
+        loudnorm_filter: Optional[str] = None
+        if plan.has_audio and (plan.from_intermediate or plan.cut or plan.cold_open is not None):
+            from .render import measure_loudnorm_filter
+            loudnorm_filter = measure_loudnorm_filter(src)
+
+        graph, extra, audio_cut, video = build_filter(
+            plan, opts, ass_name, fonts, loudnorm_filter=loudnorm_filter
+        )
         if not graph:
             return {}
 
         # ffmpeg runs inside the work folder, so every path it is handed
         # has to stand on its own.
-        src = os.path.abspath(plan.path)
         root, ext = os.path.splitext(src)
         tmp = f"{root}.edit{ext or '.mp4'}"
         if plan.has_audio and audio_cut:
-            audio = ["-map", "[acut]", "-c:a", "aac", "-b:a", "160k"]
+            audio = ["-map", "[acut]", "-c:a", "aac", "-b:a", "192k"]
         elif plan.has_audio:
             audio = ["-map", "0:a:0", "-c:a", "copy"]
         else:
@@ -846,7 +936,7 @@ def render(plan: Plan, opts: Options) -> Dict:
                           "-movflags", "+faststart", tmp]
 
         try:
-            accel.run_encode(build, what="ffmpeg (captions and edit)", crf=20, cwd=work)
+            accel.run_encode(build, what="ffmpeg (captions and edit)", crf=19, cwd=work)
             os.replace(tmp, src)
         finally:
             if os.path.exists(tmp):
@@ -868,18 +958,23 @@ def render(plan: Plan, opts: Options) -> Dict:
         "emoji": [name for _, _, name in plan.emoji],
         "broll": [b["query"] for b in plan.broll],
         "keeps": [[a, b] for a, b in plan.keeps] if plan.cut else None,
+        "cold_open": ([round(plan.cold_open[0], 3), round(plan.cold_open[1], 3)]
+                      if plan.cold_open else None),
         "logo": bool(opts.logo),
     }
 
 
 def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
-           llm_fn: Optional[Callable[[str], str]] = None) -> None:
+           llm_fn: Optional[Callable[[str], str]] = None,
+           initial_prompt: Optional[str] = None,
+           from_intermediate: bool = False) -> None:
     """Edit every rendered clip in `results`, in place.
 
-    Sets `edit` on each result it touched (what was done) and moves
-    `hook_peak_offset` onto the new timeline, so the cold open that is added
-    afterwards still opens on the right moment. A clip that cannot be edited
-    keeps its plain render and says why in the log.
+    Sets `edit` on each result it touched (what was done), marks
+    `_hook_applied_in_edit` when the cold open was merged in the same pass,
+    and moves `hook_peak_offset` onto the new timeline as a fallback when a
+    cold open runs afterwards. A clip that cannot be edited keeps its plain
+    render and says why in the log.
     """
     if not opts.anything:
         return
@@ -895,7 +990,11 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
         for i, r in enumerate(todo, 1):
             print(f"[edit] {i}/{steps}: listening to "
                   f"{os.path.basename(r['clip_url'])}", flush=True)
-            plan = analyse(r["clip_url"], r, opts, language, llm_fn)
+            plan = analyse(
+                r["clip_url"], r, opts, language, llm_fn,
+                initial_prompt=initial_prompt,
+                from_intermediate=from_intermediate,
+            )
             if plan is not None:
                 plans.append((r, plan))
     finally:
@@ -906,23 +1005,38 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
     if opts.broll and llm_fn is not None and plans:
         _plan_broll(plans, llm_fn)
 
-    for i, (r, plan) in enumerate(plans, 1):
-        name = os.path.basename(plan.path)
+    def _run_one(item: Tuple[int, Tuple[Dict, Plan]]) -> Tuple[Dict, Plan, Optional[Dict]]:
+        idx, (res, pl) = item
+        name = os.path.basename(pl.path)
+        print(f"[edit] {len(todo) + idx}/{steps}: editing {name}", flush=True)
         try:
-            print(f"[edit] {len(todo) + i}/{steps}: editing {name}", flush=True)
-            info = render(plan, opts)
+            return res, pl, render(pl, opts)
         except Exception as e:  # noqa: BLE001 - a plain clip beats no clip
             first = (str(e).strip().splitlines() or [e.__class__.__name__])[-1][:200]
             print(f"[edit] could not edit {name} ({first}) - keeping the plain cut",
                   flush=True)
-            continue
+            return res, pl, None
+
+    if len(plans) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            rendered = list(pool.map(_run_one, enumerate(plans, 1)))
+    else:
+        rendered = [_run_one(item) for item in enumerate(plans, 1)]
+
+    for r, plan, info in rendered:
         if not info:
             continue
+        name = os.path.basename(plan.path)
         r["edit"] = info
         # Kept with the clip, so its captions can be corrected later and
         # burned again without listening to it a second time.
         if plan.heard:
             r["heard_words"] = plan.heard
+        if info.get("cold_open"):
+            ca, cb = info["cold_open"]
+            r["hook_replay_seconds"] = round(float(cb) - float(ca), 2)
+            r["_hook_applied_in_edit"] = True
         bits = []
         if info["captions"] != captions.OFF:
             bits.append(f"{info['captions']} captions")
@@ -936,6 +1050,8 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
             bits.append("emoji " + " ".join(info["emoji"]))
         if info["broll"]:
             bits.append("B-roll: " + ", ".join(info["broll"]))
+        if info.get("cold_open"):
+            bits.append("cold open")
         if info["logo"]:
             bits.append("logo")
         print(f"[edit] {name}: " + ("; ".join(bits) or "nothing to change"), flush=True)

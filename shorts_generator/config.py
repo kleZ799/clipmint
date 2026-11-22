@@ -165,6 +165,26 @@ def current_model(provider: str) -> str:
     return user_config.get("GEMINI_MODEL", GEMINI_MODEL)
 
 
+def current_whisper_model(device: str = "auto") -> str:
+    """Whisper model to run locally: user/env choice, else GPU-aware default.
+
+    Defaults to `distil-large-v3` on CUDA (fast + accurate English/general)
+    and `small` on CPU-only runs.
+    """
+    from . import user_config
+    configured = user_config.get("LOCAL_WHISPER_MODEL", "")
+    if configured and configured.lower() != "auto":
+        return configured
+    if device == "auto":
+        try:
+            from . import accel
+            from .local.transcriber import _register_cuda_dlls
+            device, _ = accel.whisper_device(_register_cuda_dlls)
+        except Exception:
+            device = "cpu"
+    return "distil-large-v3" if device == "cuda" else "small"
+
+
 def ollama_host() -> str:
     """Where the Ollama server is, as a URL the client can call.
 

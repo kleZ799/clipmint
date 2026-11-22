@@ -97,35 +97,42 @@ def find_hook_segment(segments: Sequence[Dict], first_line: str,
     """Index of the segment the clip's opening line was actually spoken in.
 
     Matched on words rather than on the timestamp, because the line is the
-    part of the model's answer that is reliable. Scored by how much of the
-    line a segment carries, with distance from the proposed start as the
-    tie-breaker, so a stock phrase said twice in a stream resolves to the one
-    the model meant.
+    part of the model's answer that is reliable. Supports:
+    - 1-2 word punchy viral exclamations ("NO WAY!", "WAIT WHAT?!") within
+      +-6.0s of `near`
+    - 3+ word hooks across either a single segment or two consecutive segments
+      when Whisper split the sentence across a brief breath pause.
     """
     wanted = _tokens(first_line)
     if not wanted or not segments:
         return None
 
-    # Only a stock phrase is this short; matching on it would be a coin flip.
-    if len(wanted) < 3:
-        return None
+    short = len(wanted) < 3
+    search_win = 6.0 if short else window
+    min_overlap = 1.0 if short else 0.6
 
     best, best_score = None, 0.0
     for i, seg in enumerate(segments):
-        if abs(seg["start"] - near) > window:
+        if abs(seg["start"] - near) > search_win:
             continue
-        have = set(_tokens(seg["text"]))
-        if not have:
-            continue
-        overlap = sum(1 for w in wanted if w in have) / len(wanted)
-        if overlap < 0.6:
-            continue
-        # Closeness only breaks ties — a strong word match twenty seconds away
-        # still beats a weak one right next door.
-        closeness = 1.0 - min(1.0, abs(seg["start"] - near) / window)
-        score = overlap + 0.15 * closeness
-        if score > best_score:
-            best, best_score = i, score
+        have_one = set(_tokens(seg["text"]))
+        closeness = 1.0 - min(1.0, abs(seg["start"] - near) / search_win)
+
+        if have_one:
+            overlap = sum(1 for w in wanted if w in have_one) / len(wanted)
+            if overlap >= min_overlap:
+                score = overlap + 0.15 * closeness + 0.02
+                if score > best_score:
+                    best, best_score = i, score
+
+        # 2-segment sliding window for multi-word hooks split across two cues
+        if not short and i + 1 < len(segments) and segments[i + 1]["start"] - seg["end"] <= 1.2:
+            have_two = have_one | set(_tokens(segments[i + 1]["text"]))
+            overlap2 = sum(1 for w in wanted if w in have_two) / len(wanted)
+            if overlap2 >= 0.7:
+                score2 = overlap2 + 0.15 * closeness
+                if score2 > best_score:
+                    best, best_score = i, score2
     return best
 
 

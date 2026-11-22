@@ -488,12 +488,13 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
             )
 
     # The hook line: the preset's face, sentence case, on a dark box across
-    # the top. Its own layer, so it never trades places with a caption.
+    # the top mobile safe zone. Its own layer, so it never trades places with a caption.
     hook_size = max(12, int(round(base * 0.06)))
     for a, b in windows:
         events.append(
             f"Dialogue: 1,{_ass_time(a)},{_ass_time(b)},Hook,,0,0,0,,"
-            f"{{\\fad(80,200)}}{hook}"
+            f"{{\\fscx92\\fscy92\\t(0,110,\\fscx103\\fscy103)\\t(110,180,\\fscx100\\fscy100)"
+            f"\\fad(70,180)}}{hook}"
         )
 
     if not events:
@@ -519,7 +520,7 @@ def build_ass(words: List[Dict], style: str, width: int, height: int,
         f"Style: Hook,{preset['font']},{hook_size},{_ass_colour('FFFFFF')},"
         f"{_ass_colour('FFFFFF')},{_ass_colour('141414', 0x30)},{_ass_colour('141414', 0x30)},"
         f"0,0,0,0,100,100,0,0,3,{round(hook_size * 0.32, 1)},0,8,{margin},{margin},"
-        f"{int(round(height * 0.06))},1\n"
+        f"{int(round(height * 0.115))},1\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"

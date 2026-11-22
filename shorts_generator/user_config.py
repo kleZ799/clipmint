@@ -273,4 +273,13 @@ def has_llm_key() -> bool:
              "anthropic": "ANTHROPIC_API_KEY",
              # Ollama has no key. Choosing a model is what sets it up.
              "ollama": "OLLAMA_MODEL"}
-    return bool(get(names.get(provider, "GEMINI_API_KEY")))
+    if get(names.get(provider, "GEMINI_API_KEY")):
+        return True
+    if provider == "openai" and get("OPENAI_BASE_URL"):
+        return True
+    if get("AI_POOL_ENABLED") == "1":
+        return any(get(k) for k in (
+            "GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY",
+            "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "OLLAMA_MODEL",
+        ))
+    return False

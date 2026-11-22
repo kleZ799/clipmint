@@ -40,16 +40,9 @@ REPLAY_LEAD = 0.8
 # with the sound faded across it. A hard cut back to the start is what made
 # the cold open look like a glitch. A flash is the editing shorthand for
 # "jump back in time", so the replay reads as a preview put there on purpose.
-FLASH_OUT = 0.12
-FLASH_IN = 0.2
+FLASH_OUT = 0.08
+FLASH_IN = 0.12
 FLASH_COLOUR = "white"
-# If the peak is already inside this many seconds of the start, the clip opens
-# on it as it is and no replay is added. It was 3s: a peak at 3-6s replayed
-# seconds the viewer then watched again a moment later, and a tester on a
-# gaming clip read that as "it clips the same part in the beginning". At 6s
-# the replayed slice starts no earlier than 5.2s into the clip, so it comes
-# round again more than 7 seconds after it was first shown -- a preview, not
-# a stutter.
 ALREADY_UP_FRONT = 6.0
 
 
@@ -70,22 +63,66 @@ def _has_audio(path: str) -> bool:
     return bool((out or "").strip())
 
 
-def _window(highlight: Dict, clip_length: float) -> Optional[tuple]:
-    """Which slice of the rendered clip to replay, in clip-relative seconds."""
-    peak = highlight.get("hook_peak")
+def _anchor_offset(highlight: Dict, clip_length: float, kind: str = "other") -> Optional[float]:
+    """Best cold-open anchor inside the clip in clip-relative seconds."""
     start = highlight.get("start_time")
-    if peak is None or start is None:
-        return None                     # no audio envelope — nothing to point at
+    if start is None:
+        return None
+    s = float(start)
+    prefer_payoff = (kind or "other").lower() not in ("stream", "sports")
+    order = ("payoff_time", "hook_peak") if prefer_payoff else ("hook_peak", "payoff_time")
+    # Also honour an already-remapped clip offset when passed directly
+    if highlight.get("_clip_anchor_offset") is not None:
+        return float(highlight["_clip_anchor_offset"])
+    for key in order:
+        val = highlight.get(key)
+        if val is None:
+            continue
+        try:
+            off = float(val) - s
+        except (TypeError, ValueError):
+            continue
+        if 0.0 < off <= clip_length:
+            return off
+    return None
 
-    offset = float(peak) - float(start)
-    if offset < ALREADY_UP_FRONT:
-        return None                     # the hook is the opening already
 
+def _snap_to_words(a: float, b: float, words: Optional[list], clip_length: float) -> tuple:
+    """Snap [a, b] onto real word boundaries so the cold open never cuts mid-word."""
+    if not words:
+        return a, b
+    starts = [float(w["start"]) for w in words if float(w["end"]) > float(w["start"])]
+    ends = [float(w["end"]) for w in words if float(w["end"]) > float(w["start"])]
+    if starts:
+        near_starts = [ws for ws in starts if abs(ws - a) <= 0.65]
+        if near_starts:
+            a = max(0.0, min(near_starts, key=lambda ws: abs(ws - a)) - 0.04)
+    if ends:
+        target_b = a + REPLAY_SECONDS
+        valid_ends = [we for we in ends if a + 1.3 <= we <= min(clip_length, a + 2.9)]
+        if valid_ends:
+            b = min(valid_ends, key=lambda we: abs(we - target_b)) + 0.04
+            b = min(clip_length, b)
+    return round(a, 3), round(b, 3)
+
+
+def choose_window(highlight: Dict, clip_length: float,
+                  words: Optional[list] = None, kind: str = "other") -> Optional[tuple]:
+    """Meaning-aware, word-snapped cold-open slice in clip-relative seconds."""
+    offset = _anchor_offset(highlight, clip_length, kind=kind)
+    if offset is None or offset < ALREADY_UP_FRONT:
+        return None
     a = max(0.0, offset - REPLAY_LEAD)
     b = min(clip_length, a + REPLAY_SECONDS)
+    a, b = _snap_to_words(a, b, words, clip_length)
     if b - a < 0.8:
-        return None                     # too close to the end to be worth it
+        return None
     return a, b
+
+
+def _window(highlight: Dict, clip_length: float) -> Optional[tuple]:
+    """Which slice of the rendered clip to replay, in clip-relative seconds."""
+    return choose_window(highlight, clip_length)
 
 
 def _duration(path: str) -> float:
@@ -132,7 +169,7 @@ def apply(clip_path: str, highlight: Dict) -> Optional[float]:
             f"[ab]asetpts=PTS-STARTPTS,afade=t=in:st=0:d={FLASH_IN:.3f}[a1];"
             f"[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
         )
-        maps = ["-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "160k"]
+        maps = ["-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
     else:
         filt = (
             f"[0:v]split=2[va][vb];"
@@ -148,7 +185,7 @@ def apply(clip_path: str, highlight: Dict) -> Optional[float]:
                 "-movflags", "+faststart", tmp]
 
     try:
-        accel.run_encode(build, what="ffmpeg (cold open)", crf=23)
+        accel.run_encode(build, what="ffmpeg (cold open)", crf=19)
         os.replace(tmp, clip_path)
     except Exception as e:
         print(f"[hook] could not add the cold open ({e}) — keeping the plain cut",

@@ -27,6 +27,7 @@ A hard cut in the source (the camera switching to the other podcast host) is
 kept as a cut rather than swept across as a pan, which is what an editor would
 do too.
 """
+from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import tempfile
@@ -36,7 +37,7 @@ from typing import Dict, List, Optional, Tuple
 from .. import accel, framing, proc
 from ..config import LOCAL_OUTPUT_DIR, LOCAL_OUTPUT_RESOLUTION
 from ..faces import detect_with_mouths as face_detect
-from ..render import LOUDNESS_FILTER
+from ..render import measure_loudnorm_filter
 from . import speaker
 
 # How often faces are looked for. The plan is interpolated between samples,
@@ -118,12 +119,18 @@ def _crop_size(src_w: int, src_h: int, target_ratio: float) -> Tuple[int, int]:
     return max(2, crop_w - (crop_w % 2)), max(2, crop_h - (crop_h % 2))
 
 
-def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, float, float]]],
-                                    float, int, int, int]:
-    """Sample the clip and follow one face through it.
+class _SeekUnsupported(RuntimeError):
+    pass
 
-    Returns (sample times, one (cx, cy, width) or None per sample, fps,
-    frame count, width, height), all in source pixels.
+
+def track_faces(path: str, start: float = 0.0,
+                end: Optional[float] = None) -> Tuple[List[float], List[Optional[Tuple[float, float, float]]],
+                                                      float, int, int, int]:
+    """Sample the clip (or `[start, end]` span in-place) and follow one face.
+
+    Seeking directly in OpenCV avoids a separate intermediate ffmpeg cut encode
+    pass before reframing. Raises `_SeekUnsupported` if the container cannot seek
+    accurately so the caller can fall back cleanly.
     """
     import cv2  # type: ignore
 
@@ -136,6 +143,9 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
     step = max(1, int(round(fps / DETECT_PER_SECOND)))
     scale = DETECT_WIDTH / src_w if src_w > DETECT_WIDTH else 1.0
 
+    if start > 0.0:
+        cap.set(cv2.CAP_PROP_POS_MSEC, start * 1000.0)
+
     times: List[float] = []
     track: List[Optional[Tuple[float, float, float]]] = []
     seen: List[List[speaker.Sighting]] = []
@@ -143,14 +153,19 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
     pending: List[Tuple[float, float, float]] = []
     far = 0.25 * src_w
     index = 0
-    # The frame just before each sample. A mouth is measured across that one
-    # frame gap, where the jaw has moved and the head has barely started to:
-    # see local/speaker.py. It is already decoded by grab(); keeping it costs
-    # a colour conversion.
     before = None
+    checked_seek = False
     try:
         while True:
             if not cap.grab():
+                break
+            pos_s = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0.0) / 1000.0
+            if not checked_seek:
+                checked_seek = True
+                if start > 4.0 and (abs(pos_s - start) > 4.0 or pos_s <= 0.0):
+                    raise _SeekUnsupported(f"seek landed at {pos_s:.1f}s instead of {start:.1f}s")
+            cur_t = pos_s if start > 0.0 and pos_s > 0.0 else (start + index / fps)
+            if end is not None and cur_t > end + 0.02:
                 break
             if index % step:
                 if index % step == step - 1:
@@ -159,24 +174,20 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
                 index += 1
                 continue
             ok, frame = cap.retrieve()
+            rel_t = max(0.0, cur_t - start)
             index += 1
             if not ok:
                 break
-            # This pass runs in-process, where Pause cannot suspend it the way
-            # it suspends ffmpeg; holding here between frames is how it stops.
             proc.wait_if_paused()
             small = (cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
                      if scale < 1.0 else frame)
             found = face_detect(small, min_fraction=0.04)
             faces = [(cx / scale, cy / scale, fw / scale) for (cx, cy, fw, _), _ in found]
-            times.append((index - 1) / fps)
-            # Every face, with the pixels around its mouth, for choosing
-            # between people once the whole clip has been seen.
+            times.append(rel_t)
             seen.append([
                 speaker.sighting(frame, before, cx, cy, fw,
                                  (mouth[0] / scale, mouth[1] / scale) if mouth else None)
                 for (cx, cy, fw), (_, mouth) in zip(faces, found)])
-            # With a step of one, the previous sample is the frame before.
             before = frame if step == 1 else None
 
             if not faces:
@@ -187,9 +198,6 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
                 track.append(last)
                 continue
 
-            # Stay on the person already being followed. A face somewhere else
-            # has to hold for a few samples before the window goes to it, so
-            # a poster on the wall or a face in a game does not steal the shot.
             near = min(faces, key=lambda f: abs(f[0] - last[0]) + abs(f[1] - last[1]))
             if abs(near[0] - last[0]) + abs(near[1] - last[1]) <= far:
                 last, pending = near, []
@@ -205,15 +213,17 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
             else:
                 track.append(None)
     finally:
-        frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or index
+        raw_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         cap.release()
 
-    # Two people in the frame together: follow whoever is talking, not the
-    # biggest face. With one person, or people only ever shown one at a time,
-    # this declines and the single-face track above stands.
+    if end is not None:
+        frames = max(1, int(round(max(0.1, end - start) * fps)))
+    else:
+        frames = max(raw_frames, index)
+
     try:
         chosen = speaker.follow_speaker(seen, fps / step, src_w)
-    except Exception as e:  # noqa: BLE001 - a choice of person must never sink a render
+    except Exception as e:  # noqa: BLE001
         print(f"[clip/local] could not tell who was talking ({e}) - "
               f"following the main face", flush=True)
         chosen = None
@@ -222,7 +232,7 @@ def track_faces(path: str) -> Tuple[List[float], List[Optional[Tuple[float, floa
         print(f"[clip/local] {info['people']} people in shot together for "
               f"{info['together']:.0%} of the clip - following whoever is talking, "
               f"{info['shots']} shot(s)", flush=True)
-    return times, track, fps, max(frames, index), src_w, src_h
+    return times, track, fps, frames, src_w, src_h
 
 
 def _gaussian(values, sigma: float):
@@ -347,13 +357,11 @@ def _write_commands(plan: List[Tuple[int, int]], fps: float, out: str) -> None:
 
 def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
                       target_resolution: Optional[str] = None,
-                      frame: Optional[Dict] = None) -> Dict:
-    """Crop the cut clip to the target aspect ratio, following the face.
-
-    `frame` is a position someone chose by hand (framing.normalise): then
-    nothing is tracked and the window stays exactly where they put it.
-    Returns what framing.summary keeps on the clip.
-    """
+                      frame: Optional[Dict] = None,
+                      start: Optional[float] = None,
+                      end: Optional[float] = None,
+                      is_intermediate: bool = False) -> Dict:
+    """Crop `[start, end]` (or the whole file) to the target aspect ratio, following the face."""
     try:
         import cv2  # type: ignore  # noqa: F401
         import numpy  # type: ignore  # noqa: F401
@@ -364,6 +372,9 @@ def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
         ) from e
 
     frame = framing.normalise(frame)
+    s_time = float(start or 0.0)
+    dur = max(0.1, float(end) - s_time) if end is not None else None
+
     if frame:
         cap = cv2.VideoCapture(in_path)
         src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -377,7 +388,7 @@ def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
         print(f"[clip/local] framed by hand at {fixed[0]},{fixed[1]} - "
               f"not following faces", flush=True)
     else:
-        times, track, fps, frames, src_w, src_h = track_faces(in_path)
+        times, track, fps, frames, src_w, src_h = track_faces(in_path, start=s_time, end=end)
         crop_w, crop_h = _crop_size(src_w, src_h, _ratio(aspect_ratio))
         plan = plan_path(times, track, fps, frames, src_w, src_h, crop_w, crop_h)
         seen = sum(1 for t in track if t is not None)
@@ -389,7 +400,6 @@ def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
     scale = ""
     if resolution:
         w, h = resolution.split("x")
-        # lanczos preserves detail on the upscale from the native crop size
         scale = f",scale={int(w)}:{int(h)}:flags=lanczos"
 
     x0, y0 = plan[0] if plan else ((src_w - crop_w) // 2, (src_h - crop_h) // 2)
@@ -399,17 +409,26 @@ def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
         _write_commands(plan, fps, cmds)
         graph = (f"[0:v]sendcmd=f='{_filter_path(cmds)}',"
                  f"crop@fx=w={crop_w}:h={crop_h}:x={x0}:y={y0}{scale},setsar=1[v]")
+        in_args = (
+            ["-ss", f"{s_time:.3f}", "-i", in_path, "-t", f"{dur:.3f}"]
+            if end is not None and dur is not None else ["-i", in_path]
+        )
+        if is_intermediate:
+            audio_args = ["-c:a", "aac", "-b:a", "256k"]
+        else:
+            af = measure_loudnorm_filter(in_path, start=s_time if end is not None else None, duration=dur)
+            audio_args = ["-af", af, "-c:a", "aac", "-b:a", "192k"]
+
         accel.run_encode(lambda enc: [
             "ffmpeg", "-y", "-loglevel", "error",
-            "-i", in_path,
+            *in_args,
             "-filter_complex", graph,
             "-map", "[v]", "-map", "0:a:0?",
-            "-af", LOUDNESS_FILTER,
             *enc,
-            "-c:a", "aac", "-b:a", "160k",
+            *audio_args,
             "-movflags", "+faststart",
             out_path,
-        ], what="ffmpeg (face-tracked reframe)", crf=20)
+        ], what="ffmpeg (face-tracked reframe)", crf=19, intermediate=is_intermediate)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -418,8 +437,6 @@ def _reframe_vertical(in_path: str, out_path: str, aspect_ratio: str,
         info.update(manual=True, x=framing.fraction(plan[0][0], src_w, crop_w),
                     y=framing.fraction(plan[0][1], src_h, crop_h))
     elif plan and all(p == plan[0] for p in plan):
-        # A window that never moved has a place worth showing in the editor;
-        # one that followed someone around does not have just one.
         info.update(x=framing.fraction(plan[0][0], src_w, crop_w),
                     y=framing.fraction(plan[0][1], src_h, crop_h))
     return info
@@ -433,15 +450,27 @@ def crop_clip_local(
     out_path: str,
     target_resolution: Optional[str] = None,
     frame: Optional[Dict] = None,
+    is_intermediate: bool = False,
 ) -> Dict:
-    """Cut + reframe one highlight into `out_path`; returns how it was framed."""
-    cut_path = out_path + ".cut.mp4"
+    """Reframe one highlight into `out_path` in a single pass when possible."""
     try:
-        _cut_subclip(source_path, start_time, end_time, cut_path)
-        return _reframe_vertical(cut_path, out_path, aspect_ratio,
-                                 target_resolution=target_resolution, frame=frame)
-    finally:
-        _safe_remove(cut_path)
+        return _reframe_vertical(
+            source_path, out_path, aspect_ratio,
+            target_resolution=target_resolution, frame=frame,
+            start=start_time, end=end_time, is_intermediate=is_intermediate,
+        )
+    except _SeekUnsupported as e:
+        print(f"[clip/local] direct seek fallback ({e})", flush=True)
+        cut_path = out_path + ".cut.mp4"
+        try:
+            _cut_subclip(source_path, start_time, end_time, cut_path)
+            return _reframe_vertical(
+                cut_path, out_path, aspect_ratio,
+                target_resolution=target_resolution, frame=frame,
+                is_intermediate=is_intermediate,
+            )
+        finally:
+            _safe_remove(cut_path)
 
 
 def crop_highlights_local(
@@ -451,11 +480,13 @@ def crop_highlights_local(
     out_dir: Optional[str] = None,
     target_resolution: Optional[str] = None,
     name_prefix: str = "short",
+    is_intermediate: bool = False,
 ) -> List[Dict]:
     out_dir = out_dir or LOCAL_OUTPUT_DIR
     os.makedirs(out_dir, exist_ok=True)
-    results: List[Dict] = []
-    for i, h in enumerate(highlights, 1):
+
+    def _one(item):
+        i, h = item
         out_path = os.path.join(out_dir, f"{name_prefix}_{i:02d}.mp4")
         print(f"[clip/local] {i}/{len(highlights)}: {h.get('title', '(untitled)')}", flush=True)
         try:
@@ -467,9 +498,15 @@ def crop_highlights_local(
                 out_path,
                 target_resolution=target_resolution,
                 frame=h.get("frame"),
+                is_intermediate=is_intermediate,
             )
-            results.append({**h, "clip_url": out_path, "layout": info})
+            return {**h, "clip_url": out_path, "layout": info}
         except Exception as e:
             print(f"[clip/local] {i} failed: {e}", flush=True)
-            results.append({**h, "clip_url": None, "error": str(e)})
-    return results
+            return {**h, "clip_url": None, "error": str(e)}
+
+    indexed = list(enumerate(highlights, 1))
+    if len(indexed) > 1:
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="facetrack") as pool:
+            return list(pool.map(_one, indexed))
+    return [_one(indexed[0])] if indexed else []

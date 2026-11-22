@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 import sys
 
 from .. import proc, user_config
-from ..config import LOCAL_OUTPUT_DIR, LOCAL_WHISPER_DEVICE, LOCAL_WHISPER_MODEL
+from ..config import LOCAL_OUTPUT_DIR, current_whisper_model
 
 
 def _register_cuda_dlls() -> None:
@@ -61,6 +61,15 @@ def _register_cuda_dlls() -> None:
             roots.append(Path(p))
     for p in glob.glob(r"C:\Python*\Lib\site-packages\nvidia"):
         roots.append(Path(p))
+    # Also check an active virtualenv or the project's venv when running a
+    # frozen dist\ClipMint.exe from the repo on this machine.
+    venv_env = os.environ.get("VIRTUAL_ENV", "").strip()
+    if venv_env:
+        roots.append(Path(venv_env) / "Lib" / "site-packages" / "nvidia")
+    exe_dir = Path(sys.executable).resolve().parent
+    roots.append(exe_dir / "venv" / "Lib" / "site-packages" / "nvidia")
+    roots.append(exe_dir.parent / "venv" / "Lib" / "site-packages" / "nvidia")
+    roots.append(Path(__file__).resolve().parent.parent.parent / "venv" / "Lib" / "site-packages" / "nvidia")
 
     for root in roots:
         for lib in ("cublas", "cudnn", "cuda_nvrtc", "cuda_runtime"):
@@ -304,35 +313,55 @@ def _partial_path(media_path: str) -> Path:
     return _transcript_cache_path(media_path).with_suffix(".partial.json")
 
 
-def _load_partial(path: Path, total: float) -> Dict:
+def _load_partial(path: Path, total: float, model_name: str) -> Dict:
     """Slices an earlier attempt finished, if they were cut the same way."""
-    fresh = {"slice": SLICE_SECONDS, "total": total, "model": LOCAL_WHISPER_MODEL,
+    fresh = {"slice": SLICE_SECONDS, "total": total, "model": model_name,
              "language": None, "done": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return fresh
-    if (data.get("slice") != SLICE_SECONDS or data.get("model") != LOCAL_WHISPER_MODEL
+    if (data.get("slice") != SLICE_SECONDS or data.get("model") != model_name
             or abs(float(data.get("total", 0)) - total) > 1
             or not isinstance(data.get("done"), dict)):
         return fresh
     return data
 
 
-def _transcribe_in_slices(media_path: str, total: float, kwargs: Dict,
-                          device: str, compute_type: str) -> Dict:
-    """Transcribe a long source half an hour at a time, saving each slice.
+def _transcribe_audio_with_pipeline(faster_whisper, model, audio_input, kwargs: Dict,
+                                    device: str):
+    """Use BatchedInferencePipeline on CUDA for 4x+ speedup; fallback to model.transcribe."""
+    if device == "cuda" and hasattr(faster_whisper, "BatchedInferencePipeline"):
+        try:
+            pipe = faster_whisper.BatchedInferencePipeline(model=model)
+            vad_params = kwargs.get("vad_parameters") or {
+                "threshold": 0.35, "min_silence_duration_ms": 1000, "speech_pad_ms": 300,
+            }
+            call_kw = {
+                k: v for k, v in kwargs.items()
+                if k not in ("audio", "condition_on_previous_text", "vad_filter", "vad_parameters")
+            }
+            return pipe.transcribe(
+                audio_input,
+                batch_size=8,
+                vad_filter=True,
+                vad_parameters=vad_params,
+                **call_kw,
+            )
+        except Exception as be:
+            print(f"[transcribe/local] batched pipeline fallback ({str(be).splitlines()[0][:80]})", flush=True)
+    call_kw = {k: v for k, v in kwargs.items() if k != "audio"}
+    return model.transcribe(audio_input, **call_kw)
 
-    Each finished slice is written beside the transcript cache, so a crash, a
-    stop or a closed app hours into a long stream resumes at the next slice
-    instead of at the start. The language heard in the first slice is kept for
-    the rest when Whisper is sure of it, so one quiet slice of music cannot
-    switch a stream's transcript into another language halfway through.
-    """
-    from faster_whisper import WhisperModel  # type: ignore
+
+def _transcribe_in_slices(media_path: str, total: float, kwargs: Dict,
+                          device: str, compute_type: str, model_name: str) -> Dict:
+    """Transcribe a long source half an hour at a time, saving each slice."""
+    import faster_whisper  # type: ignore
+    WhisperModel = faster_whisper.WhisperModel
 
     partial = _partial_path(media_path)
-    state = _load_partial(partial, total)
+    state = _load_partial(partial, total, model_name)
     done = state["done"]
     count = math.ceil(total / SLICE_SECONDS)
     print(f"[transcribe/local] {_mmss(total)} of audio - transcribing it in {count} "
@@ -351,12 +380,13 @@ def _transcribe_in_slices(media_path: str, total: float, kwargs: Dict,
         audio = _read_slice(media_path, start, min(SLICE_SECONDS, total - start))
         while True:
             if model is None:
-                model = WhisperModel(LOCAL_WHISPER_MODEL, device=device,
-                                     compute_type=compute_type)
+                m_name = current_whisper_model(device) if device != "cuda" else model_name
+                model = WhisperModel(m_name, device=device, compute_type=compute_type)
             try:
-                segments_iter, info = model.transcribe(
-                    **dict(kwargs, audio=audio,
-                           language=kwargs.get("language") or state.get("language")))
+                slice_kw = dict(kwargs, language=kwargs.get("language") or state.get("language"))
+                segments_iter, info = _transcribe_audio_with_pipeline(
+                    faster_whisper, model, audio, slice_kw, device
+                )
                 out = []
                 for s in segments_iter:
                     proc.wait_if_paused()
@@ -385,13 +415,14 @@ def _transcribe_in_slices(media_path: str, total: float, kwargs: Dict,
         try:
             partial.write_text(json.dumps(state), encoding="utf-8")
         except OSError:
-            pass    # costs the resume, not the run
+            pass
 
     segments = [seg for i in range(count) for seg in done.get(str(i), [])]
     return {"duration": total, "segments": segments}
 
 
-def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
+def transcribe_local(media_path: str, language: Optional[str] = None,
+                     initial_prompt: Optional[str] = None) -> Dict:
     """Run faster-whisper on a local file path, caching the result as .srt."""
     cache_path = _find_cached_transcript(media_path)
     if cache_path is not None:
@@ -400,7 +431,6 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
         if cache_mtime >= source_mtime:
             print(f"[transcribe/local] reusing cached transcript: {cache_path}", flush=True)
             cached = _load_srt_cache(cache_path)
-            # Treat empty cache as invalid (likely from a failed/partial run) — delete and re-transcribe
             if not cached["segments"] or cached["duration"] <= 0.0:
                 print(f"[transcribe/local] cache is empty/invalid, deleting: {cache_path}", flush=True)
                 cache_path.unlink(missing_ok=True)
@@ -413,8 +443,9 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
                 return cached
 
     try:
-        _register_cuda_dlls()   # the import itself resolves CUDA libraries
-        from faster_whisper import WhisperModel  # type: ignore
+        _register_cuda_dlls()
+        import faster_whisper  # type: ignore
+        WhisperModel = faster_whisper.WhisperModel
     except ImportError as e:
         raise RuntimeError(
             "faster-whisper is required for --mode local. Install it with:\n"
@@ -422,17 +453,21 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
         ) from e
 
     device = _resolve_device()
-    compute_type = "float16" if device == "cuda" else "int8"
-    print(f"[transcribe/local] faster-whisper model={LOCAL_WHISPER_MODEL} device={device}", flush=True)
+    model_name = current_whisper_model(device)
+    compute_type = "int8_float16" if device == "cuda" else "int8"
+    print(f"[transcribe/local] faster-whisper model={model_name} device={device} ({compute_type})", flush=True)
 
     from ..config import LOCAL_WHISPER_VAD_FILTER, LOCAL_WHISPER_VAD_PARAMETERS
 
-    transcribe_kwargs = {
+    transcribe_kwargs: Dict = {
         "audio": media_path,
         "language": language,
-        "beam_size": 5,
+        "beam_size": 5 if device == "cuda" else 3,
         "condition_on_previous_text": False,
     }
+    prompt_clean = (initial_prompt or "").strip()[:220]
+    if prompt_clean:
+        transcribe_kwargs["initial_prompt"] = prompt_clean
     if LOCAL_WHISPER_VAD_FILTER:
         transcribe_kwargs["vad_filter"] = True
         transcribe_kwargs["vad_parameters"] = LOCAL_WHISPER_VAD_PARAMETERS
@@ -442,7 +477,7 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
     total_seconds = _source_seconds(media_path)
     if total_seconds > SLICE_SECONDS * 1.5:
         transcript = _transcribe_in_slices(media_path, total_seconds, transcribe_kwargs,
-                                           device, compute_type)
+                                           device, compute_type, model_name)
         print(f"[transcribe/local] {len(transcript['segments'])} segments, "
               f"{total_seconds:.0f}s of audio", flush=True)
         cache_path = _write_srt_cache(media_path, transcript)
@@ -454,29 +489,17 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
         return transcript
 
     def _run(dev: str, ct: str):
-        """Transcribe end to end on one device, returning finished segments.
-
-        The whole loop lives in here because CTranslate2 does not fail where
-        you would expect. A CUDA device can count, and a model can construct
-        on it, and the run still dies on the first encode with "Library
-        cublas64_12.dll is not found" -- the GPU is present, the maths library
-        behind it is not. Only draining the generator proves the device works,
-        so the retry has to be able to redo the whole thing.
-        """
-        model = WhisperModel(LOCAL_WHISPER_MODEL, device=dev, compute_type=ct)
-        segments_iter, info = model.transcribe(**transcribe_kwargs)
-        # The longest stage by far, and until now it said nothing at all
-        # between "transcribing on the CPU" and its result -- half an hour of
-        # an app that looks stuck. The segments arrive in order, so each one
-        # says how far in we are.
+        m_name = model_name if dev == device else current_whisper_model(dev)
+        model = WhisperModel(m_name, device=dev, compute_type=ct)
+        kw = dict(transcribe_kwargs)
+        kw["beam_size"] = 5 if dev == "cuda" else 3
+        segments_iter, info = _transcribe_audio_with_pipeline(
+            faster_whisper, model, media_path, kw, dev
+        )
         total = float(getattr(info, "duration", 0.0) or 0.0)
         last_said = 0.0
         out = []
         for s in segments_iter:
-            # Transcription runs inside this process, so Pause cannot suspend
-            # it the way it suspends ffmpeg. The generator is lazy, though:
-            # holding here stops the model decoding the next window, on the
-            # CPU or the GPU alike, until the run is resumed.
             proc.wait_if_paused()
             now = time.time()
             if total and now - last_said >= 2.5:
@@ -493,8 +516,6 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
     try:
         segments, info = _run(device, compute_type)
     except Exception as e:
-        # The run has already paid for a download. Finish it slowly on the
-        # CPU rather than not at all.
         if device != "cuda":
             raise
         from .. import accel

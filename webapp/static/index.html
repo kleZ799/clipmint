@@ -720,6 +720,25 @@ addEventListener("load", function () {
   </div>
 
   <div class="d-sec">
+    <h3>AI key pool</h3>
+    <label class="pool-toggle">
+      <input type="checkbox" id="aiPoolEnabled">
+      <span>Enable AI pool usage</span>
+    </label>
+    <p class="hint">Arrange all saved keys in priority order. When a key hits a rate limit or error, the next key runs immediately with zero delay — delays only apply before retrying the same key.</p>
+    <div id="aiPoolBox" hidden>
+      <div class="pool-list" id="aiPoolList"></div>
+      <p class="hint" id="aiPoolEmpty" hidden>Save keys under multiple providers above (or spare Gemini keys) to arrange your pool.</p>
+    </div>
+    <div id="aiPoolMsg"></div>
+    <label class="fld" style="margin-top:14px">
+      <span>Transcription model (Whisper)</span>
+      <select id="whisperModel"></select>
+    </label>
+    <div id="whisperModelMsg"></div>
+  </div>
+
+  <div class="d-sec">
     <h3>Your logo</h3>
     <div class="brand-row">
       <div class="brand-thumb" id="brandThumb"><span>No logo</span></div>

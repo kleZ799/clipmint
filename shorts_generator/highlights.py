@@ -27,7 +27,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from . import boundaries, content_kinds, muapi, signals, visual
 from .signals import AudioTrack
-from .config import current_model
+from .config import current_model, current_provider
 
 
 # ---------------------------------------------------------------------------
@@ -356,25 +356,16 @@ Rules:
   car flips over the barrier", "the host holds up the receipt"). "" when the
   moment is purely spoken, which is fine for a podcast and a warning sign for
   gameplay
+- "payoff_time": timestamp in transcript seconds of the single biggest twist,
+  climax, laugh, scream, or punchline inside this clip (between start_time and end_time)
 
 Respond ONLY with valid JSON (no markdown, no explanation):
-{{"highlights":[{{"title":"string","start_time":float,"end_time":float,"score":int,"hook_score":int,"first_line":"string","hook_sentence":"string","virality_reason":"string","on_screen":"string","ask":int}}]}}"""
+{{"highlights":[{{"title":"string","start_time":float,"end_time":float,"payoff_time":float,"score":int,"hook_score":int,"first_line":"string","hook_sentence":"string","virality_reason":"string","on_screen":"string","ask":int}}]}}"""
 
 
 # Bump whenever the ranking prompt -- or the shape of the transcript we hand
-# it -- changes meaning. v3 widened each chunk's declared duration to cover its
-# overlap tail, so chunks ranked under v2 were asked a narrower question. v4
-# anchored the 0-100 scale: without anchors a real 96-candidate run came back
-# spread over 73-95, so the top-five cut was being made on gaps smaller than
-# the model's own noise. v5 made first_line load-bearing -- the cut is now
-# placed by finding that line in the transcript rather than by trusting
-# start_time -- so a chunk ranked under v4 was answering a question where the
-# line was decoration. v6 chose the criteria by the kind of video instead of
-# ranking everything as a game stream, and widened the score anchors from
-# "stream" to "video". v7 put the payoff on screen ahead of the reaction to
-# it, added the stranger test and the "on_screen" claim the visual check reads.
-# Cached older chunks are not comparable and must be redone.
-PROMPT_VERSION = 7
+# it -- changes meaning. v8 adds audio-peak markers + payoff_time.
+PROMPT_VERSION = 8
 HOOK_SCORE_WEIGHT = 0.4       # how much the opening line counts toward the rank
 MAX_CLIP_SECONDS = 90         # reject anything the model returns above this
 CHUNK_SIZE_SECONDS = 1200       # 20-min chunks for long videos
@@ -562,27 +553,29 @@ def _sanitize_highlights(raw_highlights: object, duration: float,
         # first second, which is what the rule book weighs most.
         base_score = min(100, base_score + _hook_type_bonus(hook_text))
 
-        cleaned.append(
-            {
-                "title": str(item.get("title") or "Untitled Highlight").strip(),
-                "start_time": start,
-                "end_time": end,
-                # What every caller sorts and cuts on. A brilliant moment behind
-                # a flat opening line is not a good Short, because nobody stays
-                # long enough to reach it — so the opening line gets a real vote.
-                "score": base_score,
-                "viral_score": viral,
-                "hook_score": hook,
-                "first_line": str(item.get("first_line") or "").strip(),
-                "hook_sentence": str(item.get("hook_sentence")
-                                     or item.get("first_line") or "").strip(),
-                "virality_reason": str(item.get("virality_reason") or "").strip(),
-                "on_screen": str(item.get("on_screen") or "").strip()[:200],
-                # Which group of a mixed request it fits (asks_block); 0 for
-                # none, and for every highlight of a request without groups.
-                "ask": max(0, _coerce_int(item.get("ask"), default=0)),
-            }
-        )
+        payoff = _coerce_float(item.get("payoff_time"), default=-1.0)
+        entry = {
+            "title": str(item.get("title") or "Untitled Highlight").strip(),
+            "start_time": start,
+            "end_time": end,
+            # What every caller sorts and cuts on. A brilliant moment behind
+            # a flat opening line is not a good Short, because nobody stays
+            # long enough to reach it — so the opening line gets a real vote.
+            "score": base_score,
+            "viral_score": viral,
+            "hook_score": hook,
+            "first_line": str(item.get("first_line") or "").strip(),
+            "hook_sentence": str(item.get("hook_sentence")
+                                 or item.get("first_line") or "").strip(),
+            "virality_reason": str(item.get("virality_reason") or "").strip(),
+            "on_screen": str(item.get("on_screen") or "").strip()[:200],
+            # Which group of a mixed request it fits (asks_block); 0 for
+            # none, and for every highlight of a request without groups.
+            "ask": max(0, _coerce_int(item.get("ask"), default=0)),
+        }
+        if start <= payoff <= end:
+            entry["payoff_time"] = round(payoff, 2)
+        cleaned.append(entry)
 
     return cleaned
 
@@ -677,23 +670,39 @@ voted for them. Your clip must still open on a line that hooks and end once
 the moment lands -- never on the marker itself, which is not speech.
 """
 
+AUDIO_NOTE = """
+Audio peaks: the transcript includes lines like
+"[412.5s] >>> AUDIO PEAK: 3.6x loudness after 1.1s pause <<<".
+These mark where someone laughed, screamed, gasped, or a dramatic drop landed.
+Inspect the lines just before and at each peak carefully — moments that read
+plainly in text often pop here. Never quote the marker itself as speech.
+"""
 
-def build_transcript_text(transcript: Dict, chat=None, offset: float = 0.0) -> str:
+
+def build_transcript_text(transcript: Dict, chat=None, offset: float = 0.0,
+                          audio: Optional[AudioTrack] = None) -> str:
     """The transcript as the model reads it: one timestamped line per segment.
 
-    With a chat, its biggest bursts are threaded in as marker lines at their
-    own times. `offset` is where a chunk starts in the source, because chunk
-    segments are rebased to zero and the chat is not.
+    Threads chat bursts and top audio energy peaks in as inline markers so the
+    model sees where audiences and voices peaked without extra API/decode cost.
     """
     segments = transcript.get("segments", [])
     lines = [(float(s["start"]), f"[{s['start']:.1f}s] {s['text'].strip()}")
              for s in segments]
+    span = float(transcript.get("duration") or (segments[-1]["end"] if segments else 0.0))
+    added = False
     if chat and segments:
-        span = float(transcript.get("duration") or segments[-1]["end"])
         for t, ratio in chat.spikes(offset, offset + span, limit=CHAT_SPIKES_PER_CHUNK):
             local = t - offset
             lines.append((local, f"[{local:.1f}s] >>> CHAT SPIKE: {ratio}x its usual pace <<<"))
-        # Stable, so a marker lands after the line spoken in the same second.
+            added = True
+    if audio and segments:
+        for t, ratio, quiet in audio.top_peaks(offset, offset + span, limit=6):
+            local = t - offset
+            pause_txt = f" after {quiet:.1f}s pause" if quiet >= 0.4 else ""
+            lines.append((local, f"[{local:.1f}s] >>> AUDIO PEAK: {ratio:.1f}x loudness{pause_txt} <<<"))
+            added = True
+    if added:
         lines.sort(key=lambda pair: pair[0])
     return "\n".join(line for _, line in lines)
 
@@ -770,8 +779,7 @@ def call_highlight_api(
     # the last hour of a stream entirely.
     try:
         from .local.prompt_compressor import compress_for_model
-        from .local import llm as _llm_mod
-        _active_provider = getattr(_llm_mod, "_cur_provider", lambda: "gemini")()
+        _active_provider = current_provider()
         _active_model = current_model(_active_provider)
         transcript_text = compress_for_model(transcript_text, _active_model)
     except Exception:
@@ -976,6 +984,82 @@ def finalize(
     return highlights
 
 
+def _tournament_rerank(
+    candidates: List[Dict],
+    content_info: Dict,
+    num_clips: int,
+    llm_fn: LLMFn,
+    brief: str = "",
+) -> List[Dict]:
+    """Compare finalists across all chunks on one global 0-100 scale.
+
+    Quiet chunks tend to inflate their top clip to ~88 while packed chunks push
+    great moments down into the 70s. One compact side-by-side comparison pass
+    calibrates scores globally and flags thematic duplicates so every slot in
+    the final top-N is distinct and genuinely top-tier.
+    """
+    pool_cap = min(24, max(num_clips * 3, 15))
+    ranked = sorted(candidates, key=lambda h: int(h.get("score", 0) or 0), reverse=True)
+    finalists = ranked[:pool_cap]
+    if len(finalists) <= 2:
+        return candidates
+
+    lines = []
+    for idx, h in enumerate(finalists, 1):
+        dur = max(0.0, float(h.get("end_time", 0)) - float(h.get("start_time", 0)))
+        lines.append(
+            f"{idx}. [{dur:.0f}s @ {float(h.get('start_time', 0)):.0f}s] "
+            f"(chunk_score={h.get('score', 0)}, hook_score={h.get('hook_score', 0)}) "
+            f"Title: {h.get('title', '')[:80]} | "
+            f"Opens: {str(h.get('first_line') or '')[:120]} | "
+            f"Visual: {str(h.get('on_screen') or '(none)')[:90]} | "
+            f"Why: {str(h.get('virality_reason') or '')[:120]}"
+        )
+
+    brief_line = f"\nCreator brief (prioritize this angle): {brief.strip()}" if brief.strip() else ""
+    prompt = (
+        f"You are comparing {len(finalists)} finalist clip candidates pulled from DIFFERENT "
+        f"sections of one {content_info.get('content_type', 'video')} so only the strongest "
+        f"top {num_clips} make the cut.{brief_line}\n\n"
+        "Re-calibrate every candidate on ONE global 0-100 viral scale:\n"
+        "- Judge standalone appeal to a stranger in the first 2 seconds + payoff strength.\n"
+        "- Spread scores honestly (use 35-98, avoid ties).\n"
+        "- If two clips cover the SAME thematic moment, repeated joke, or boss attempt, set "
+        "\"duplicate_of\" on the weaker one to the winning candidate's index; else null.\n\n"
+        "CANDIDATES:\n" + "\n".join(lines) + "\n\n"
+        "Respond with ONLY valid JSON:\n"
+        "{\"rankings\":[{\"id\":int,\"score\":int,\"duplicate_of\":int|null}]}"
+    )
+    try:
+        parsed = _parse_json_loose(llm_fn(prompt))
+        items = parsed.get("rankings") or []
+        updated = 0
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            cid = _coerce_int(item.get("id"), default=0)
+            if not (1 <= cid <= len(finalists)):
+                continue
+            cal = max(0, min(100, _coerce_int(item.get("score"), default=-1)))
+            if cal < 0:
+                continue
+            h = finalists[cid - 1]
+            prior = int(h.get("score", 0) or 0)
+            blended = 0.55 * cal + 0.45 * prior
+            dup = item.get("duplicate_of")
+            if dup is not None and _coerce_int(dup, default=0) not in (0, cid):
+                blended *= 0.65
+                h["tournament_duplicate_of"] = _coerce_int(dup, default=0)
+            h["pre_tournament_score"] = prior
+            h["score"] = int(round(max(0.0, min(100.0, blended))))
+            updated += 1
+        if updated:
+            print(f"[rank] cross-chunk tournament calibrated {updated}/{len(finalists)} finalists", flush=True)
+    except Exception as e:
+        print(f"[rank] cross-chunk tournament skipped ({str(e).splitlines()[0][:80]})", flush=True)
+    return candidates
+
+
 def get_highlights(
     transcript: Dict,
     num_clips: int = 3,
@@ -1025,14 +1109,18 @@ def get_highlights(
     """
     llm_fn = llm_fn or call_muapi_llm
     duration = transcript.get("duration", 0)
-    chat_note = CHAT_NOTE if chat else ""
+    extra_notes = []
     if chat:
+        extra_notes.append(CHAT_NOTE)
         # The first place the chat meets the transcript: a burst answering
         # "everybody type W" is the streamer's request, not a moment.
         asked = chat.ignore_requests(transcript)
         if asked:
             print(f"[chat] set aside the answers to {asked} request(s) to type "
                   f"in chat", flush=True)
+    if audio:
+        extra_notes.append(AUDIO_NOTE)
+    chat_note = "\n".join(extra_notes)
     content_info = resolve_content(
         transcript, llm_fn, kind=kind, video_meta=video_meta,
         saved=_load_saved_content(checkpoint_path, duration),
@@ -1057,15 +1145,17 @@ def get_highlights(
 
         all_highlights: List[Dict] = []
 
-        # Determine how many chunks to run simultaneously.
-        # With N Gemini keys we can send N chunks in parallel — each key handles
-        # one concurrent request and they don't interfere with each other.
-        # We cap at 4 regardless of key count to avoid flooding the API.
-        # With 1 key (or non-Gemini providers) the pool size is 1, which means
-        # the behaviour is identical to the original sequential loop.
+        # Determine safe concurrency: with AI pool enabled we can utilize multiple
+        # distinct saved keys simultaneously (each claimed under _pool_lock so no
+        # two threads collide on the same key); without AI pool, fan out only when
+        # multiple Gemini keys are configured as primary.
         try:
+            from .local import llm as _llm_mod
             from .config import gemini_keys as _gkeys, current_provider as _cprov
-            _n_keys = len(_gkeys()) if _cprov() == "gemini" else 1
+            if _llm_mod.ai_pool_enabled():
+                _n_keys = len(_llm_mod.list_pool_slots())
+            else:
+                _n_keys = len(_gkeys()) if _cprov() == "gemini" else 1
         except Exception:
             _n_keys = 1
         workers = max(1, min(_n_keys, 4))
@@ -1084,7 +1174,7 @@ def get_highlights(
         if pending:
             if workers > 1:
                 print(
-                    f"[highlights] {workers} Gemini keys available — "
+                    f"[highlights] {workers} key slot(s) available — "
                     f"processing {len(pending)} chunk(s) {workers} at a time",
                     flush=True,
                 )
@@ -1095,7 +1185,7 @@ def get_highlights(
                 """Rank one chunk; thread-safe. Returns (index, highlights)."""
                 i, chunk = args
                 offset = chunk.get("_offset", 0)
-                text = build_transcript_text(chunk, chat=chat, offset=offset)
+                text = build_transcript_text(chunk, chat=chat, offset=offset, audio=audio)
                 print(
                     f"[highlights] chunk {i + 1}/{len(chunks)} (offset {offset:.0f}s)",
                     flush=True,
@@ -1110,6 +1200,8 @@ def get_highlights(
                 for h in result.get("highlights", []):
                     h["start_time"] = float(h["start_time"]) + offset
                     h["end_time"] = float(h["end_time"]) + offset
+                    if h.get("payoff_time") is not None:
+                        h["payoff_time"] = round(float(h["payoff_time"]) + offset, 2)
                     ranked.append(h)
                 # Checkpoint immediately after each chunk completes so a later
                 # failure doesn't throw away work already paid for.
@@ -1120,8 +1212,6 @@ def get_highlights(
                 return i, ranked
 
             if workers == 1:
-                # Sequential path — identical behaviour to the original loop,
-                # no threading overhead for single-key setups.
                 for args in pending:
                     _, ranked = _process_chunk(args)
                     all_highlights.extend(ranked)
@@ -1129,10 +1219,8 @@ def get_highlights(
                 from concurrent.futures import ThreadPoolExecutor, as_completed
                 import time as _time
 
-                # Results arrive in completion order; re-sort by chunk index
-                # afterwards so the highlight list is chronological.
                 index_results: Dict[int, List[Dict]] = {}
-                failed_chunks: List[Tuple[int, Dict]] = []  # chunks to retry
+                failed_chunks: List[Tuple[int, Dict]] = []
 
                 with ThreadPoolExecutor(max_workers=workers,
                                         thread_name_prefix="chunk") as pool:
@@ -1145,10 +1233,6 @@ def get_highlights(
                             idx, ranked = fut.result()
                             index_results[idx] = ranked
                         except Exception as exc:
-                            # Don't abandon it yet — queue for a sequential
-                            # retry once the parallel batch is done.  Keys
-                            # that were busy or rate-limited during the batch
-                            # may be free again by then.
                             print(
                                 f"[highlights] chunk {chunk_num} failed in "
                                 f"parallel pass ({str(exc)[:100]}) — "
@@ -1157,41 +1241,10 @@ def get_highlights(
                             )
                             failed_chunks.append(orig_args)
 
-
-                # Retry failed chunks one at a time (sequential, no race).
-                # Each attempt resets the key-rotation deadline and clears the
-                # spent-key set so every available key gets a clean shot.
                 if failed_chunks:
-                    try:
-                        from .local import llm as _llm_mod
-                        from .config import (
-                            current_provider as _cprov,
-                            gemini_keys as _gkeys,
-                        )
-                        _provider = _cprov()
-                        # Key count per provider:
-                        #   Gemini  — supports multiple spare keys (rotation)
-                        #   Others  — single key; retry helps with transient
-                        #             errors (503s, rate-limit windows, etc.)
-                        if _provider == "gemini":
-                            _n_retry_keys = len(_gkeys())
-                        else:
-                            # 1 key but still worth 2 attempts for transient failures
-                            _n_retry_keys = 1
-                    except Exception:
-                        _provider = "unknown"
-                        _n_retry_keys = 1
-                        _llm_mod = None
-
-                    # Retry up to (number of keys) times — minimum 2 so single-key
-                    # providers also get a second chance on transient failures.
-                    max_retries = max(2, _n_retry_keys)
-                    backoff = [2, 5, 10, 15, 20]  # seconds between attempts
-
+                    max_retries = 2
                     print(
-                        f"[highlights] retrying {len(failed_chunks)} failed chunk(s)"
-                        f" — up to {max_retries} attempt(s) per chunk"
-                        f" ({_provider}, {_n_retry_keys} key(s))",
+                        f"[highlights] retrying {len(failed_chunks)} failed chunk(s) sequentially…",
                         flush=True,
                     )
                     for args in failed_chunks:
@@ -1199,31 +1252,13 @@ def get_highlights(
                         succeeded = False
                         last_exc: Optional[Exception] = None
                         for attempt in range(1, max_retries + 1):
-                            wait = backoff[min(attempt - 1, len(backoff) - 1)]
-                            print(
-                                f"[highlights] chunk {chunk_num} retry "
-                                f"{attempt}/{max_retries} (waiting {wait}s)…",
-                                flush=True,
-                            )
-                            _time.sleep(wait)
-                            # Reset provider-specific rate-limit state so every
-                            # key gets a genuinely fresh attempt.
-                            try:
-                                if _llm_mod is not None:
-                                    # Gemini: clear rotation deadline + spent marks
-                                    _llm_mod._key_rotation_deadline = None
-                                    _llm_mod._spent_keys.clear()
-                                    # All providers: clear the fallback flag so the
-                                    # active provider is tried first again.
-                                    _llm_mod._fallback_provider = None
-                            except Exception:
-                                pass
+                            if attempt > 1:
+                                _time.sleep(2)
                             try:
                                 idx, ranked = _process_chunk(args)
                                 index_results[idx] = ranked
                                 print(
-                                    f"[highlights] chunk {chunk_num} succeeded "
-                                    f"on attempt {attempt}",
+                                    f"[highlights] chunk {chunk_num} succeeded on retry {attempt}",
                                     flush=True,
                                 )
                                 succeeded = True
@@ -1231,25 +1266,27 @@ def get_highlights(
                             except Exception as exc_r:
                                 last_exc = exc_r
                                 print(
-                                    f"[highlights] chunk {chunk_num} attempt "
-                                    f"{attempt} failed: {str(exc_r)[:80]}",
+                                    f"[highlights] chunk {chunk_num} retry {attempt} failed: "
+                                    f"{str(exc_r)[:100]}",
                                     flush=True,
                                 )
                         if not succeeded:
-                            print(
-                                f"[highlights] chunk {chunk_num} permanently skipped "
-                                f"after {max_retries} attempt(s) with all available "
-                                f"keys — last error: {str(last_exc)[:80]}",
-                                flush=True,
+                            # Never silently lose part of the video: stop the run so
+                            # completed chunks stay saved in .highlights.json and "Try again" resumes cleanly.
+                            raise last_exc or RuntimeError(
+                                f"Chunk {chunk_num}/{len(chunks)} failed after retries"
                             )
 
-                # Merge in chronological order.
                 for i, _ in sorted(pending, key=lambda x: x[0]):
                     all_highlights.extend(index_results.get(i, []))
 
         candidates = dedupe_highlights(all_highlights)
+        if len(chunks) > 1 and len(candidates) > num_clips:
+            candidates = _tournament_rerank(
+                candidates, content_info, num_clips, llm_fn, brief=brief
+            )
     else:
-        text = build_transcript_text(transcript, chat=chat)
+        text = build_transcript_text(transcript, chat=chat, audio=audio)
         result = call_highlight_api(text, content_info, duration, num_clips=num_clips, llm_fn=llm_fn, clip_seconds=clip_seconds, brief=brief, chat_note=chat_note, asks=asks)
         candidates = dedupe_highlights(result.get("highlights", []))
 

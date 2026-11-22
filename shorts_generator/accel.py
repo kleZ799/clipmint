@@ -47,7 +47,10 @@ MODES = ("auto", "gpu", "cpu")
 _HW: List[Tuple[str, str, Callable[[int], List[str]]]] = [
     ("h264_nvenc", "NVIDIA GPU (NVENC)", lambda q: [
         "-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq",
-        "-rc", "vbr", "-cq", str(q), "-b:v", "0", "-pix_fmt", "yuv420p"]),
+        "-rc", "vbr", "-cq", str(q), "-b:v", "0",
+        "-spatial-aq", "1", "-temporal-aq", "1", "-rc-lookahead", "20",
+        "-profile:v", "high", "-pix_fmt", "yuv420p",
+        "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"]),
     ("h264_videotoolbox", "Apple GPU (VideoToolbox)", lambda q: [
         "-c:v", "h264_videotoolbox", "-q:v", str(max(35, min(85, 110 - 2 * q))),
         "-pix_fmt", "yuv420p"]),
@@ -147,27 +150,40 @@ def video_encoder() -> Tuple[str, str]:
     return CPU_ENCODER, CPU_LABEL
 
 
-def video_args(crf: int = 23, preset: str = "medium") -> List[str]:
-    """ffmpeg output arguments for an h264 encode at this quality."""
+def _cpu_args(crf: int = 19, preset: str = "medium",
+              intermediate: bool = False) -> List[str]:
+    if intermediate:
+        return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "15", "-pix_fmt", "yuv420p"]
+    return [
+        "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
+        "-profile:v", "high", "-pix_fmt", "yuv420p",
+        "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+    ]
+
+
+def video_args(crf: int = 19, preset: str = "medium",
+               intermediate: bool = False) -> List[str]:
+    """ffmpeg output arguments for an h264 encode at this quality.
+
+    When `intermediate=True`, uses a fast near-lossless pass because a final
+    edit pass will re-encode immediately afterwards.
+    """
     name, _ = video_encoder()
     if name == CPU_ENCODER:
-        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"]
+        return _cpu_args(crf, preset, intermediate=intermediate)
+    if intermediate and name == "h264_nvenc":
+        return ["-c:v", "h264_nvenc", "-preset", "p2", "-rc", "vbr",
+                "-cq", "14", "-b:v", "0", "-pix_fmt", "yuv420p"]
     build = next(b for n, _, b in _HW if n == name)
-    return build(crf)
+    return build(14 if intermediate else crf)
 
 
 def run_encode(build_cmd: Callable[[List[str]], List[str]], what: str,
-               crf: int = 23, preset: str = "medium", cwd: Optional[str] = None):
-    """Run an ffmpeg encode on the chosen encoder, and on the CPU if that fails.
-
-    `build_cmd` takes the encoder arguments and returns the whole command, so
-    a retry is the same command with different arguments in the middle. A
-    hardware encoder that fails is marked broken for the rest of the run: an
-    NVENC session limit or a driver fault will not clear up on the next clip,
-    and trying it ten times costs ten failed encodes.
-    """
+               crf: int = 19, preset: str = "medium", cwd: Optional[str] = None,
+               intermediate: bool = False):
+    """Run an ffmpeg encode on the chosen encoder, and on the CPU if that fails."""
     name, label = video_encoder()
-    cmd = build_cmd(video_args(crf, preset))
+    cmd = build_cmd(video_args(crf, preset, intermediate=intermediate))
     try:
         result = proc.run_checked(cmd, what=what, cwd=cwd)
     except RuntimeError as e:
@@ -179,8 +195,7 @@ def run_encode(build_cmd: Callable[[List[str]], List[str]], what: str,
         print(f"[accel] the {label} could not encode this clip ({first}) - "
               f"redoing it on the CPU, and using the CPU for the rest of this run",
               flush=True)
-        cpu = ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"]
-        cmd = build_cmd(cpu)
+        cmd = build_cmd(_cpu_args(crf, preset, intermediate=intermediate))
         result = proc.run_checked(cmd, what=what, cwd=cwd)
     _require_picture(cmd, what, cwd)
     return result

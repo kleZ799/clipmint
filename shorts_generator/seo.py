@@ -202,11 +202,12 @@ TAGS - 14-20 lowercase tags per clip, ranked most valuable first, each labelled 
 - "format": what kind of video it is, matched to the clip ("gameplay", "podcast clips", "storytime") - never "gaming" for a clip that is not gameplay
 Nothing invented, no hashes, no duplicates, nothing over 30 characters.
 
-HOOK_TEXT rules:
-- The on-screen caption burned over the first 2 seconds, read while the clip is already playing
-- Under 8 words, sentence case, no ending punctuation
-- It must raise something the next three seconds answer
-- Never the same sentence as any title
+HOOK_OPTIONS - write 3 distinct on-screen hook banners ("hook_options"), burned across the top for the first 2.5 seconds while the clip plays, each on a different angle:
+- "curiosity_gap": raises a question the next 3 seconds answer
+- "stakes": names what is about to go wrong or what is on the line
+- "detail": calls out one surprising number, quote, or visual detail
+Every option: strictly 3-6 words (readable in under 1.2s on a phone), sentence case, no ending punctuation, no filler ("wait for it", "you won't believe"), never the same sentence as any title.
+Score each honestly: "scroll_stop" 0-50, "clarity" 0-25, "truth" 0-25. Also copy the top-scoring option into "hook_text".
 
 SEARCH_PHRASE: the single phrase this clip should rank for, 2-5 words, lowercase.
 
@@ -216,7 +217,7 @@ CLIPS
 {clips_block}
 
 Respond with ONLY valid JSON, no markdown fences:
-{{"clips":[{{"index":int,"title_options":[{{"title":"string","angle":"string","hook":int,"clarity":int,"search":int,"truth":int}}],"description_options":[{{"description":"string","angle":"string","hook":int,"search":int,"clarity":int,"truth":int}}],"tags":[{{"tag":"string","kind":"string"}}],"hashtags":["string"],"hook_text":"string","search_phrase":"string","why_it_works":"string"}}]}}"""
+{{"clips":[{{"index":int,"title_options":[{{"title":"string","angle":"string","hook":int,"clarity":int,"search":int,"truth":int}}],"description_options":[{{"description":"string","angle":"string","hook":int,"search":int,"clarity":int,"truth":int}}],"hook_options":[{{"text":"string","angle":"string","scroll_stop":int,"clarity":int,"truth":int}}],"tags":[{{"tag":"string","kind":"string"}}],"hashtags":["string"],"hook_text":"string","search_phrase":"string","why_it_works":"string"}}]}}"""
 
 
 # The second pass: the same clips, packaged for the two feeds that do not have
@@ -1093,6 +1094,62 @@ def _about(who: Dict) -> Dict:
                                      "content_type")}
 
 
+def _score_hook_text(text: str, title: str) -> int:
+    """Programmatic 0-100 check on a mobile on-screen hook banner."""
+    if not text:
+        return 0
+    words = text.split()
+    n = len(words)
+    score = 70 if 3 <= n <= 6 else (50 if n in (2, 7, 8) else 28)
+    low = text.lower()
+    if any(f in low for f in FILLER):
+        score -= 28
+    if title and low.rstrip(".!?") == title.strip().lower().rstrip(".!?"):
+        score -= 35
+    if any(ch.isdigit() for ch in text) or "?" in text or "n't" in low or "never" in low:
+        score += 12
+    if len(text) <= 44:
+        score += 8
+    return max(0, min(100, score))
+
+
+def _rank_hooks(raw_hooks: object, fallback_text: str, title: str) -> tuple:
+    """Normalise, score and sort hook_options; returns (best_text, options_list)."""
+    items = raw_hooks if isinstance(raw_hooks, list) else []
+    out: List[Dict] = []
+    seen = set()
+    for it in items:
+        if isinstance(it, dict):
+            txt = re.sub(r"\s+", " ", str(it.get("text") or it.get("hook_text") or "")).strip()[:HOOK_LIMIT]
+            angle = str(it.get("angle") or "hook").strip().lower()
+            parts = [it.get("scroll_stop"), it.get("clarity"), it.get("truth")]
+            model_sc = sum(max(0, min(50, int(p))) for p in parts if isinstance(p, (int, float))) if any(
+                isinstance(p, (int, float)) for p in parts
+            ) else None
+        else:
+            txt, angle, model_sc = re.sub(r"\s+", " ", str(it or "")).strip()[:HOOK_LIMIT], "hook", None
+        if not txt or txt.lower() in seen:
+            continue
+        seen.add(txt.lower())
+        chk = _score_hook_text(txt, title)
+        blended = int(round(0.55 * min(100, model_sc) + 0.45 * chk)) if model_sc is not None else chk
+        out.append({
+            "text": txt,
+            "angle": angle,
+            "score": blended,
+            "model_score": min(100, model_sc) if model_sc is not None else None,
+            "check_score": chk,
+        })
+    fb = re.sub(r"\s+", " ", str(fallback_text or "")).strip()[:HOOK_LIMIT]
+    if fb and fb.lower() not in seen:
+        chk = _score_hook_text(fb, title)
+        out.append({"text": fb, "angle": "default", "score": chk, "model_score": None, "check_score": chk})
+    out.sort(key=lambda o: o["score"], reverse=True)
+    for r, o in enumerate(out, 1):
+        o["rank"] = r
+    return (out[0]["text"] if out else fb), out[:4]
+
+
 def _coerce_entry(item: Dict, h: Dict, video_meta: Optional[Dict],
                   subject: Optional[Dict] = None) -> Dict:
     """Force one model entry into shape, filling any gap from the fallback."""
@@ -1130,7 +1187,10 @@ def _coerce_entry(item: Dict, h: Dict, video_meta: Optional[Dict],
     if isinstance(model_tags, str):
         model_tags = model_tags.split(",")
     tag_opts = _tag_options(model_tags, who, subject, _format_terms(who))
-    hook = re.sub(r"\s+", " ", str(item.get("hook_text") or "")).strip()[:HOOK_LIMIT]
+    raw_hook = re.sub(r"\s+", " ", str(item.get("hook_text") or "")).strip()[:HOOK_LIMIT]
+    best_hook, hook_options = _rank_hooks(
+        item.get("hook_options"), raw_hook or base["hook_text"], title
+    )
 
     entry = {
         "title": title,
@@ -1140,7 +1200,8 @@ def _coerce_entry(item: Dict, h: Dict, video_meta: Optional[Dict],
         "tags": _pick_tags(tag_opts) or base["tags"],
         "tag_options": tag_opts or base["tag_options"],
         "hashtags": hashtags,
-        "hook_text": hook or base["hook_text"],
+        "hook_text": best_hook or base["hook_text"],
+        "hook_options": hook_options,
         "search_phrase": phrase,
         "why_it_works": str(item.get("why_it_works") or h.get("virality_reason") or "").strip(),
         "about": _about(who),

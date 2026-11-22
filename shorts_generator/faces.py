@@ -21,23 +21,19 @@ what it was before rather than failing -- and says so once in the log.
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 MODEL_NAME = "face_detection_yunet_2023mar.onnx"
-# YuNet's confidence floor. Its own default is 0.9, tuned for photographs;
-# webcam faces in a corner overlay are small and softly lit, and the renderers
-# already vote across many frames, so a lower floor that keeps real faces
-# costs less than a higher one that drops them.
 SCORE_THRESHOLD = 0.7
 NMS_THRESHOLD = 0.3
 
 # (centre x, centre y, width, confidence), in the pixels of the image given.
 Face = Tuple[float, float, float, float]
 
-_yunet = None
-_yunet_size: Optional[Tuple[int, int]] = None
-_yunet_unusable = False
+_tls = threading.local()
+_lock = threading.Lock()
 _haar = None
 _announced = False
 
@@ -54,58 +50,63 @@ def model_path() -> Optional[Path]:
 
 def _say_once(message: str) -> None:
     global _announced
-    if not _announced:
-        _announced = True
-        print(message, flush=True)
+    with _lock:
+        if not _announced:
+            _announced = True
+            print(message, flush=True)
 
 
 def _get_yunet(width: int, height: int):
-    """The YuNet detector, sized for this frame, or None if it cannot be had."""
-    global _yunet, _yunet_size, _yunet_unusable
-    if _yunet_unusable:
+    """Thread-local YuNet detector, sized for this frame, or None if unusable."""
+    if getattr(_tls, "yunet_unusable", False):
         return None
-    if _yunet is None:
+    det = getattr(_tls, "yunet", None)
+    if det is None:
         import cv2  # type: ignore
         path = model_path()
         if path is None or not hasattr(cv2, "FaceDetectorYN"):
-            _yunet_unusable = True
+            _tls.yunet_unusable = True
             _say_once("[faces] YuNet is not available here - using the older Haar detector")
             return None
         try:
-            _yunet = cv2.FaceDetectorYN.create(str(path), "", (width, height),
-                                               SCORE_THRESHOLD, NMS_THRESHOLD, 50)
+            det = cv2.FaceDetectorYN.create(str(path), "", (width, height),
+                                            SCORE_THRESHOLD, NMS_THRESHOLD, 50)
+            _tls.yunet = det
+            _tls.yunet_size = (width, height)
         except Exception as e:  # noqa: BLE001 - a detector must never sink a render
-            _yunet_unusable = True
+            _tls.yunet_unusable = True
             _say_once(f"[faces] YuNet would not load ({str(e).splitlines()[0][:100]}) "
                       f"- using the older Haar detector")
             return None
         _say_once("[faces] finding faces with YuNet")
-    if _yunet_size != (width, height):
-        _yunet.setInputSize((width, height))
-        _yunet_size = (width, height)
-    return _yunet
+    if getattr(_tls, "yunet_size", None) != (width, height):
+        det.setInputSize((width, height))
+        _tls.yunet_size = (width, height)
+    return det
 
 
 def _haar_faces(img, min_side: int) -> List[Face]:
     """Frontal faces, then profiles in both directions if there were none."""
     import cv2  # type: ignore
     global _haar
-    if _haar is None:
-        root = cv2.data.haarcascades
-        _haar = (cv2.CascadeClassifier(root + "haarcascade_frontalface_default.xml"),
-                 cv2.CascadeClassifier(root + "haarcascade_profileface.xml"))
-    frontal, profile = _haar
+    with _lock:
+        if _haar is None:
+            root = cv2.data.haarcascades
+            _haar = (cv2.CascadeClassifier(root + "haarcascade_frontalface_default.xml"),
+                     cv2.CascadeClassifier(root + "haarcascade_profileface.xml"))
+        frontal, profile = _haar
     gray = cv2.equalizeHist(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)) if img.ndim == 3 else img
     w = gray.shape[1]
-    boxes = [tuple(map(float, f)) for f in frontal.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=6, minSize=(min_side, min_side))]
-    if not boxes:
-        for flipped in (False, True):
-            src = cv2.flip(gray, 1) if flipped else gray
-            for (x, y, fw, fh) in profile.detectMultiScale(
-                    src, scaleFactor=1.1, minNeighbors=6, minSize=(min_side, min_side)):
-                x = (w - x - fw) if flipped else x
-                boxes.append((float(x), float(y), float(fw), float(fh)))
+    with _lock:
+        boxes = [tuple(map(float, f)) for f in frontal.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=6, minSize=(min_side, min_side))]
+        if not boxes:
+            for flipped in (False, True):
+                src = cv2.flip(gray, 1) if flipped else gray
+                for (x, y, fw, fh) in profile.detectMultiScale(
+                        src, scaleFactor=1.1, minNeighbors=6, minSize=(min_side, min_side)):
+                    x = (w - x - fw) if flipped else x
+                    boxes.append((float(x), float(y), float(fw), float(fh)))
     return [(x + fw / 2, y + fh / 2, fw, 1.0) for (x, y, fw, fh) in boxes]
 
 
@@ -163,9 +164,9 @@ def detect_with_mouths(img, min_fraction: float = 0.02
 
 def backend() -> str:
     """"yunet" or "haar" -- which detector the next call will use."""
-    if _yunet is not None:
+    if getattr(_tls, "yunet", None) is not None:
         return "yunet"
-    if _yunet_unusable:
+    if getattr(_tls, "yunet_unusable", False):
         return "haar"
     try:
         import cv2  # type: ignore

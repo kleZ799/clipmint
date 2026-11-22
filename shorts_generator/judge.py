@@ -41,7 +41,7 @@ from .vision import Part, grab_frame
 VisionFn = Callable[[List[Part]], str]
 
 FRAME_LONG_SIDE = 512
-FRAMES_PER_CLIP = 4
+FRAMES_PER_CLIP = 5
 # How much of the final rank the look accounts for. Well under half: the
 # ranker read the whole transcript around the moment and the judge sees four
 # frames. Tried at 0.45 with a free verdict on a real stream, the judge cut the
@@ -65,7 +65,7 @@ PART_WEIGHTS = {
     content_kinds.OTHER: (0.40, 0.30, 0.30),
 }
 
-JUDGE_PROMPT = """You are the first test audience for new YouTube Shorts. For each clip below you get four frames -- the first instant, 1.5 seconds in, the payoff, the end -- plus its opening line, everything said in it, and what the editor claims is on screen at the payoff.
+JUDGE_PROMPT = """You are the first test audience for new YouTube Shorts. For each clip below you get five frames -- the first instant, 1.5 seconds in, the payoff, the immediate reaction/aftermath right after, and the end -- plus its opening line, everything said in it, and what the editor claims is on screen at the payoff.
 
 You have never heard of this creator. You know nothing about the rest of the video. Your thumb is already moving. Judge each clip the way that viewer would, 0-100 each, using the whole scale:
 
@@ -87,19 +87,25 @@ Respond with ONLY valid JSON:
 def _moments(h: Dict) -> List[float]:
     start = float(h["start_time"])
     end = float(h["end_time"])
-    peak = h.get("hook_peak")
-    try:
-        peak = float(peak) if peak is not None else None
-    except (TypeError, ValueError):
-        peak = None
-    if peak is None or not (start + 2.0 < peak < end - 1.0):
-        peak = start + (end - start) * 0.6
-    return [start + 0.2, min(end, start + 1.5), peak, max(start, end - 1.5)]
+    payoff = None
+    for key in ("payoff_time", "hook_peak"):
+        val = h.get(key)
+        try:
+            v = float(val) if val is not None else None
+        except (TypeError, ValueError):
+            v = None
+        if v is not None and (start + 1.8 < v < end - 0.5):
+            payoff = v
+            break
+    if payoff is None:
+        payoff = start + (end - start) * 0.6
+    aftermath = min(end - 0.3, payoff + 0.8) if payoff + 0.8 < end - 0.3 else min(end, payoff + 0.3)
+    return [start + 0.2, min(end, start + 1.5), payoff, aftermath, max(start, end - 1.5)]
 
 
 def _block(i: int, h: Dict, said: str) -> str:
     said = re.sub(r"\s+", " ", said or "").strip()[:500] or "(nothing said)"
-    return (f"--- CLIP {i}: its four frames follow.\n"
+    return (f"--- CLIP {i}: its frames follow.\n"
             f"Opening line: {h.get('first_line') or h.get('hook_sentence') or '(none)'}\n"
             f"Editor's on-screen claim: {h.get('on_screen') or '(none given)'}\n"
             f"Everything said: {said}")
@@ -131,7 +137,7 @@ def blend(h: Dict, verdict: Dict, kind: str) -> int:
               + w_alone * verdict["standalone"])
     score = (1.0 - JUDGE_WEIGHT) * float(h.get("score", 0) or 0) + JUDGE_WEIGHT * looked
     if verdict["verdict"] == "cut":
-        score *= CUT_FACTOR
+        score *= 0.5 if verdict.get("first_second", 100) < 25 else CUT_FACTOR
     return int(round(max(0.0, min(100.0, score))))
 
 

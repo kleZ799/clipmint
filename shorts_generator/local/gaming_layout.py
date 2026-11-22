@@ -40,15 +40,17 @@ is handed to the face-following renderer instead of being split in two.
 
 Rendering is a single ffmpeg pass — no per-frame Python.
 """
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import statistics
+import threading
 from typing import Dict, List, Optional, Tuple
 
 from .. import accel, framing, proc
 from ..config import LOCAL_OUTPUT_DIR
 from ..faces import detect as face_detect
-from ..render import LOUDNESS_FILTER
+from ..render import measure_loudnorm_filter
 
 # Fraction of the output height given to the webcam panel.
 CAM_PANEL_FRACTION = 0.42
@@ -306,26 +308,50 @@ def _overlay_bounds(frames, cx: float, cy: float, fw: float) -> Dict[str, Option
     return out
 
 
+_webcam_cache_lock = threading.Lock()
+_WEBCAM_CACHE: Dict[Tuple[str, str, float, float], Dict] = {}
+
+
 def locate_webcam(source_path: str, start: float, end: float,
                   corner: str = AUTO,
                   face_context_multiple: float = FACE_CONTEXT_MULTIPLE,
                   panel_aspect: float = 4 / 3) -> Optional[Dict]:
     """Find the webcam overlay and a crop of it, framed on the streamer.
 
-    `corner` is where the user said the overlay is, or AUTO to search all
-    four; the result's "corner" says where it was actually found.
-
-    Returns None when no face recurs anywhere near the corner, and
-    {"full_frame": True, ...} when the recurring face is too large to be an
-    overlay -- the camera is the whole picture.
+    Caches the discovered overlay box per (source_path, corner, zoom, aspect).
+    Subsequent clips from the same stream sample just 2 frames inside `[start, end]`
+    to verify the camera did not switch to full-frame before reusing the box.
     """
-    import cv2
+    cache_key = (
+        os.path.abspath(source_path),
+        corner,
+        round(float(face_context_multiple), 2),
+        round(float(panel_aspect), 3),
+    )
+    with _webcam_cache_lock:
+        cached = _WEBCAM_CACHE.get(cache_key)
+    if cached is not None:
+        span = max(0.2, end - start)
+        checks = [_grab(source_path, start + span * 0.25),
+                  _grab(source_path, start + span * 0.70)]
+        imgs = [im for im in checks if im is not None]
+        if imgs:
+            an_w = imgs[0].shape[1]
+            big_hits = sum(
+                1 for im in imgs
+                if any(f[2] >= FULL_FRAME_FACE * an_w for f in _faces(im))
+            )
+            if big_hits >= 2:
+                return {"full_frame": True, "detections": big_hits, "face_w": 0}
+        return {**cached, "cached": True}
 
     src_w, src_h = _probe_dimensions(source_path)
     inside, around = _sample_times(start, end, _probe_duration(source_path))
+    times = inside + around
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="camgrab") as pool:
+        grabbed = list(pool.map(lambda t: _grab(source_path, t), times))
     frames, faces = [], []
-    for t in inside + around:
-        img = _grab(source_path, t)
+    for img in grabbed:
         if img is None:
             continue
         frames.append(img)
@@ -382,7 +408,7 @@ def locate_webcam(source_path: str, start: float, end: float,
     X, Y = max(0, min(src_w - W, X)), max(0, min(src_h - H, Y))
     found = [s for s in ("left", "top", "right", "bottom")
              if b[s] is not None and b[s] not in (0, b["w" if s in ("left", "right") else "h"])]
-    return {
+    cam_box = {
         "x": X - (X % 2), "y": Y - (Y % 2),
         "w": W - (W % 2), "h": H - (H % 2),
         "detections": len(cluster),
@@ -391,6 +417,9 @@ def locate_webcam(source_path: str, start: float, end: float,
         "corner": found_in,
         "full_frame": False,
     }
+    with _webcam_cache_lock:
+        _WEBCAM_CACHE[cache_key] = dict(cam_box)
+    return cam_box
 
 
 def render_stacked_clip(
@@ -405,13 +434,9 @@ def render_stacked_clip(
     face_context_multiple: float = FACE_CONTEXT_MULTIPLE,
     log_label: str = "",
     frame: Optional[Dict] = None,
+    is_intermediate: bool = False,
 ) -> Dict:
-    """Cut [start, end] and render it as webcam-over-gameplay in one ffmpeg pass.
-
-    `frame` is where someone put the gameplay window by hand (see framing.py):
-    the webcam panel is still found automatically, and only the part of the
-    game shown under it moves.
-    """
+    """Cut [start, end] and render it as webcam-over-gameplay in one ffmpeg pass."""
     src_w, src_h = _probe_dimensions(source_path)
     cam_h = int(out_h * cam_panel_fraction)
     cam_h -= cam_h % 2
@@ -420,14 +445,11 @@ def render_stacked_clip(
                         face_context_multiple=face_context_multiple,
                         panel_aspect=out_w / cam_h)
 
-    # Said here, before the encode, rather than after it. Whether the webcam
-    # was found decides which of the layouts below gets rendered, and that
-    # is exactly the thing worth knowing when the render then fails. Reported
-    # on the way out it vanishes precisely when it matters, leaving a log whose
-    # plan line promises a stacked layout above a command that centre-crops.
     if log_label:
         if cam and cam.get("full_frame"):
             said = "fills the frame - following the face instead of stacking"
+        elif cam and cam.get("cached"):
+            said = f"{cam['w']}x{cam['h']} at ({cam['x']},{cam['y']}) (cached overlay)"
         elif cam:
             said = (f"{cam['w']}x{cam['h']} at ({cam['x']},{cam['y']}) from "
                     f"{cam['detections']}/{cam['samples']} samples, overlay edges: "
@@ -439,11 +461,10 @@ def render_stacked_clip(
     if cam and cam.get("full_frame"):
         from .clipper import crop_clip_local
         info = crop_clip_local(source_path, start, end, f"{out_w}:{out_h}", out_path,
-                               target_resolution=f"{out_w}x{out_h}", frame=frame)
+                               target_resolution=f"{out_w}x{out_h}", frame=frame,
+                               is_intermediate=is_intermediate)
         return {**info, "cam": cam, "full_frame": True}
 
-    # Gameplay: the widest centre crop matching the bottom panel's aspect,
-    # nudged away from the corner the webcam occupies.
     game_crop_w, game_crop_h = framing.gameplay_window(src_w, src_h, out_w, out_h,
                                                        cam_panel_fraction)
     game_x = (src_w - game_crop_w) // 2
@@ -466,7 +487,6 @@ def render_stacked_clip(
             f"[cam][game]vstack=inputs=2[v]"
         )
     else:
-        # No webcam found — fall back to a full-height centre crop.
         fb_w, fb_h = framing.picture_window(src_w, src_h, out_w, out_h)
         fb_x, fb_y = framing.place(frame, src_w, src_h, fb_w, fb_h,
                                    ((src_w - fb_w) // 2, (src_h - fb_h) // 2))
@@ -475,17 +495,23 @@ def render_stacked_clip(
             f"scale={out_w}:{out_h}:flags=lanczos,setsar=1[v]"
         )
 
+    dur = max(0.1, end - start)
+    if is_intermediate:
+        audio_args = ["-c:a", "aac", "-b:a", "256k"]
+    else:
+        af = measure_loudnorm_filter(source_path, start=start, duration=dur)
+        audio_args = ["-af", af, "-c:a", "aac", "-b:a", "192k"]
+
     accel.run_encode(lambda enc: [
         "ffmpeg", "-y", "-loglevel", "error",
-        "-ss", f"{start:.3f}", "-i", source_path, "-t", f"{end - start:.3f}",
+        "-ss", f"{start:.3f}", "-i", source_path, "-t", f"{dur:.3f}",
         "-filter_complex", filt,
         "-map", "[v]", "-map", "0:a:0?",
-        "-af", LOUDNESS_FILTER,
         *enc,
-        "-c:a", "aac", "-b:a", "160k",
+        *audio_args,
         "-movflags", "+faststart",
         out_path,
-    ], what="ffmpeg (stacked render)", crf=23)
+    ], what="ffmpeg (stacked render)", crf=19, intermediate=is_intermediate)
     manual = bool(framing.normalise(frame))
     if not cam:
         return {"cam": None, "panel": framing.PICTURE, "manual": manual,
@@ -506,11 +532,13 @@ def render_stacked_highlights(
     cam_panel_fraction: float = CAM_PANEL_FRACTION,
     face_context_multiple: float = FACE_CONTEXT_MULTIPLE,
     name_prefix: str = "short",
+    is_intermediate: bool = False,
 ) -> List[Dict]:
     out_dir = out_dir or LOCAL_OUTPUT_DIR
     os.makedirs(out_dir, exist_ok=True)
-    results: List[Dict] = []
-    for i, h in enumerate(highlights, 1):
+
+    def _one(item):
+        i, h = item
         out_path = os.path.join(out_dir, f"{name_prefix}_{i:02d}.mp4")
         print(f"[stack] {i}/{len(highlights)}: {h.get('title', '(untitled)')}", flush=True)
         try:
@@ -521,9 +549,20 @@ def render_stacked_highlights(
                 face_context_multiple=face_context_multiple,
                 log_label=f"[stack] {i}",
                 frame=h.get("frame"),
+                is_intermediate=is_intermediate,
             )
-            results.append({**h, "clip_url": out_path, "layout": info})
+            return {**h, "clip_url": out_path, "layout": info}
         except Exception as e:
             print(f"[stack] {i} failed: {e}", flush=True)
-            results.append({**h, "clip_url": None, "error": str(e)})
-    return results
+            return {**h, "clip_url": None, "error": str(e)}
+
+    indexed = list(enumerate(highlights, 1))
+    if not indexed:
+        return []
+    # Run clip 1 first so it populates _WEBCAM_CACHE once cleanly, then fan out the rest.
+    first_res = [_one(indexed[0])]
+    if len(indexed) == 1:
+        return first_res
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="stack") as pool:
+        rest_res = list(pool.map(_one, indexed[1:]))
+    return first_res + rest_res

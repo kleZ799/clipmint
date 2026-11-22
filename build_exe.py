@@ -341,6 +341,8 @@ def main() -> int:
         "--hidden-import", "shorts_generator.visual",
         "--hidden-import", "shorts_generator.judge",
         "--hidden-import", "shorts_generator.chat",
+        "--hidden-import", "shorts_generator.local.llm",
+        "--hidden-import", "shorts_generator.local.thumbnail",
         "--hidden-import", "shorts_generator.local.speaker",
         "--hidden-import", "shorts_generator.performance",
         "--hidden-import", "webapp.youtube_stats",

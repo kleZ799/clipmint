@@ -36,12 +36,13 @@ def _video_duration(path: str) -> float:
         return 0.0
 
 
-def _sharpest_frame_time(clip_path: str, samples: int = 8) -> float:
-    """Return the timestamp (seconds) of the sharpest sampled frame.
+def _sharpest_frame_time(clip_path: str, samples: int = 10) -> float:
+    """Return the timestamp (seconds) of the best thumbnail frame.
 
-    Samples the clip at *samples* evenly spaced points (excluding the very
-    first and last frames) and returns the one with the highest Laplacian
-    variance.  Falls back to 30% into the clip if OpenCV is unavailable.
+    Samples *samples* evenly spaced frames (excluding the very first and last),
+    down-weights near-black fade frames, and scores sharpness (Laplacian
+    variance) boosted when a clear face is visible. Falls back cleanly to pure
+    sharpness or 30% into the clip if OpenCV / face detection is unavailable.
     """
     duration = _video_duration(clip_path)
     if duration <= 0:
@@ -50,20 +51,34 @@ def _sharpest_frame_time(clip_path: str, samples: int = 8) -> float:
     best_t = duration * 0.3  # safe fallback
     try:
         import cv2          # type: ignore
-        import numpy as np  # type: ignore
+
+        try:
+            from .. import faces
+        except Exception:
+            faces = None  # type: ignore
 
         cap = cv2.VideoCapture(clip_path)
-        best_lap = -1.0
+        best_score = -1.0
         for i in range(1, samples + 1):
             t = duration * i / (samples + 1)
             cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
             ok, frame = cap.read()
-            if not ok:
+            if not ok or frame is None:
                 continue
             grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             lap = float(cv2.Laplacian(grey, cv2.CV_64F).var())
-            if lap > best_lap:
-                best_lap = lap
+            score = lap
+            if float(grey.mean()) <= 14.0:
+                score *= 0.1
+            if faces is not None:
+                try:
+                    found = faces.detect(frame, min_fraction=0.05)
+                    max_conf = max((float(f[3]) for f in found), default=0.0)
+                    score *= 1.0 + 1.5 * max_conf
+                except Exception:
+                    pass
+            if score > best_score:
+                best_score = score
                 best_t = t
         cap.release()
     except Exception:
