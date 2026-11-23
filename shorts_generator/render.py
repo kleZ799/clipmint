@@ -9,7 +9,6 @@ import json
 import math
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional
 
 from . import accel, proc
@@ -124,10 +123,7 @@ def _render_center_highlights(source_path: str, highlights: List[Dict], out_dir:
             return {**h, "clip_url": None, "error": str(e)}
 
     indexed = list(enumerate(highlights, 1))
-    if len(indexed) > 1:
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="center") as pool:
-            return list(pool.map(_one, indexed))
-    return [_one(indexed[0])] if indexed else []
+    return [_one(item) for item in indexed]
 
 
 def render_highlights(

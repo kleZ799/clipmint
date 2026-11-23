@@ -557,12 +557,4 @@ def render_stacked_highlights(
             return {**h, "clip_url": None, "error": str(e)}
 
     indexed = list(enumerate(highlights, 1))
-    if not indexed:
-        return []
-    # Run clip 1 first so it populates _WEBCAM_CACHE once cleanly, then fan out the rest.
-    first_res = [_one(indexed[0])]
-    if len(indexed) == 1:
-        return first_res
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="stack") as pool:
-        rest_res = list(pool.map(_one, indexed[1:]))
-    return first_res + rest_res
+    return [_one(item) for item in indexed]

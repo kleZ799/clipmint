@@ -77,8 +77,6 @@ def _listen(path: str, language: Optional[str], device: str,
         "beam_size": 5,
         "word_timestamps": True,
         "condition_on_previous_text": False,
-        "vad_filter": True,
-        "vad_parameters": {"threshold": 0.35, "min_silence_duration_ms": 600, "speech_pad_ms": 200},
     }
     prompt_clean = (initial_prompt or "").strip()[:220]
     if prompt_clean:

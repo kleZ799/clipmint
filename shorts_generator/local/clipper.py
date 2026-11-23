@@ -27,7 +27,6 @@ A hard cut in the source (the camera switching to the other podcast host) is
 kept as a cut rather than swept across as a pan, which is what an editor would
 do too.
 """
-from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import tempfile
@@ -506,7 +505,4 @@ def crop_highlights_local(
             return {**h, "clip_url": None, "error": str(e)}
 
     indexed = list(enumerate(highlights, 1))
-    if len(indexed) > 1:
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="facetrack") as pool:
-            return list(pool.map(_one, indexed))
-    return [_one(indexed[0])] if indexed else []
+    return [_one(item) for item in indexed]

@@ -188,48 +188,6 @@ class AudioTrack:
             return None
         return (a + window.index(min(window))) * self.window
 
-    def top_peaks(self, start: float, end: float, limit: int = 6,
-                  min_gap: float = 12.0, min_ratio: float = 2.0) -> List[tuple]:
-        """Strongest spaced loudness spikes in [start, end].
-
-        Returns [(timestamp, ratio_to_median, quiet_before_sec)] sorted by
-        timestamp, so transcript builders can annotate laughs, screams and
-        sudden reactions at zero extra audio-decoding cost.
-        """
-        if not self.rms or end <= start or self._p50 <= 0 or limit <= 0:
-            return []
-        a, b = self._index(start), self._index(end)
-        base = max(1e-6, self._p50)
-        candidates = []
-        for idx in range(a, b + 1):
-            v = self.rms[idx]
-            ratio = v / base
-            if ratio < min_ratio:
-                continue
-            # Local maximum within +-2 windows (0.5s) avoids clustering around one shout.
-            lo = max(a, idx - 2)
-            hi = min(b, idx + 2)
-            if v < max(self.rms[lo:hi + 1]):
-                continue
-            # Count quiet windows immediately preceding the reaction rise.
-            quiet_wins = 0
-            k = idx - 1
-            quiet_ceil = max(self._quiet, self._p50 * 0.45)
-            while k >= max(0, idx - 16) and self.rms[k] <= quiet_ceil:
-                quiet_wins += 1
-                k -= 1
-            candidates.append((ratio, idx * self.window, quiet_wins * self.window))
-
-        picked: List[tuple] = []
-        for ratio, ts, quiet_sec in sorted(candidates, key=lambda x: -x[0]):
-            if any(abs(ts - p[0]) < min_gap for p in picked):
-                continue
-            picked.append((round(ts, 1), round(ratio, 1), round(quiet_sec, 1)))
-            if len(picked) >= limit:
-                break
-        picked.sort(key=lambda x: x[0])
-        return picked
-
 
 def _clamp01(v: float) -> float:
     return 0.0 if v < 0 else (1.0 if v > 1 else float(v))
@@ -456,31 +414,6 @@ def coverage(measured: Dict[str, float]) -> float:
     return _clamp01(have / _OBTAINABLE) if _OBTAINABLE else 0.0
 
 
-def pacing_score(start: float, end: float, audio: "AudioTrack") -> float:
-    """0-1: how well-paced this clip is. Clips with >50% silence score lower.
-
-    Uses the audio track's RMS envelope. Windows below the quiet floor are
-    counted as silent. Good pacing = dense speech; poor pacing = lots of dead
-    air.  The result is stored on the highlight as ``pacing_score`` for the
-    scorecard but is *not* blended into ``score``, keeping the range stable.
-    """
-    if not audio or not getattr(audio, "rms", None) or end <= start:
-        return 0.5  # neutral when no data
-    window = getattr(audio, "window", 0.25)
-    a = max(0, int(start / window))
-    b = min(len(audio.rms) - 1, int(end / window))
-    if b <= a:
-        return 0.5
-    span = audio.rms[a : b + 1]
-    if not span:
-        return 0.5
-    quiet_floor = getattr(audio, "_quiet", 0.0)
-    silent = sum(1 for v in span if v < quiet_floor)
-    silent_ratio = silent / len(span)
-    # 0 % silence → 1.0,  50 %+ silence → 0.0 (linear interpolation)
-    return max(0.0, 1.0 - (silent_ratio / 0.5))
-
-
 def rescore(highlights: List[Dict], transcript: Optional[Dict],
             audio: Optional[AudioTrack], chat=None,
             tuning: Optional[Dict[str, float]] = None) -> List[Dict]:
@@ -505,21 +438,6 @@ def rescore(highlights: List[Dict], transcript: Optional[Dict],
         density = measured.pop("density", None)
         if density is not None:
             h["opening_density"] = round(density, 2)
-        # Pacing: stored for the scorecard / analytics but NOT blended into score
-        # (adding it to the weighted average would require redistributing the full
-        # weight map, which would change every existing video's rankings silently).
-        if audio:
-            try:
-                h["pacing_score"] = round(
-                    pacing_score(
-                        float(h.get("start_time", 0) or 0),
-                        float(h.get("end_time", 0) or 0),
-                        audio,
-                    ),
-                    3,
-                )
-            except Exception:
-                pass
         if chat:
             # In the unit a person reads -- "chat ran 5x its usual pace" --
             # for the scorecard, which the 0-1 velocity is not.

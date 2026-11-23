@@ -349,7 +349,15 @@ def _transcribe_audio_with_pipeline(faster_whisper, model, audio_input, kwargs: 
                 **call_kw,
             )
         except Exception as be:
-            print(f"[transcribe/local] batched pipeline fallback ({str(be).splitlines()[0][:80]})", flush=True)
+            msg = str(be)
+            print(f"[transcribe/local] batched pipeline fallback ({msg.splitlines()[0][:80]})", flush=True)
+            if any(t in msg.lower() for t in ("onnx", "silero", "nosuchfile")):
+                call_kw = {
+                    k: v for k, v in kwargs.items()
+                    if k not in ("audio", "vad_filter", "vad_parameters")
+                }
+                call_kw["vad_filter"] = False
+                return model.transcribe(audio_input, **call_kw)
     call_kw = {k: v for k, v in kwargs.items() if k != "audio"}
     return model.transcribe(audio_input, **call_kw)
 

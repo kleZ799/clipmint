@@ -353,8 +353,10 @@ def main() -> int:
         "--hidden-import", "uvicorn.protocols.websockets.auto",
         "--hidden-import", "uvicorn.lifespan.on",
 
-        # cv2's Haar cascades are data files the face detection loads by path.
+        # cv2's Haar cascades and faster-whisper's Silero VAD ONNX model are data
+        # files loaded by path at runtime.
         "--collect-data", "cv2",
+        "--collect-data", "faster_whisper",
         "--collect-data", "yt_dlp",
 
         # Torch is NOT what runs CUDA Whisper -- faster-whisper sits on
