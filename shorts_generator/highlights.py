@@ -445,6 +445,16 @@ def asks_block(asks: Optional[List[Dict]]) -> str:
     """The groups of a mixed request, and how to tag a highlight with one."""
     if not asks:
         return ""
+    if len(asks) == 1:
+        # A single brief (see brief_asks): no groups to list, just a yes or no.
+        return (
+            "\nGive each highlight an \"ask\" field: 1 when it is the kind of "
+            "moment the request above asks for, 0 when it is not. Strong moments "
+            "that do not fit can still be returned with \"ask\": 0; they are used "
+            "only when too few moments fit. If the request says nothing about "
+            "which moments to pick (only layout, length or count), give every "
+            "highlight \"ask\": 1.\n"
+        )
     lines = "\n".join(f"  {i}. {a['count']} clip(s): {a['want']}"
                        for i, a in enumerate(asks, 1))
     return (
@@ -455,6 +465,21 @@ def asks_block(asks: Optional[List[Dict]]) -> str:
         "group it belongs to, or 0 when it fits none. A strong moment that "
         "fits no group can still be returned with \"ask\": 0.\n"
     )
+
+
+def brief_asks(brief: str, asks: Optional[List[Dict]], num_clips: int) -> List[Dict]:
+    """The groups pick() fills first, for a run with a brief.
+
+    A mixed request already has its groups. A single brief becomes one group
+    of its own: every clip, of the kind it describes. Without that, the brief
+    only shaped the model's score, and the measured signals and the judge --
+    neither of which knows what was asked for -- re-ranked loud moments that
+    did not fit it above quiet ones that did.
+    """
+    if asks:
+        return asks
+    brief = (brief or "").strip()
+    return [{"count": int(num_clips), "want": brief}] if brief else []
 
 
 def _brief_text(brief: str) -> str:

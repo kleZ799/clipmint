@@ -1132,7 +1132,7 @@ class JobStore:
             return
 
         from shorts_generator.boundaries import report as report_cuts
-        from shorts_generator.highlights import get_highlights, pick, pool
+        from shorts_generator.highlights import brief_asks, get_highlights, pick, pool
         from shorts_generator.hook_open import budget as hook_budget
         from shorts_generator.judge import judge as judge_clips, pool_size as judge_pool
         from shorts_generator.local.llm import call_vision_llm, vision_images_per_request
@@ -1272,6 +1272,11 @@ class JobStore:
             # way transcript reuse already does: point at the same source and
             # the work you already paid for is still there.
             checkpoint = Path(source_path).with_suffix(".highlights.json")
+            # What was asked for, as the groups pick() fills first. A single
+            # brief is a group of its own, so the signals and the judge can
+            # reorder the moments that fit it, but never put a loud one that
+            # does not fit ahead of them.
+            asks = brief_asks(job.spec.brief, job.spec.asks, job.spec.num_clips)
             # Checkpointed per chunk, so a retry here re-asks only for the
             # chunks that never came back.
             result = self._attempt("ranking", get_highlights,
@@ -1287,7 +1292,7 @@ class JobStore:
                                     source_path=source_path,
                                     chat=chat,
                                     tuning=tuning,
-                                    asks=job.spec.asks)
+                                    asks=asks)
             all_highlights = result.get("highlights", [])
             content = result.get("content") or {}
             if not all_highlights:
@@ -1298,7 +1303,7 @@ class JobStore:
             # that can see, as a stranger scrolling past would meet them, and
             # re-ranked on that -- see shorts_generator/judge.py.
             self._update(job, frac=0.5, message="Watching the best moments like a stranger would")
-            looked = pool(all_highlights, judge_pool(job.spec.num_clips), job.spec.asks)
+            looked = pool(all_highlights, judge_pool(job.spec.num_clips), asks)
             try:
                 judge_clips(looked, source_path, call_vision_llm,
                             lambda h: clip_words(h, transcript),
@@ -1311,7 +1316,7 @@ class JobStore:
             # order the user sees is the order worth posting in.
             # A mixed request ("2 funny, 2 that ask a question") fills each
             # group from its own moments first -- see highlights.pick.
-            top = pick(all_highlights, job.spec.num_clips, job.spec.asks)
+            top = pick(all_highlights, job.spec.num_clips, asks)
             print(f"[rank] {len(top)} clip(s) chosen, best first: "
                   + ", ".join(str(h.get("score", "?")) for h in top), flush=True)
             # Every cut, with what moved it. A run's framing decisions are
