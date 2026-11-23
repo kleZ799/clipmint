@@ -3027,6 +3027,10 @@ function onUpdate(s) {
   if (s.paused !== undefined && s.paused !== paused) renderPauseState(s.paused);
   $("pauseBtn").classList.toggle("hidden", s.status !== "running");
   $("stopBtn").classList.toggle("hidden", !["running", "queued"].includes(s.status));
+  // The spinner says "still working". Once the run has ended -- done, failed
+  // or stopped -- it has to stop with it, or "3 clip(s) ready" at 100% reads
+  // as a run that is somehow still going.
+  $("progress").classList.toggle("ended", !["running", "queued"].includes(s.status));
   $("stageLabel").textContent = s.message || s.stage_label;
   $("pct").textContent = Math.round(s.progress * 100) + "%";
   $("barFill").style.transform = `scaleX(${Math.max(0, Math.min(1, s.progress))})`;
