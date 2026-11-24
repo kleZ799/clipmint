@@ -183,6 +183,39 @@ def _folder_bytes(folder: Path) -> int:
     return total
 
 
+# What yt-dlp leaves of a download it never finished: the .part file and its
+# fragments, the .ytdl resume state, and streams still waiting to be merged.
+_PARTIAL_DOWNLOAD = re.compile(r"\.(?:part(?:-Frag\d+)?|ytdl)$|\.temp\.\w+$|\.f\d+\.\w+$")
+
+
+def _delete_partial_download(downloads: Path, source: str, others: List["Job"]) -> int:
+    """Delete the unfinished download of a run stopped while it was fetching.
+
+    Found by the YouTube id every download carries in its name ("Title [id]").
+    Left alone while another run is fetching the same video, since those
+    pieces are what it is resuming from. Returns the bytes freed.
+    """
+    from shorts_generator.local.downloader import _extract_youtube_video_id
+
+    video_id = _extract_youtube_video_id(source or "")
+    if not video_id or any(
+            o.status in ("queued", "running")
+            and _extract_youtube_video_id(o.source or "") == video_id
+            for o in others):
+        return 0
+    freed = 0
+    for f in downloads.iterdir():
+        if (f.is_file() and f"[{video_id}]" in f.name
+                and _PARTIAL_DOWNLOAD.search(f.name)):
+            try:
+                size = f.stat().st_size
+                f.unlink()
+                freed += size
+            except OSError:
+                pass
+    return freed
+
+
 def _fmt_clock(seconds: float) -> str:
     total = int(round(seconds))
     h, rem = divmod(total, 3600)
@@ -683,6 +716,10 @@ class JobStore:
                         freed += size
                     except OSError:
                         pass
+        elif downloads and not src:
+            # Stopped while it was still downloading, so there is no finished
+            # video to go by -- only yt-dlp's pieces of one.
+            freed += _delete_partial_download(downloads, job.source, others)
 
         with self._lock:
             self._jobs.pop(job.id, None)

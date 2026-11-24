@@ -102,8 +102,17 @@ def _rate() -> Optional[float]:
 def _progress_line(d: Dict) -> None:
     """One readable line about a download in flight: how far, how fast, how long left.
 
-    Never raises: a progress line that throws would take the download with it.
+    Never raises, except to stop: a progress line that throws would take the
+    download with it -- which is exactly what Stop wants.
+
+    yt-dlp downloads inside this process, so there is no child for Pause to
+    suspend or Stop to end, and the job's own stop check raises from inside the
+    print below, where the except swallows it. This hook is the one place
+    yt-dlp hands control back on every block it reads, so a pause holds the
+    download here and a stop ends it here, before the try.
     """
+    proc.wait_if_paused()
+    proc.raise_if_cancelled()
     try:
         status = d.get("status")
         if status == "finished":
@@ -475,6 +484,9 @@ def download_youtube_local(video_url: str, fmt: str = "720", out_dir: Optional[s
     try:
         path, info = _run(ydl_opts)
     except Exception as first:
+        # A stop is not a failed download: no fallback copy, no retry.
+        if isinstance(first, proc.Cancelled):
+            raise
         # Before anything else: is there already a copy on disk we turned down?
         #
         # Reaching here with `cached` set means the file was usable and we went
