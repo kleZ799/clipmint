@@ -288,6 +288,35 @@ async function checkSetup() {
   } catch (_) { /* an offline settings check is not worth blocking startup */ }
 }
 
+// ---------------------------------------------------------------- chunking
+
+async function loadChunking() {
+  try {
+    const d = await api("/api/chunking");
+    $("chunkMin").value = d.minutes;
+    $("chunkOv").value = d.overlap;
+    $("chunkMin").disabled = $("chunkOv").disabled = $("chunkSave").disabled = !!d.pinned;
+    if (d.pinned) {
+      $("chunkHint").textContent = "Set by the CHUNK_MINUTES / CHUNK_OVERLAP_SECONDS environment variables, which outrank this.";
+    }
+  } catch (_) { /* settings still work without it */ }
+}
+
+$("chunkSave").onclick = async () => {
+  $("chunkMsg").innerHTML = "";
+  try {
+    await api("/api/chunking", json("POST", {
+      minutes: parseInt($("chunkMin").value, 10),
+      overlap: parseInt($("chunkOv").value, 10),
+    }));
+    await loadChunking();
+    toast("Saved — applies to the next run.");
+  } catch (e) {
+    $("chunkMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+};
+loadChunking();
+
 // ---------------------------------------------------------------- profiles
 //
 // One app, several channels. The server decides which profile is active; the

@@ -741,6 +741,15 @@ Videos at or over `LONG_VIDEO_THRESHOLD` (1800s / 30 min) are split into
 of overlap, advancing by `CHUNK_SIZE - OVERLAP` each step. Overlap exists so a
 moment straddling a boundary isn't cut in half by the chunking itself.
 
+Both numbers are settings (Settings → Long videos, or `CHUNK_MINUTES` and
+`CHUNK_OVERLAP_SECONDS`; 3-60 minutes, 0-180 seconds, overlap capped at a third
+of the chunk). A small local model or a free tier that answers "request too
+large" wants smaller chunks, and the split threshold shrinks with them
+(`long_video_threshold()`: the smaller of 30 minutes and 1.5 chunks), so a
+25-minute video is not sent whole to a model that can't take 20. The overlap is
+added to the checkpoint fingerprint when it differs from 60s; the chunk length
+already moves the chunk count.
+
 The critical detail is **rebasing**:
 
 ```python

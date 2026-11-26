@@ -716,6 +716,21 @@ addEventListener("load", function () {
   </div>
 
   <div class="d-sec">
+    <h3>Long videos</h3>
+    <label class="fld">
+      <span>Chunk length (minutes) &mdash; how much the model reads per request</span>
+      <input type="number" id="chunkMin" min="3" max="60" step="1">
+    </label>
+    <label class="fld">
+      <span>Overlap (seconds) &mdash; shared between neighbouring chunks</span>
+      <input type="number" id="chunkOv" min="0" max="180" step="5">
+    </label>
+    <p class="hint" id="chunkHint">Lower it if a local model runs out of memory or a free API answers &ldquo;request too large&rdquo;. More, smaller chunks means more requests.</p>
+    <button class="btn ghost" id="chunkSave">Save</button>
+    <div id="chunkMsg"></div>
+  </div>
+
+  <div class="d-sec">
     <h3>Your logo</h3>
     <div class="brand-row">
       <div class="brand-thumb" id="brandThumb"><span>No logo</span></div>

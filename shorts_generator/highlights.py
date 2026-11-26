@@ -689,7 +689,17 @@ def build_transcript_text(transcript: Dict, chat=None, offset: float = 0.0) -> s
     return "\n".join(line for _, line in lines)
 
 
+def long_video_threshold() -> float:
+    """Length from which a video is split. Shrinks with a smaller chunk size,
+    or a 25-minute video would still go to a small model in one piece."""
+    from .config import chunk_overlap_seconds, chunk_seconds
+    size = chunk_seconds()
+    return min(LONG_VIDEO_THRESHOLD, max(size + chunk_overlap_seconds(), size * 1.5))
+
+
 def chunk_transcript(transcript: Dict) -> List[Dict]:
+    from .config import chunk_overlap_seconds, chunk_seconds
+    CHUNK_SIZE_SECONDS, CHUNK_OVERLAP_SECONDS = chunk_seconds(), chunk_overlap_seconds()
     segments = transcript.get("segments", [])
     duration = transcript.get("duration", segments[-1]["end"] if segments else 0)
     chunks = []
@@ -861,8 +871,13 @@ def _checkpoint_fingerprint(duration: float, chunk_count: int, num_clips: int,
     if (brief or "").strip() or asks:
         text = json.dumps([(brief or "").strip(), asks or []], sort_keys=True)
         asked = "|ask" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+    # Chunk size already moves chunk_count; the overlap does not, and shifts
+    # every boundary. Marked only when changed from the default.
+    from .config import CHUNK_OVERLAP_DEFAULT, chunk_overlap_seconds
+    ov = chunk_overlap_seconds()
+    overlap = "" if ov == CHUNK_OVERLAP_DEFAULT else f"|ov{ov}"
     return (f"v{PROMPT_VERSION}|{duration / 60:.0f}|{chunk_count}|{num_clips}"
-            f"|{length}|{kind}" + ("|chat" if chat else "") + asked)
+            f"|{length}|{kind}" + ("|chat" if chat else "") + asked + overlap)
 
 
 def _load_saved_content(path: Optional[Path], duration: float) -> Optional[Dict]:
@@ -1022,7 +1037,7 @@ def get_highlights(
         said += f" - it looked like {content_info['detected_kind']}"
     print(f"[highlights] {said}", flush=True)
 
-    if duration >= LONG_VIDEO_THRESHOLD:
+    if duration >= long_video_threshold():
         chunks = chunk_transcript(transcript)
         print(f"[highlights] long video — splitting into {len(chunks)} chunks", flush=True)
 

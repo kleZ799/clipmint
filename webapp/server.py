@@ -698,6 +698,44 @@ async def set_processor(req: ProcessorRequest) -> dict:
     return await get_processor()
 
 
+class ChunkingRequest(BaseModel):
+    minutes: int
+    overlap: int
+
+
+@app.get("/api/chunking")
+async def get_chunking() -> dict:
+    """How much of a long video the model reads per request."""
+    from shorts_generator import config
+    return {
+        "minutes": config.chunk_seconds() // 60,
+        "overlap": config.chunk_overlap_seconds(),
+        "default_minutes": config.CHUNK_MINUTES_DEFAULT,
+        "default_overlap": config.CHUNK_OVERLAP_DEFAULT,
+        "minutes_range": config.CHUNK_MINUTES_RANGE,
+        "overlap_range": config.CHUNK_OVERLAP_RANGE,
+        "pinned": bool(os.getenv("CHUNK_MINUTES", "").strip()
+                       or os.getenv("CHUNK_OVERLAP_SECONDS", "").strip()),
+    }
+
+
+@app.post("/api/chunking")
+async def set_chunking(req: ChunkingRequest) -> dict:
+    """Smaller chunks suit small local models and free-tier request limits."""
+    from shorts_generator import config, user_config
+    lo, hi = config.CHUNK_MINUTES_RANGE
+    olo, ohi = config.CHUNK_OVERLAP_RANGE
+    if not lo <= req.minutes <= hi:
+        raise HTTPException(400, f"Chunk length must be {lo}-{hi} minutes.")
+    if not olo <= req.overlap <= ohi:
+        raise HTTPException(400, f"Overlap must be {olo}-{ohi} seconds.")
+    if req.overlap > req.minutes * 20:
+        raise HTTPException(400, "Overlap can be at most a third of the chunk length.")
+    user_config.save({"CHUNK_MINUTES": str(req.minutes),
+                      "CHUNK_OVERLAP_SECONDS": str(req.overlap)})
+    return await get_chunking()
+
+
 class YoutubeAccessRequest(BaseModel):
     mode: str = "auto"
     browser: str = ""
