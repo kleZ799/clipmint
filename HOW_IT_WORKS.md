@@ -741,6 +741,15 @@ Videos at or over `LONG_VIDEO_THRESHOLD` (1800s / 30 min) are split into
 of overlap, advancing by `CHUNK_SIZE - OVERLAP` each step. Overlap exists so a
 moment straddling a boundary isn't cut in half by the chunking itself.
 
+Both numbers are settings (Settings → Long videos, or `CHUNK_MINUTES` and
+`CHUNK_OVERLAP_SECONDS`; 3-60 minutes, 0-180 seconds, overlap capped at a third
+of the chunk). A small local model or a free tier that answers "request too
+large" wants smaller chunks, and the split threshold shrinks with them
+(`long_video_threshold()`: the smaller of 30 minutes and 1.5 chunks), so a
+25-minute video is not sent whole to a model that can't take 20. The overlap is
+added to the checkpoint fingerprint when it differs from 60s; the chunk length
+already moves the chunk count.
+
 The critical detail is **rebasing**:
 
 ```python
@@ -3422,12 +3431,21 @@ themselves and loading the same models is how a slow start becomes a *failed*
 one.
 
 ```python
-LOCK_PORT = 50507
-s.bind(("127.0.0.1", LOCK_PORT))   # SO_REUSEADDR deliberately NOT set
+LOCK_MUTEX_NAME = "Local\\ClipMint-single-instance"   # Windows
+LOCK_PORT = 50507                                      # macOS and Linux
 ```
 
-Binding a fixed port and holding it for the process lifetime is the mutex.
-Windows refuses the second bind, and that refusal *is* the lock.
+On Windows the lock is a named mutex: `CreateMutexW` reporting
+`ERROR_ALREADY_EXISTS` means another copy holds it, and Windows releases it
+when that copy exits, however it exits. It used to be a bound port, and that
+broke on machines where Hyper-V, WSL2 or Docker had Windows reserve the port
+range containing 50507: the bind was refused with *access denied*, and every
+launch said "already running" with no copy running (issue #30).
+
+macOS and Linux still bind the port and hold it, and only *address in use*
+counts as another copy. On either platform, a lock that cannot be taken for any
+other reason lets the app start without it — a second copy is a nuisance, an
+app that refuses to open is a dead end.
 
 **4. Cold-start time.** A first launch pays for importing faster-whisper,
 ctranslate2, cv2 and the Google client off disk while the virus scanner reads

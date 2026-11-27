@@ -445,6 +445,16 @@ def asks_block(asks: Optional[List[Dict]]) -> str:
     """The groups of a mixed request, and how to tag a highlight with one."""
     if not asks:
         return ""
+    if len(asks) == 1:
+        # A single brief (see brief_asks): no groups to list, just a yes or no.
+        return (
+            "\nGive each highlight an \"ask\" field: 1 when it is the kind of "
+            "moment the request above asks for, 0 when it is not. Strong moments "
+            "that do not fit can still be returned with \"ask\": 0; they are used "
+            "only when too few moments fit. If the request says nothing about "
+            "which moments to pick (only layout, length or count), give every "
+            "highlight \"ask\": 1.\n"
+        )
     lines = "\n".join(f"  {i}. {a['count']} clip(s): {a['want']}"
                        for i, a in enumerate(asks, 1))
     return (
@@ -455,6 +465,21 @@ def asks_block(asks: Optional[List[Dict]]) -> str:
         "group it belongs to, or 0 when it fits none. A strong moment that "
         "fits no group can still be returned with \"ask\": 0.\n"
     )
+
+
+def brief_asks(brief: str, asks: Optional[List[Dict]], num_clips: int) -> List[Dict]:
+    """The groups pick() fills first, for a run with a brief.
+
+    A mixed request already has its groups. A single brief becomes one group
+    of its own: every clip, of the kind it describes. Without that, the brief
+    only shaped the model's score, and the measured signals and the judge --
+    neither of which knows what was asked for -- re-ranked loud moments that
+    did not fit it above quiet ones that did.
+    """
+    if asks:
+        return asks
+    brief = (brief or "").strip()
+    return [{"count": int(num_clips), "want": brief}] if brief else []
 
 
 def _brief_text(brief: str) -> str:
@@ -664,7 +689,17 @@ def build_transcript_text(transcript: Dict, chat=None, offset: float = 0.0) -> s
     return "\n".join(line for _, line in lines)
 
 
+def long_video_threshold() -> float:
+    """Length from which a video is split. Shrinks with a smaller chunk size,
+    or a 25-minute video would still go to a small model in one piece."""
+    from .config import chunk_overlap_seconds, chunk_seconds
+    size = chunk_seconds()
+    return min(LONG_VIDEO_THRESHOLD, max(size + chunk_overlap_seconds(), size * 1.5))
+
+
 def chunk_transcript(transcript: Dict) -> List[Dict]:
+    from .config import chunk_overlap_seconds, chunk_seconds
+    CHUNK_SIZE_SECONDS, CHUNK_OVERLAP_SECONDS = chunk_seconds(), chunk_overlap_seconds()
     segments = transcript.get("segments", [])
     duration = transcript.get("duration", segments[-1]["end"] if segments else 0)
     chunks = []
@@ -836,8 +871,13 @@ def _checkpoint_fingerprint(duration: float, chunk_count: int, num_clips: int,
     if (brief or "").strip() or asks:
         text = json.dumps([(brief or "").strip(), asks or []], sort_keys=True)
         asked = "|ask" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+    # Chunk size already moves chunk_count; the overlap does not, and shifts
+    # every boundary. Marked only when changed from the default.
+    from .config import CHUNK_OVERLAP_DEFAULT, chunk_overlap_seconds
+    ov = chunk_overlap_seconds()
+    overlap = "" if ov == CHUNK_OVERLAP_DEFAULT else f"|ov{ov}"
     return (f"v{PROMPT_VERSION}|{duration / 60:.0f}|{chunk_count}|{num_clips}"
-            f"|{length}|{kind}" + ("|chat" if chat else "") + asked)
+            f"|{length}|{kind}" + ("|chat" if chat else "") + asked + overlap)
 
 
 def _load_saved_content(path: Optional[Path], duration: float) -> Optional[Dict]:
@@ -997,7 +1037,7 @@ def get_highlights(
         said += f" - it looked like {content_info['detected_kind']}"
     print(f"[highlights] {said}", flush=True)
 
-    if duration >= LONG_VIDEO_THRESHOLD:
+    if duration >= long_video_threshold():
         chunks = chunk_transcript(transcript)
         print(f"[highlights] long video — splitting into {len(chunks)} chunks", flush=True)
 

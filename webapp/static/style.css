@@ -2612,6 +2612,7 @@ body.job-paused #stageLabel::after {
   color: var(--warn);
 }
 body.job-paused .spin { animation-play-state: paused; opacity: .4; }
+#progress.ended .spin { display: none; }
 
 /* ============================ the safety note ============================ */
 .safe-h {

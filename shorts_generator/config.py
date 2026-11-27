@@ -185,6 +185,39 @@ def current_whisper_model(device: str = "auto") -> str:
     return "distil-large-v3" if device == "cuda" else "small"
 
 
+# How much of a long video the model reads in one request. The default suits
+# a cloud model; a small local model on an 8 GB card, or a free tier that
+# answers "request too large", needs less per request. Overlap is the tail
+# shared between neighbours so a moment on a boundary is still read whole.
+CHUNK_MINUTES_DEFAULT = 20
+CHUNK_OVERLAP_DEFAULT = 60
+CHUNK_MINUTES_RANGE = (3, 60)
+CHUNK_OVERLAP_RANGE = (0, 180)
+
+
+def _int_setting(key: str, default: int, lo: int, hi: int) -> int:
+    from . import user_config
+    raw = user_config.get(key, os.getenv(key, ""))
+    try:
+        value = int(float(str(raw).strip()))
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, value))
+
+
+def chunk_seconds() -> int:
+    """Length of each ranking chunk, re-read per run so Settings applies live."""
+    lo, hi = CHUNK_MINUTES_RANGE
+    return _int_setting("CHUNK_MINUTES", CHUNK_MINUTES_DEFAULT, lo, hi) * 60
+
+
+def chunk_overlap_seconds() -> int:
+    """Shared tail between chunks, never more than a third of the chunk."""
+    lo, hi = CHUNK_OVERLAP_RANGE
+    value = _int_setting("CHUNK_OVERLAP_SECONDS", CHUNK_OVERLAP_DEFAULT, lo, hi)
+    return min(value, chunk_seconds() // 3)
+
+
 def ollama_host() -> str:
     """Where the Ollama server is, as a URL the client can call.
 

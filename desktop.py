@@ -217,28 +217,83 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
-# A fixed port nobody else is likely to want, bound for the lifetime of the
-# process purely as a mutex. Windows refuses the second bind, which is the
-# whole trick.
+# On Windows the lock is a named mutex, which belongs to the login session and
+# depends on nothing else on the machine. It used to be a port, and Windows
+# reserves blocks of ports for Hyper-V, WSL2 and Docker -- on a machine where
+# the reserved block held this one, the bind was refused and every launch said
+# "already running" with no copy running at all.
+LOCK_MUTEX_NAME = "Local\\ClipMint-single-instance"
+ERROR_ALREADY_EXISTS = 183
+
+# Elsewhere, a fixed port bound for the lifetime of the process. The second
+# bind is refused with "address in use", and that refusal is the lock.
 LOCK_PORT = 50507
 
+# Returned when the lock could not be taken for a reason that says nothing
+# about another copy. Truthy, so main() carries on.
+_NO_LOCK = object()
 
-def _claim_single_instance() -> Optional[socket.socket]:
-    """Return a held socket, or None if this app is already running.
+
+def _claim_single_instance() -> Optional[object]:
+    """Return something to hold for the process lifetime, or None if this app
+    is already running.
 
     A slow start looks exactly like a dead one, so the natural reaction is to
     click the icon again. Four copies each unpacking themselves and loading
     the same models is how a slow start becomes a failed one -- so only the
-    first copy gets to run. SO_REUSEADDR is deliberately not set: the default
-    refusal is the lock.
+    first copy gets to run.
+
+    Only proof of another copy stops a launch. When the lock itself cannot be
+    taken, the app runs without it: a second copy is a nuisance, an app that
+    refuses to open is a dead end.
     """
+    if sys.platform == "win32":
+        return _claim_windows_mutex()
+    return _claim_lock_port()
+
+
+def _claim_windows_mutex() -> Optional[object]:
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, wintypes.BOOL,
+                                          wintypes.LPCWSTR)
+        handle = kernel32.CreateMutexW(None, False, LOCK_MUTEX_NAME)
+        last_error = ctypes.get_last_error()
+    except Exception as e:
+        print(f"[{APP_NAME}] single-instance lock unavailable ({e}); "
+              f"starting anyway", flush=True)
+        return _NO_LOCK
+
+    if not handle:
+        print(f"[{APP_NAME}] single-instance lock unavailable (Windows error "
+              f"{last_error}); starting anyway", flush=True)
+        return _NO_LOCK
+    if last_error == ERROR_ALREADY_EXISTS:
+        kernel32.CloseHandle(handle)
+        return None
+    # Never closed: Windows releases it when this process exits, however it
+    # exits, which is the whole point.
+    return handle
+
+
+def _claim_lock_port() -> Optional[object]:
+    import errno
+
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.bind(("127.0.0.1", LOCK_PORT))
         s.listen(1)
-    except OSError:
+    except OSError as e:
         s.close()
-        return None
+        if e.errno == errno.EADDRINUSE:
+            return None
+        print(f"[{APP_NAME}] could not take port {LOCK_PORT} as the "
+              f"single-instance lock ({e}); starting anyway", flush=True)
+        return _NO_LOCK
     return s
 
 

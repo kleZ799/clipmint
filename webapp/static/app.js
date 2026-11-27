@@ -298,6 +298,35 @@ async function checkSetup() {
   } catch (_) { /* an offline settings check is not worth blocking startup */ }
 }
 
+// ---------------------------------------------------------------- chunking
+
+async function loadChunking() {
+  try {
+    const d = await api("/api/chunking");
+    $("chunkMin").value = d.minutes;
+    $("chunkOv").value = d.overlap;
+    $("chunkMin").disabled = $("chunkOv").disabled = $("chunkSave").disabled = !!d.pinned;
+    if (d.pinned) {
+      $("chunkHint").textContent = "Set by the CHUNK_MINUTES / CHUNK_OVERLAP_SECONDS environment variables, which outrank this.";
+    }
+  } catch (_) { /* settings still work without it */ }
+}
+
+$("chunkSave").onclick = async () => {
+  $("chunkMsg").innerHTML = "";
+  try {
+    await api("/api/chunking", json("POST", {
+      minutes: parseInt($("chunkMin").value, 10),
+      overlap: parseInt($("chunkOv").value, 10),
+    }));
+    await loadChunking();
+    toast("Saved — applies to the next run.");
+  } catch (e) {
+    $("chunkMsg").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+};
+loadChunking();
+
 // ---------------------------------------------------------------- profiles
 //
 // One app, several channels. The server decides which profile is active; the
@@ -3188,6 +3217,10 @@ function onUpdate(s) {
   if (s.paused !== undefined && s.paused !== paused) renderPauseState(s.paused);
   $("pauseBtn").classList.toggle("hidden", s.status !== "running");
   $("stopBtn").classList.toggle("hidden", !["running", "queued"].includes(s.status));
+  // The spinner says "still working". Once the run has ended -- done, failed
+  // or stopped -- it has to stop with it, or "3 clip(s) ready" at 100% reads
+  // as a run that is somehow still going.
+  $("progress").classList.toggle("ended", !["running", "queued"].includes(s.status));
   $("stageLabel").textContent = s.message || s.stage_label;
   $("pct").textContent = Math.round(s.progress * 100) + "%";
   $("barFill").style.transform = `scaleX(${Math.max(0, Math.min(1, s.progress))})`;
