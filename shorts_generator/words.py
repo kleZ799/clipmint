@@ -26,7 +26,7 @@ from . import proc
 
 _lock = threading.Lock()
 _model = None
-_model_device: Optional[str] = None
+_model_key: Optional[tuple] = None
 
 # Whisper's own line for "this segment was not speech". A clip of gameplay
 # with nobody talking still comes back with words if nothing filters them,
@@ -37,27 +37,29 @@ _LOW_LOGPROB = -1.0
 
 def _load(device: str):
     """The Whisper model on `device`, loaded once for the whole batch."""
-    global _model, _model_device
-    if _model is not None and _model_device == device:
+    global _model, _model_key
+    from .config import current_whisper_model
+    model_name = current_whisper_model(device)
+    key = (device, model_name)
+    if _model is not None and _model_key == key:
         return _model
 
-    from .config import LOCAL_WHISPER_MODEL
     from .local.transcriber import _register_cuda_dlls
     _register_cuda_dlls()
     from faster_whisper import WhisperModel  # type: ignore
 
-    compute_type = "float16" if device == "cuda" else "int8"
-    _model = WhisperModel(LOCAL_WHISPER_MODEL, device=device, compute_type=compute_type)
-    _model_device = device
+    compute_type = "int8_float16" if device == "cuda" else "int8"
+    _model = WhisperModel(model_name, device=device, compute_type=compute_type)
+    _model_key = key
     return _model
 
 
 def release() -> None:
     """Let go of the model. The next clip loads it again."""
-    global _model, _model_device
+    global _model, _model_key
     with _lock:
         _model = None
-        _model_device = None
+        _model_key = None
 
 
 def _device() -> str:
@@ -67,15 +69,19 @@ def _device() -> str:
     return device
 
 
-def _listen(path: str, language: Optional[str], device: str) -> List[Dict]:
+def _listen(path: str, language: Optional[str], device: str,
+            initial_prompt: Optional[str] = None) -> List[Dict]:
     model = _load(device)
-    segments, _info = model.transcribe(
-        path,
-        language=language,
-        beam_size=5,
-        word_timestamps=True,
-        condition_on_previous_text=False,
-    )
+    kw: Dict = {
+        "language": language,
+        "beam_size": 5,
+        "word_timestamps": True,
+        "condition_on_previous_text": False,
+    }
+    prompt_clean = (initial_prompt or "").strip()[:220]
+    if prompt_clean:
+        kw["initial_prompt"] = prompt_clean
+    segments, _info = model.transcribe(path, **kw)
     words: List[Dict] = []
     for seg in segments:
         # Held between segments, the same way the source transcription is:
@@ -97,7 +103,8 @@ def _listen(path: str, language: Optional[str], device: str) -> List[Dict]:
     return words
 
 
-def transcribe_words(path: str, language: Optional[str] = None) -> List[Dict]:
+def transcribe_words(path: str, language: Optional[str] = None,
+                     initial_prompt: Optional[str] = None) -> List[Dict]:
     """Every spoken word in `path`: [{start, end, word, p}], in clip seconds.
 
     Returns [] when faster-whisper is not installed, when the clip has no
@@ -116,7 +123,7 @@ def transcribe_words(path: str, language: Optional[str] = None) -> List[Dict]:
         except Exception:
             device = "cpu"
         try:
-            return _listen(path, lang, device)
+            return _listen(path, lang, device, initial_prompt=initial_prompt)
         except ImportError:
             print("[words] faster-whisper is not installed - no captions or cuts",
                   flush=True)
@@ -131,7 +138,7 @@ def transcribe_words(path: str, language: Optional[str] = None) -> List[Dict]:
             print(f"[words] the GPU stopped ({str(e).splitlines()[0][:120]}) - "
                   f"listening on the CPU instead", flush=True)
         try:
-            return _listen(path, lang, "cpu")
+            return _listen(path, lang, "cpu", initial_prompt=initial_prompt)
         except Exception as e:
             print(f"[words] could not listen to the clip ({str(e).splitlines()[0][:140]})",
                   flush=True)

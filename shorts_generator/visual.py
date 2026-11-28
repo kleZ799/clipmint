@@ -25,6 +25,7 @@ Best-effort like every other signal: a candidate that cannot be read gets no
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 from . import proc
@@ -110,20 +111,22 @@ def measure(source: str, start: float, end: float) -> Optional[Dict[str, float]]
 
 
 def measure_all(highlights: List[Dict], source: Optional[str]) -> int:
-    """Attach `visual` to each highlight in place. Returns how many were read.
-
-    Motion is also turned into `motion_rank`, 0-1 across this batch: a slow
-    narrative game and a shooter move by very different amounts, and only the
-    comparison between candidates from the same video means anything.
-    """
+    """Attach `visual` to each highlight in place (parallel across 4 workers)."""
     if not source or not highlights:
         return 0
-    read = 0
-    for h in highlights:
+
+    def _one(h: Dict) -> Optional[Dict[str, float]]:
         try:
-            v = measure(source, float(h["start_time"]), float(h["end_time"]))
+            return measure(source, float(h["start_time"]), float(h["end_time"]))
         except Exception:
-            v = None
+            return None
+
+    with ThreadPoolExecutor(max_workers=min(4, len(highlights)),
+                            thread_name_prefix="vis") as pool:
+        measured = list(pool.map(_one, highlights))
+
+    read = 0
+    for h, v in zip(highlights, measured):
         if v:
             h["visual"] = v
             read += 1

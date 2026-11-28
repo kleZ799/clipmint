@@ -643,7 +643,7 @@ body.guide-off .content { margin-left: 0; }
 @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
 
 /* ============================ inputs ============================ */
-input[type=text], input[type=password], input[type=number], input[type=datetime-local], textarea, select {
+input[type=text], input[type=password], input[type=number], input[type=url], input[type=datetime-local], textarea, select {
   width: 100%;
   background: var(--field);
   border: 1px solid var(--line);
@@ -3021,3 +3021,107 @@ body.job-paused .spin { animation-play-state: paused; opacity: .4; }
 .perf-small { color: var(--text-3); font-size: 12px; }
 .perf-err { color: var(--err-ink); }
 .clip .flag span.views { color: var(--on-media); }
+
+/* ============================ AI key pool ============================ */
+.pool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  margin: 4px 0 8px;
+}
+.pool-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+.pool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.pool-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 7px 9px;
+  cursor: grab;
+  transition: border-color var(--fast), background var(--fast), opacity var(--fast);
+}
+.pool-item:hover { border-color: var(--edge); }
+.pool-item.dragging { opacity: .45; border-color: var(--blue); }
+.pool-drag {
+  color: var(--text-3);
+  font-size: 13px;
+  letter-spacing: -1px;
+  user-select: none;
+  flex: 0 0 auto;
+}
+.pool-rank {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  flex: 0 0 auto;
+}
+.pool-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pool-meta strong {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pool-meta span {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pool-badge {
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--hover);
+  color: var(--text-2);
+}
+.pool-badge.ready { background: rgba(43, 166, 64, .16); color: var(--ok-ink); }
+.pool-badge.cooldown { background: rgba(255, 210, 77, .16); color: var(--warn-ink); }
+.pool-badge.exhausted { background: rgba(255, 92, 92, .16); color: var(--err-ink); }
+.pool-arrows { display: flex; gap: 3px; flex: 0 0 auto; }
+.pool-arrows button {
+  border: 1px solid var(--line);
+  background: var(--raised-2);
+  color: var(--text-2);
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pool-arrows button:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--edge);
+}
+.pool-arrows button:disabled { opacity: .32; cursor: default; }

@@ -5,8 +5,10 @@ local/clipper.py and the stacked webcam layout in local/gaming_layout.py — plu
 a plain centre crop that had no home. This dispatches a LayoutSpec to whichever
 one it asks for, so callers (CLI, web UI) never branch on layout themselves.
 """
+import json
+import math
 import os
-import subprocess
+import re
 from typing import Callable, Dict, List, Optional
 
 from . import accel, proc
@@ -16,16 +18,56 @@ from .layout_spec import LayoutSpec
 # Instagram all normalise toward, so hitting it means nothing is turned down
 # on upload and nothing plays quiet next to whatever the feed shows first.
 LOUDNESS_FILTER = "loudnorm=I=-14:TP=-1.5:LRA=11"
+VOICE_POLISH_FILTER = "highpass=f=75"
+
+
+def measure_loudnorm_filter(path: str, start: Optional[float] = None,
+                            duration: Optional[float] = None) -> str:
+    """2-pass linear EBU R128 loudness filter + subtle rumble filter.
+
+    Single-pass `loudnorm` compresses dynamics noticeably on shouts/pauses.
+    Measuring integrated LUFS + true peak in a fast null pass (~0.3s) enables
+    transparent `linear=true` mastering, falling back cleanly on silence/error.
+    """
+    fallback = f"{VOICE_POLISH_FILTER},{LOUDNESS_FILTER}"
+    cmd = ["ffmpeg", "-hide_banner", "-v", "info"]
+    if start is not None and start > 0:
+        cmd += ["-ss", f"{start:.3f}"]
+    if duration is not None and duration > 0:
+        cmd += ["-t", f"{duration:.3f}"]
+    cmd += ["-i", path, "-vn", "-af", f"{VOICE_POLISH_FILTER},{LOUDNESS_FILTER}:print_format=json",
+            "-f", "null", "-"]
+    try:
+        res = proc.run(cmd, capture_output=True, text=True, timeout=120)
+        stderr = res.stderr or ""
+        matches = re.findall(r"\{[^{}]*\"input_i\"[^{}]*\}", stderr, re.DOTALL)
+        if not matches:
+            return fallback
+        stats = json.loads(matches[-1])
+        vals = {}
+        for k in ("input_i", "input_tp", "input_lra", "input_thresh", "target_offset"):
+            v = float(stats[k])
+            if not math.isfinite(v):
+                return fallback
+            vals[k] = v
+        return (
+            f"{VOICE_POLISH_FILTER},"
+            f"loudnorm=I=-14:TP=-1.5:LRA=11:"
+            f"measured_I={vals['input_i']:.2f}:"
+            f"measured_TP={vals['input_tp']:.2f}:"
+            f"measured_LRA={vals['input_lra']:.2f}:"
+            f"measured_thresh={vals['input_thresh']:.2f}:"
+            f"offset={vals['target_offset']:.2f}:"
+            f"linear=true"
+        )
+    except Exception:
+        return fallback
 
 
 def _render_center_clip(source_path: str, start: float, end: float, out_path: str,
-                        out_w: int, out_h: int, frame: Optional[Dict] = None) -> Dict:
-    """Widest centre crop at the target ratio, in one ffmpeg pass.
-
-    No face detection at all — for footage where the webcam is irrelevant or
-    the user explicitly asked for gameplay only. `frame` is a position chosen
-    by hand, which replaces the centre.
-    """
+                        out_w: int, out_h: int, frame: Optional[Dict] = None,
+                        is_intermediate: bool = False) -> Dict:
+    """Widest centre crop at the target ratio, in one ffmpeg pass."""
     from . import framing
     from .local.gaming_layout import _probe_dimensions
 
@@ -38,43 +80,50 @@ def _render_center_clip(source_path: str, start: float, end: float, out_path: st
         f"[0:v]crop={crop_w}:{crop_h}:{x}:{y},"
         f"scale={out_w}:{out_h}:flags=lanczos,setsar=1[v]"
     )
+    dur = max(0.1, end - start)
+    if is_intermediate:
+        audio_args = ["-c:a", "aac", "-b:a", "256k"]
+    else:
+        af = measure_loudnorm_filter(source_path, start=start, duration=dur)
+        audio_args = ["-af", af, "-c:a", "aac", "-b:a", "192k"]
+
     accel.run_encode(lambda enc: [
         "ffmpeg", "-y", "-loglevel", "error",
-        "-ss", f"{start:.3f}", "-i", source_path, "-t", f"{end - start:.3f}",
+        "-ss", f"{start:.3f}", "-i", source_path, "-t", f"{dur:.3f}",
         "-filter_complex", filt,
         "-map", "[v]", "-map", "0:a:0?",
-        # Every Short lands in a feed between two videos mastered by someone
-        # else. A clip that plays quieter than what came before it reads as
-        # lower production value before a word of it is heard, so the output
-        # is normalised to the same target the platforms mix to.
-        "-af", LOUDNESS_FILTER,
         *enc,
-        "-c:a", "aac", "-b:a", "160k",
+        *audio_args,
         "-movflags", "+faststart",
         out_path,
-    ], what="ffmpeg (centre crop render)", crf=23)
+    ], what="ffmpeg (centre crop render)", crf=19, intermediate=is_intermediate)
     return {"crop": {"x": x, "y": y, "w": crop_w, "h": crop_h},
             "panel": framing.PICTURE, "manual": bool(framing.normalise(frame)),
             "x": framing.fraction(x, src_w, crop_w), "y": framing.fraction(y, src_h, crop_h)}
 
 
 def _render_center_highlights(source_path: str, highlights: List[Dict], out_dir: str,
-                              out_w: int, out_h: int, name_prefix: str = "short") -> List[Dict]:
+                              out_w: int, out_h: int, name_prefix: str = "short",
+                              is_intermediate: bool = False) -> List[Dict]:
     os.makedirs(out_dir, exist_ok=True)
-    results: List[Dict] = []
-    for i, h in enumerate(highlights, 1):
+
+    def _one(item):
+        i, h = item
         out_path = os.path.join(out_dir, f"{name_prefix}_{i:02d}.mp4")
         print(f"[center] {i}/{len(highlights)}: {h.get('title', '(untitled)')}", flush=True)
         try:
             info = _render_center_clip(
                 source_path, float(h["start_time"]), float(h["end_time"]),
                 out_path, out_w, out_h, frame=h.get("frame"),
+                is_intermediate=is_intermediate,
             )
-            results.append({**h, "clip_url": out_path, "layout": info})
+            return {**h, "clip_url": out_path, "layout": info}
         except Exception as e:
             print(f"[center] {i} failed: {e}", flush=True)
-            results.append({**h, "clip_url": None, "error": str(e)})
-    return results
+            return {**h, "clip_url": None, "error": str(e)}
+
+    indexed = list(enumerate(highlights, 1))
+    return [_one(item) for item in indexed]
 
 
 def render_highlights(
@@ -86,16 +135,10 @@ def render_highlights(
     language: Optional[str] = None,
     kind: Optional[str] = None,
     llm_fn: Optional[Callable[[str], str]] = None,
+    initial_prompt: Optional[str] = None,
 ) -> List[Dict]:
-    """Render `highlights` from `source_path` according to `spec`.
-
-    Returns the highlights with `clip_url` set (or `error` on failure) —
-    the same shape every renderer in this repo already produces.
-
-    `language` is the spoken language, for the captions; `kind` is what sort
-    of video this turned out to be, which decides how hard pauses are cut;
-    `llm_fn` is only used to place B-roll, and B-roll is skipped without it.
-    """
+    """Render `highlights` from `source_path` according to `spec`."""
+    from .autoedit import options_from_spec
     from .config import LOCAL_OUTPUT_DIR
     from .layout_spec import pick_output_size
     from .local.gaming_layout import _probe_dimensions
@@ -116,45 +159,38 @@ def render_highlights(
 
     print(f"[render] {spec.layout} · {spec.describe()} · {out_w}x{out_h}", flush=True)
 
+    opts = options_from_spec(spec, kind)
+    will_edit = opts.anything
     results = _render_by_layout(source_path, highlights, spec, out_dir,
-                                out_w, out_h, name_prefix)
-    _edit(results, spec, language, kind, llm_fn)
+                                out_w, out_h, name_prefix, is_intermediate=will_edit)
+    if will_edit:
+        _edit(results, opts, language, llm_fn,
+              initial_prompt=initial_prompt, from_intermediate=will_edit)
     if spec.hook_replay:
         _add_hook_openings(results)
     return results
 
 
-def _edit(results: List[Dict], spec: LayoutSpec, language: Optional[str],
-          kind: Optional[str], llm_fn) -> None:
-    """Captions, jump cuts, punch-ins, emoji and B-roll -- see autoedit.
-
-    After the layout, so all three renderers get it from one place, and before
-    the cold open, so the replayed moment carries its captions with it.
-    """
-    from .autoedit import options_from_spec, polish
-
-    opts = options_from_spec(spec, kind)
-    if not opts.anything:
-        return
-    polish(results, opts, language=language, llm_fn=llm_fn)
+def _edit(results: List[Dict], opts, language: Optional[str],
+          llm_fn, initial_prompt: Optional[str] = None,
+          from_intermediate: bool = False) -> None:
+    """Captions, jump cuts, punch-ins, emoji, B-roll and merged cold open."""
+    from .autoedit import polish
+    polish(results, opts, language=language, llm_fn=llm_fn,
+           initial_prompt=initial_prompt, from_intermediate=from_intermediate)
 
 
 def _add_hook_openings(results: List[Dict]) -> None:
-    """Give each rendered clip a cold open on its own loudest moment.
-
-    Done after rendering rather than inside each renderer, so all three
-    layouts get it from one place and none of them has to know it exists. It
-    no-ops on any clip whose hook is already at the front.
-    """
+    """Fallback standalone cold open for clips that did not run through autoedit."""
     from .hook_open import apply
 
     for r in results:
+        if r.pop("_hook_applied_in_edit", False):
+            continue
         path = r.get("clip_url")
         if not path or not os.path.exists(path):
             continue
         target = r
-        # Cutting pauses moved the peak earlier in the clip. The cold open
-        # has to point at where it is now, not where it was in the source.
         offset = r.pop("hook_peak_offset", None)
         if offset is not None and r.get("start_time") is not None:
             target = {**r, "hook_peak": float(r["start_time"]) + float(offset)}
@@ -165,7 +201,7 @@ def _add_hook_openings(results: List[Dict]) -> None:
 
 def _render_by_layout(source_path: str, highlights: List[Dict], spec: LayoutSpec,
                       out_dir: str, out_w: int, out_h: int,
-                      name_prefix: str) -> List[Dict]:
+                      name_prefix: str, is_intermediate: bool = False) -> List[Dict]:
     if spec.layout == "stacked":
         from .local.gaming_layout import render_stacked_highlights
         return render_stacked_highlights(
@@ -175,6 +211,7 @@ def _render_by_layout(source_path: str, highlights: List[Dict], spec: LayoutSpec
             cam_panel_fraction=spec.cam_panel_fraction,
             face_context_multiple=spec.face_zoom,
             name_prefix=name_prefix,
+            is_intermediate=is_intermediate,
         )
 
     if spec.layout == "facetrack":
@@ -185,8 +222,10 @@ def _render_by_layout(source_path: str, highlights: List[Dict], spec: LayoutSpec
             out_dir=out_dir,
             target_resolution=f"{out_w}x{out_h}",
             name_prefix=name_prefix,
+            is_intermediate=is_intermediate,
         )
 
     return _render_center_highlights(
-        source_path, highlights, out_dir, out_w, out_h, name_prefix=name_prefix
+        source_path, highlights, out_dir, out_w, out_h,
+        name_prefix=name_prefix, is_intermediate=is_intermediate,
     )

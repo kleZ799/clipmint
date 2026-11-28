@@ -221,6 +221,7 @@ class Plan:
     # Where someone moved the captions to, as a fraction of the frame's
     # height (framing.caption_y), or None for the layout's own place.
     caption_y: Optional[float] = None
+    from_intermediate: bool = False
 
     def caption_height(self, opts: "Options") -> float:
         """Where the middle of the caption goes, as a fraction of the height."""
@@ -529,7 +530,9 @@ def plan_emoji(words: List[Dict], duration: float) -> List[Tuple[float, float, s
 
 def analyse(path: str, highlight: Dict, opts: Options,
             language: Optional[str] = None,
-            llm_fn: Optional[Callable[[str], str]] = None) -> Optional[Plan]:
+            llm_fn: Optional[Callable[[str], str]] = None,
+            initial_prompt: Optional[str] = None,
+            from_intermediate: bool = False) -> Optional[Plan]:
     """Listen to a rendered clip and decide its edit. None if there is none."""
     from . import words as words_mod
     from .hinglish import words_to_hinglish
@@ -545,7 +548,8 @@ def analyse(path: str, highlight: Dict, opts: Options,
 
     plan = Plan(path=path, duration=duration, width=width, height=height,
                 has_audio=has_audio, keeps=[(0.0, duration)],
-                caption_y=framing.caption_y(highlight.get("caption_y")))
+                caption_y=framing.caption_y(highlight.get("caption_y")),
+                from_intermediate=from_intermediate)
 
     given = highlight.get("heard_words")
     if not opts.needs_words:
@@ -553,7 +557,8 @@ def analyse(path: str, highlight: Dict, opts: Options,
     elif isinstance(given, list) and given:
         spoken = [dict(w) for w in given]
     else:
-        spoken = words_mod.transcribe_words(path, language) if has_audio else []
+        spoken = (words_mod.transcribe_words(path, language, initial_prompt=initial_prompt)
+                  if has_audio else [])
     # Hindi comes back from Whisper in Devanagari; captions for it are read
     # in Hinglish. Words saved by an older version are rewritten the same way.
     spoken = words_to_hinglish(spoken, llm_fn)
@@ -615,7 +620,8 @@ def _between(spans) -> str:
 
 
 def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
-                 fonts_dir: Optional[str], first_extra_input: int = 1
+                 fonts_dir: Optional[str], first_extra_input: int = 1,
+                 loudnorm_filter: Optional[str] = None
                  ) -> Tuple[str, List[List[str]], bool, str]:
     """The filtergraph for a plan: (graph, extra inputs, audio cut, video pad).
 
@@ -634,20 +640,21 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         return f"v{n}"
 
     cur = "0:v"
-    audio_cut = False
+    a_cur = "0:a"
+    audio_filtered = False
     if plan.cut:
         k = len(plan.keeps)
         if k > 1:
             chains.append(f"[0:v]split={k}" + "".join(f"[vs{i}]" for i in range(k)))
             if plan.has_audio:
-                chains.append(f"[0:a]asplit={k}" + "".join(f"[as{i}]" for i in range(k)))
+                chains.append(f"[{a_cur}]asplit={k}" + "".join(f"[as{i}]" for i in range(k)))
         seg = []
         for i, (a, b) in enumerate(plan.keeps):
             src_v = f"vs{i}" if k > 1 else "0:v"
             chains.append(f"[{src_v}]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[vt{i}]")
             seg.append(f"[vt{i}]")
             if plan.has_audio:
-                src_a = f"as{i}" if k > 1 else "0:a"
+                src_a = f"as{i}" if k > 1 else a_cur
                 fade = min(0.012, (b - a) / 4)
                 chains.append(
                     f"[{src_a}]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,"
@@ -656,8 +663,10 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
                 seg.append(f"[at{i}]")
         out = label()
         if plan.has_audio:
-            chains.append("".join(seg) + f"concat=n={k}:v=1:a=1[{out}][acut]")
-            audio_cut = True
+            a_out = label()
+            chains.append("".join(seg) + f"concat=n={k}:v=1:a=1[{out}][{a_out}]")
+            a_cur = a_out
+            audio_filtered = True
         else:
             chains.append("".join(seg) + f"concat=n={k}:v=1:a=0[{out}]")
         cur = out
@@ -677,7 +686,7 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         base, zoom, out = label(), label(), label()
         chains.append(f"[{cur}]split=2[{base}][{zoom}]")
         zoomed = label()
-        chains.append(f"[{zoom}]scale={zw}:{zh},crop={W}:{H}:{x}:{y}[{zoomed}]")
+        chains.append(f"[{zoom}]scale={zw}:{zh}:flags=lanczos,crop={W}:{H}:{x}:{y}[{zoomed}]")
         chains.append(f"[{base}][{zoomed}]overlay=0:0:enable='{_between(levels[z])}'[{out}]")
         cur = out
 
@@ -753,9 +762,15 @@ def build_filter(plan: Plan, opts: Options, ass_name: Optional[str],
         chains.append(f"[{cur}]{opt}[{out}]")
         cur = out
 
-    if cur == "0:v":
-        return "", inputs, audio_cut, cur
-    return ";".join(chains), inputs, audio_cut, cur
+    if plan.has_audio and loudnorm_filter:
+        chains.append(f"[{a_cur}]{loudnorm_filter}[acut]")
+        audio_filtered = True
+    elif plan.has_audio and audio_filtered:
+        chains.append(f"[{a_cur}]anull[acut]")
+
+    if cur == "0:v" and not audio_filtered:
+        return "", inputs, False, cur
+    return ";".join(chains), inputs, audio_filtered, cur
 
 
 def brand_size() -> float:
@@ -822,17 +837,24 @@ def render(plan: Plan, opts: Options) -> Dict:
                 if captions.copy_font(style, Path(work) / "fonts", opts.caption_font):
                     fonts = "fonts"
 
-        graph, extra, audio_cut, video = build_filter(plan, opts, ass_name, fonts)
+        src = os.path.abspath(plan.path)
+        loudnorm_filter: Optional[str] = None
+        if plan.has_audio and (plan.from_intermediate or plan.cut):
+            from .render import measure_loudnorm_filter
+            loudnorm_filter = measure_loudnorm_filter(src)
+
+        graph, extra, audio_cut, video = build_filter(
+            plan, opts, ass_name, fonts, loudnorm_filter=loudnorm_filter
+        )
         if not graph:
             return {}
 
         # ffmpeg runs inside the work folder, so every path it is handed
         # has to stand on its own.
-        src = os.path.abspath(plan.path)
         root, ext = os.path.splitext(src)
         tmp = f"{root}.edit{ext or '.mp4'}"
         if plan.has_audio and audio_cut:
-            audio = ["-map", "[acut]", "-c:a", "aac", "-b:a", "160k"]
+            audio = ["-map", "[acut]", "-c:a", "aac", "-b:a", "192k"]
         elif plan.has_audio:
             audio = ["-map", "0:a:0", "-c:a", "copy"]
         else:
@@ -846,7 +868,7 @@ def render(plan: Plan, opts: Options) -> Dict:
                           "-movflags", "+faststart", tmp]
 
         try:
-            accel.run_encode(build, what="ffmpeg (captions and edit)", crf=20, cwd=work)
+            accel.run_encode(build, what="ffmpeg (captions and edit)", crf=19, cwd=work)
             os.replace(tmp, src)
         finally:
             if os.path.exists(tmp):
@@ -873,7 +895,9 @@ def render(plan: Plan, opts: Options) -> Dict:
 
 
 def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
-           llm_fn: Optional[Callable[[str], str]] = None) -> None:
+           llm_fn: Optional[Callable[[str], str]] = None,
+           initial_prompt: Optional[str] = None,
+           from_intermediate: bool = False) -> None:
     """Edit every rendered clip in `results`, in place.
 
     Sets `edit` on each result it touched (what was done) and moves
@@ -895,7 +919,9 @@ def polish(results: List[Dict], opts: Options, language: Optional[str] = None,
         for i, r in enumerate(todo, 1):
             print(f"[edit] {i}/{steps}: listening to "
                   f"{os.path.basename(r['clip_url'])}", flush=True)
-            plan = analyse(r["clip_url"], r, opts, language, llm_fn)
+            plan = analyse(r["clip_url"], r, opts, language, llm_fn,
+                           initial_prompt=initial_prompt,
+                           from_intermediate=from_intermediate)
             if plan is not None:
                 plans.append((r, plan))
     finally:

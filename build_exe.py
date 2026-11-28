@@ -341,6 +341,8 @@ def main() -> int:
         "--hidden-import", "shorts_generator.visual",
         "--hidden-import", "shorts_generator.judge",
         "--hidden-import", "shorts_generator.chat",
+        "--hidden-import", "shorts_generator.local.llm",
+        "--hidden-import", "shorts_generator.local.thumbnail",
         "--hidden-import", "shorts_generator.local.speaker",
         "--hidden-import", "shorts_generator.performance",
         "--hidden-import", "webapp.youtube_stats",
@@ -351,8 +353,10 @@ def main() -> int:
         "--hidden-import", "uvicorn.protocols.websockets.auto",
         "--hidden-import", "uvicorn.lifespan.on",
 
-        # cv2's Haar cascades are data files the face detection loads by path.
+        # cv2's Haar cascades and faster-whisper's Silero VAD ONNX model are data
+        # files loaded by path at runtime.
         "--collect-data", "cv2",
+        "--collect-data", "faster_whisper",
         "--collect-data", "yt_dlp",
 
         # Torch is NOT what runs CUDA Whisper -- faster-whisper sits on
@@ -362,6 +366,10 @@ def main() -> int:
         "--exclude-module", "matplotlib",
         "--exclude-module", "tkinter",
         "--exclude-module", "pytest",
+        "--exclude-module", "PyQt5",
+        "--exclude-module", "PyQt6",
+        "--exclude-module", "PySide2",
+        "--exclude-module", "PySide6",
 
         str(ROOT / "desktop.py"),
     ]
@@ -410,6 +418,8 @@ def main() -> int:
             "--hidden-import", "webview.platforms.edgechromium",
             "--hidden-import", "webview.platforms.winforms",
             "--hidden-import", "clr",
+            "--collect-all", "pythonnet",
+            "--collect-all", "clr_loader",
         ]
     cmd[-1:-1] = platform_args
 

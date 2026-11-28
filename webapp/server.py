@@ -16,7 +16,7 @@ import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
@@ -183,6 +183,20 @@ class SettingsRequest(BaseModel):
     daily_limit: Optional[str] = None
     # Ollama only: where its server is, if not this computer's default port.
     host: Optional[str] = None
+    # Optional custom API base URL for the OpenAI provider. Enables any
+    # OpenAI-compatible endpoint: LM Studio, Ollama, Together AI, etc.
+    # Only applied when provider == "openai". Pass "" to clear/reset.
+    base_url: Optional[str] = None
+    whisper_model: Optional[str] = None
+
+
+class AiPoolRequest(BaseModel):
+    enabled: Optional[bool] = None
+    order: Optional[List[str]] = None
+
+
+class WhisperModelRequest(BaseModel):
+    model: str = "distil-large-v3"
 
 
 def _gemini_model_options() -> list:
@@ -289,9 +303,13 @@ async def get_settings() -> dict:
     it came from, so the user knows which knob actually controls it.
     """
     from shorts_generator import usage, user_config
-    from shorts_generator.config import current_model, current_provider
-
-    from shorts_generator.config import gemini_keys
+    from shorts_generator.config import (
+        current_model,
+        current_provider,
+        current_whisper_model,
+        gemini_keys,
+    )
+    from shorts_generator.local.llm import pool_status
 
     provider = current_provider()
     from_env = bool(os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
@@ -310,7 +328,7 @@ async def get_settings() -> dict:
             "gemini": bool(user_config.get("GEMINI_API_KEY")),
             "groq": bool(user_config.get("GROQ_API_KEY")),
             "openrouter": bool(user_config.get("OPENROUTER_API_KEY")),
-            "openai": bool(user_config.get("OPENAI_API_KEY")),
+            "openai": bool(user_config.get("OPENAI_API_KEY") or user_config.get("OPENAI_BASE_URL")),
             "anthropic": bool(user_config.get("ANTHROPIC_API_KEY")),
             # No key: a chosen model is what "set up" means for Ollama.
             "ollama": bool(user_config.get("OLLAMA_MODEL")),
@@ -342,6 +360,17 @@ async def get_settings() -> dict:
         # Spare Gemini keys, counted rather than shown: a key is a secret.
         "gemini_spare_keys": max(0, len(gemini_keys()) - 1),
         "gemini_spares_pinned": bool(os.getenv("GEMINI_EXTRA_KEYS", "").strip()),
+        "openai_base_url": user_config.get("OPENAI_BASE_URL"),
+        "openai_base_url_pinned": bool(os.getenv("OPENAI_BASE_URL", "").strip()),
+        "ai_pool": pool_status(),
+        "whisper_model": current_whisper_model("auto"),
+        "whisper_models": [
+            {"value": "distil-large-v3", "label": "distil-large-v3 (fastest GPU, English/general)"},
+            {"value": "large-v3-turbo", "label": "large-v3-turbo (best multilingual / Hinglish)"},
+            {"value": "small", "label": "small (balanced CPU)"},
+            {"value": "base", "label": "base (lightweight CPU)"},
+        ],
+        "whisper_model_pinned": bool(os.getenv("LOCAL_WHISPER_MODEL", "").strip()),
     }
 
 
@@ -357,15 +386,11 @@ async def get_usage() -> dict:
     provider = current_provider()
     snap["provider"] = provider
     snap["model"] = current_model(provider)
-    # Whether a spent Gemini day would actually be survivable, and on what:
-    # the first configured provider in the order the fallback ladder tries.
-    fallback = next((name for ident, name, key in (
-        ("groq", "Groq", "GROQ_API_KEY"),
-        ("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
-        ("openai", "OpenAI", "OPENAI_API_KEY"),
-        ("ollama", "Ollama", "OLLAMA_MODEL"),
-        ("anthropic", "Claude", "ANTHROPIC_API_KEY"),
-    ) if ident != provider and user_config.get(key)), None)
+    from shorts_generator.config import PROVIDER_LABELS
+    from shorts_generator.local.llm import ordered_pool_slots
+    slots = ordered_pool_slots()
+    fallback_slot = next((s for s in slots[1:]), None) if len(slots) > 1 else None
+    fallback = PROVIDER_LABELS.get(fallback_slot["provider"], fallback_slot["label"]) if fallback_slot else None
     snap["fallback_ready"] = bool(fallback)
     snap["fallback_to"] = fallback
 
@@ -424,16 +449,26 @@ async def set_settings(req: SettingsRequest) -> dict:
 
     key = (req.api_key or "").strip()
     key_name = f"{prefix}_API_KEY"
+    # Custom base URL on OpenAI (e.g. LM Studio) allows saving with no key, and
+    # may use any non-standard key format — skip misplaced-key rejection when
+    # a base URL is present. If a key IS given, it is still always saved & used.
+    effective_base_url = (
+        req.base_url.strip()
+        if (req.base_url is not None and provider == "openai")
+        else user_config.get("OPENAI_BASE_URL", "")
+    )
+    has_base_url = provider == "openai" and bool(effective_base_url)
+
     # Switching to a provider whose key is already stored must not demand the
     # key again — retyping a secret you already saved is not a security step,
     # it is just a reason to keep the wrong provider selected.
-    if not key and not user_config.get(key_name):
+    if not key and not user_config.get(key_name) and not has_base_url:
         raise HTTPException(400, "Paste an API key first.")
     # A key saved under the wrong provider is accepted without complaint and
     # only fails mid-run, as a 401 naming a provider the person may never have
     # chosen. Two people hit exactly that with a Gemini key filed as OpenAI's.
     from shorts_generator.config import PROVIDER_LABELS, misplaced_key
-    owner = misplaced_key(provider, key) if key else None
+    owner = misplaced_key(provider, key) if (key and not has_base_url) else None
     if owner:
         raise HTTPException(400, f"That key is from {PROVIDER_LABELS[owner]}, not "
                                  f"{PROVIDER_LABELS[provider]}. Choose "
@@ -460,7 +495,16 @@ async def set_settings(req: SettingsRequest) -> dict:
             raise HTTPException(400, "The daily cap must be a whole number of requests.")
         values[f"{prefix}_DAILY_LIMIT"] = cap
 
+    # Save/clear the custom base URL for the OpenAI provider
+    if req.base_url is not None and provider == "openai":
+        url = req.base_url.strip()
+        if url and not url.startswith(("http://", "https://")):
+            raise HTTPException(400, "Base URL must start with http:// or https://")
+        values["OPENAI_BASE_URL"] = url
+
     path = user_config.save(values)
+    from shorts_generator.local.llm import reset_fallback
+    reset_fallback()
     return {"saved": True, "config_path": str(path),
             "has_key": user_config.has_llm_key()}
 
@@ -479,6 +523,7 @@ async def set_gemini_spares(req: GeminiSparesRequest) -> dict:
     """
     from shorts_generator import user_config
     from shorts_generator.config import gemini_keys, misplaced_key
+    from shorts_generator.local.llm import reset_fallback
 
     keys = [k for k in re.split(r"[\s,;]+", req.keys or "") if k]
     # Dots too: Google's newer keys start "AQ.".
@@ -490,7 +535,44 @@ async def set_gemini_spares(req: GeminiSparesRequest) -> dict:
     if keys and not user_config.get("GEMINI_API_KEY"):
         raise HTTPException(400, "Save a main Gemini key first. These are spares for it.")
     user_config.save({"GEMINI_EXTRA_KEYS": "\n".join(dict.fromkeys(keys))})
+    reset_fallback()
     return {"saved": True, "spares": max(0, len(gemini_keys()) - 1)}
+
+
+@app.post("/api/settings/ai-pool")
+async def set_ai_pool(req: AiPoolRequest) -> dict:
+    """Enable/disable priority AI key pooling and save custom slot priority order."""
+    from shorts_generator import user_config
+    from shorts_generator.local.llm import pool_status, reset_fallback
+
+    values: dict = {}
+    if req.enabled is not None:
+        values["AI_POOL_ENABLED"] = "1" if req.enabled else "0"
+    if req.order is not None:
+        cleaned = [str(x).strip() for x in req.order if str(x).strip()]
+        values["AI_POOL_ORDER"] = json.dumps(list(dict.fromkeys(cleaned)))
+    if values:
+        user_config.save(values)
+    reset_fallback()
+    return {
+        "saved": True,
+        "has_key": user_config.has_llm_key(),
+        "ai_pool": pool_status(),
+    }
+
+
+@app.post("/api/settings/whisper-model")
+async def set_whisper_model(req: WhisperModelRequest) -> dict:
+    """Persist the chosen local Whisper transcription model."""
+    from shorts_generator import user_config
+    from shorts_generator.config import current_whisper_model
+
+    model = (req.model or "").strip()
+    allowed = {"distil-large-v3", "large-v3-turbo", "small", "base", "medium", "large-v3", "auto"}
+    if model not in allowed:
+        raise HTTPException(400, f"Unsupported Whisper model: {model!r}")
+    user_config.save({"LOCAL_WHISPER_MODEL": "" if model == "auto" else model})
+    return {"saved": True, "whisper_model": current_whisper_model("auto")}
 
 
 @app.get("/api/fonts/{name}")

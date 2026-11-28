@@ -1095,7 +1095,12 @@ class JobStore:
         from shorts_generator.local.llm import call_local_llm
         from shorts_generator.render import render_highlights
 
-        extra = {"language": job.language, "kind": job_kind(job), "llm_fn": call_local_llm}
+        extra = {
+            "language": job.language,
+            "kind": job_kind(job),
+            "llm_fn": call_local_llm,
+            "initial_prompt": _whisper_initial_prompt(job.video_meta, job.subject),
+        }
         shorts = render_highlights(source_path, top, job.spec, out_dir=job.out_dir, **extra)
         for attempt in range(2, CLIP_ATTEMPTS + 1):
             failed = [i for i, s in enumerate(shorts) if not s.get("clip_url")]
@@ -1271,9 +1276,13 @@ class JobStore:
             # other value pins it, so a stream in one language cannot drift
             # into another halfway through.
             spoken = (job.language or "").strip().lower()
+            hint = _whisper_initial_prompt(job.video_meta)
             transcript = self._attempt(
                 "transcription", transcribe_local,
-                source_path, language=None if spoken in ("", "auto") else spoken)
+                source_path,
+                language=None if spoken in ("", "auto") else spoken,
+                initial_prompt=hint,
+            )
             if not transcript["segments"]:
                 raise RuntimeError(
                     "No speech found in this video — nothing to build clips from."
@@ -1347,6 +1356,9 @@ class JobStore:
                             kind=content.get("kind") or "",
                             images_per_request=vision_images_per_request())
             except Exception as e:  # noqa: BLE001 - a second opinion is never worth the run
+                from shorts_generator import proc
+                if isinstance(e, proc.Cancelled):
+                    raise
                 print(f"[judge] skipped ({e})", flush=True)
 
             # Best first, and it stays that way all the way to the grid: the
@@ -1420,10 +1432,17 @@ class JobStore:
             # before rendering, so the title is already there by the time the
             # mp4 exists.
             name = os.path.basename(path) if path else None
+            thumb_name = None
             if name:
                 seo = s.get("seo") or {}
                 name = rename_to_title(Path(job.out_dir), name,
                                        seo.get("title") or s.get("title") or "")
+                dest_mp4 = Path(job.out_dir) / name
+                if dest_mp4.exists():
+                    from shorts_generator.local.thumbnail import generate_thumbnail
+                    dest_jpg = dest_mp4.with_suffix(".jpg")
+                    if generate_thumbnail(str(dest_mp4), str(dest_jpg)):
+                        thumb_name = dest_jpg.name
             rendered.append({
                 "index": i,
                 # `shorts` arrives best-first, so position is the ranking.
@@ -1474,6 +1493,7 @@ class JobStore:
                 "error": s.get("error"),
                 "job_id": job.id,
                 "file": name,
+                "thumb": thumb_name,
                 "url": f"/api/jobs/{job.id}/clips/{name}" if name else None,
             })
         scorecard.attach(rendered)
@@ -1494,6 +1514,24 @@ class JobStore:
         # Record the run next to its clips, so it is still here next launch.
         if ok:
             self._persist(job)
+
+
+def _whisper_initial_prompt(video_meta: Optional[Dict],
+                            subject: Optional[Dict] = None) -> Optional[str]:
+    """Short proper-noun hint passed to faster-whisper to prevent spelling drift."""
+    meta = video_meta or {}
+    subj = subject or {}
+    parts: List[str] = []
+    for raw in (
+        subj.get("subject"),
+        meta.get("channel") or meta.get("uploader"),
+        meta.get("title"),
+    ):
+        text = str(raw or "").strip()
+        if text and text not in parts:
+            parts.append(text)
+    joined = ", ".join(parts).strip()
+    return joined[:180] if joined else None
 
 
 def job_kind(job: Job) -> str:
@@ -1599,6 +1637,9 @@ def _look_at_clips(job: Job, highlights: List[Dict], source_path: Optional[str],
                                 candidates=candidates,
                                 images_per_request=vision_images_per_request())
     except Exception as e:  # noqa: BLE001 - never worth losing a run over
+        from shorts_generator import proc
+        if isinstance(e, proc.Cancelled):
+            raise
         print(f"[vision] skipped ({e})", flush=True)
         return
     for i, scene in zip(idx, scenes):
@@ -1615,8 +1656,12 @@ def regenerate_seo(store: "JobStore", job: Job, force: bool = False,
     mp4 itself. `only` rewrites a single clip by filename, keeping the rest of
     the run's titles in view so the new one does not open the same way.
     """
-    from shorts_generator.local.llm import call_local_llm
+    from shorts_generator.local.llm import call_local_llm, reset_fallback
     from shorts_generator.seo import generate_seo
+    # Each manual rewrite starts fresh — clear any stale provider blacklist
+    # so every configured key gets a fair shot regardless of what a previous
+    # run or rewrite already gave up on.
+    reset_fallback()
 
     with store._lock:
         if only:

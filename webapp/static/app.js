@@ -272,6 +272,16 @@ async function checkSetup() {
     providerPinned = !!d.provider_pinned;
     drawModels(d);
     if (d.daily_limits) $("capOpenai").value = d.daily_limits.openai || "";
+    if ($("fbBaseUrl")) {
+      $("fbBaseUrl").value = (d.openai_base_url || "");
+      if (d.openai_base_url_pinned && $("fbBaseUrlRow")) {
+        $("fbBaseUrlRow").title = "Set via environment variable — changes here won't override it.";
+      }
+    }
+    updateOpenaiBaseUrlVisibility();
+    if ($("setBaseUrl")) $("setBaseUrl").value = d.openai_base_url || "";
+    drawAiPool(d.ai_pool);
+    drawWhisperModel(d);
     drawSwitcher(d.provider);
     // Ollama has no key to report; where its server is says more.
     const keyRow = d.provider === "ollama"
@@ -776,6 +786,13 @@ function keyField2For(p) {
 }
 $("setProvider2").onchange = () => keyField2For($("setProvider2").value);
 
+// Show the base URL field only when OpenAI is selected as provider.
+function updateOpenaiBaseUrlVisibility() {
+  const fld = $("openaiBaseUrlFld");
+  if (fld) fld.hidden = $("setProvider2").value !== "openai";
+}
+$("setProvider2").addEventListener("change", updateOpenaiBaseUrlVisibility);
+
 async function saveKey(providerEl, keyEl, btn, msgEl, onDone) {
   const key = keyEl.value.trim();
   const provider = providerEl.value;
@@ -805,8 +822,152 @@ $("setSave").onclick = () =>
   saveKey($("setProvider"), $("setKey"), $("setSave"), $("setMsg"),
           () => $("setup").classList.add("hidden"));
 
-$("setSave2").onclick = () =>
-  saveKey($("setProvider2"), $("setKey2"), $("setSave2"), $("setMsg2"), null);
+$("setSave2").onclick = async () => {
+  const provider = $("setProvider2").value;
+  const key = $("setKey2").value.trim();
+  const urlFld = $("setBaseUrl");
+  const url = (provider === "openai" && urlFld) ? urlFld.value.trim() : null;
+  const msg = $("setMsg2"), btn = $("setSave2");
+
+  // Ollama and non-URL saves go through the standard saveKey flow so switching
+  // provider / configuring Ollama works identically to the initial setup box.
+  if (provider === "ollama" || url === null) {
+    return saveKey($("setProvider2"), $("setKey2"), btn, msg, null);
+  }
+  if (!key && !url) {
+    msg.innerHTML = `<div class="err">Paste a key or a base URL first.</div>`;
+    return;
+  }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    await api("/api/settings", json("POST", {
+      provider: "openai",
+      api_key: key,
+      base_url: url,
+    }));
+    if (key) $("setKey2").value = "";
+    if ($("fbBaseUrl")) $("fbBaseUrl").value = url;
+    msg.innerHTML = `<div class="ok-box">Saved. You're ready to go.</div>`;
+    checkSetup();
+  } catch (e) {
+    msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+};
+
+// ------------------------------------------------------------ AI key pool
+let poolState = { enabled: false, order: [], slots: [] };
+
+async function saveAiPool(patch) {
+  const msg = $("aiPoolMsg");
+  try {
+    const r = await api("/api/settings/ai-pool", json("POST", patch));
+    if (r.ai_pool) drawAiPool(r.ai_pool);
+    if (msg) {
+      msg.innerHTML = `<div class="ok-box">Pool updated.</div>`;
+      setTimeout(() => { if (msg.textContent === "Pool updated.") msg.innerHTML = ""; }, 1800);
+    }
+  } catch (e) {
+    if (msg) msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function drawAiPool(pool) {
+  const chk = $("aiPoolEnabled"), box = $("aiPoolBox"), list = $("aiPoolList"), empty = $("aiPoolEmpty");
+  if (!chk || !box || !list) return;
+  if (!pool) return;
+  poolState = pool;
+  chk.checked = !!pool.enabled;
+  box.hidden = !pool.enabled;
+  const slots = pool.slots || [];
+  if (empty) empty.hidden = slots.length > 0;
+  if (!slots.length) { list.innerHTML = ""; return; }
+
+  list.innerHTML = slots.map((s, idx) => {
+    const badgeCls = s.status === "cooldown" ? "cooldown" : (s.status === "exhausted" ? "exhausted" : "ready");
+    const badgeTxt = s.status === "cooldown" ? `${s.cooldown_remaining}s` : (s.status === "exhausted" ? "spent" : "ready");
+    return `
+      <div class="pool-item" draggable="true" data-id="${esc(s.id)}">
+        <span class="pool-drag" title="Drag to reorder">&#8942;&#8942;</span>
+        <span class="pool-rank">#${idx + 1}</span>
+        <div class="pool-meta">
+          <strong>${esc(s.label)}</strong>
+          <span>${esc(s.masked)}</span>
+        </div>
+        <span class="pool-badge ${badgeCls}">${esc(badgeTxt)}</span>
+        <div class="pool-arrows">
+          <button type="button" class="pool-up" ${idx === 0 ? "disabled" : ""} title="Move higher priority">&#8593;</button>
+          <button type="button" class="pool-dn" ${idx === slots.length - 1 ? "disabled" : ""} title="Move lower priority">&#8595;</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  let dragId = null;
+  list.querySelectorAll(".pool-item").forEach((el, idx) => {
+    el.ondragstart = () => { dragId = el.dataset.id; el.classList.add("dragging"); };
+    el.ondragend = () => { dragId = null; el.classList.remove("dragging"); };
+    el.ondragover = (e) => { e.preventDefault(); };
+    el.ondrop = (e) => {
+      e.preventDefault();
+      const targetId = el.dataset.id;
+      if (!dragId || dragId === targetId) return;
+      const order = slots.map((s) => s.id);
+      const from = order.indexOf(dragId), to = order.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      order.splice(from, 1);
+      order.splice(to, 0, dragId);
+      saveAiPool({ order });
+    };
+    const up = el.querySelector(".pool-up"), dn = el.querySelector(".pool-dn");
+    if (up) up.onclick = () => {
+      if (idx === 0) return;
+      const order = slots.map((s) => s.id);
+      [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+      saveAiPool({ order });
+    };
+    if (dn) dn.onclick = () => {
+      if (idx >= slots.length - 1) return;
+      const order = slots.map((s) => s.id);
+      [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
+      saveAiPool({ order });
+    };
+  });
+}
+
+if ($("aiPoolEnabled")) {
+  $("aiPoolEnabled").onchange = () => {
+    const enabled = $("aiPoolEnabled").checked;
+    if ($("aiPoolBox")) $("aiPoolBox").hidden = !enabled;
+    saveAiPool({ enabled });
+  };
+}
+
+function drawWhisperModel(d) {
+  const sel = $("whisperModel");
+  if (!sel || !d.whisper_models) return;
+  sel.innerHTML = d.whisper_models.map((m) =>
+    `<option value="${esc(m.value)}">${esc(m.label)}</option>`
+  ).join("");
+  if (d.whisper_model) sel.value = d.whisper_model;
+  sel.disabled = !!d.whisper_model_pinned;
+}
+
+if ($("whisperModel")) {
+  $("whisperModel").onchange = async () => {
+    const sel = $("whisperModel"), msg = $("whisperModelMsg");
+    try {
+      await api("/api/settings/whisper-model", json("POST", { model: sel.value }));
+      if (msg) {
+        msg.innerHTML = `<div class="ok-box">Whisper model set to ${esc(sel.value)}.</div>`;
+        setTimeout(() => { msg.innerHTML = ""; }, 2200);
+      }
+    } catch (e) {
+      if (msg) msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    }
+  };
+}
 
 // ------------------------------------------------------------ YouTube sign-in
 //
@@ -4873,6 +5034,30 @@ $("fbSave").onclick = async () => {
     btn.textContent = label;
   }
 };
+
+if ($("fbBaseUrlSave")) {
+  $("fbBaseUrlSave").onclick = async () => {
+    const url = $("fbBaseUrl").value.trim();
+    const msg = $("fbBaseUrlMsg"), btn = $("fbBaseUrlSave");
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Saving…";
+    try {
+      await api("/api/settings", json("POST", {
+        provider: "openai", base_url: url, as_fallback: true,
+      }));
+      msg.innerHTML = url
+        ? `<div class="ok-box">Saved. OpenAI calls will go to ${esc(url)}.</div>`
+        : `<div class="ok-box">Cleared — using the standard OpenAI endpoint.</div>`;
+      checkSetup();
+    } catch (e) {
+      msg.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  };
+}
 // Clips made in earlier sessions are still on disk — show them straight away.
 loadLibrary();
 

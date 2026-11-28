@@ -132,7 +132,7 @@ def apply(clip_path: str, highlight: Dict) -> Optional[float]:
             f"[ab]asetpts=PTS-STARTPTS,afade=t=in:st=0:d={FLASH_IN:.3f}[a1];"
             f"[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
         )
-        maps = ["-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "160k"]
+        maps = ["-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
     else:
         filt = (
             f"[0:v]split=2[va][vb];"
@@ -148,7 +148,7 @@ def apply(clip_path: str, highlight: Dict) -> Optional[float]:
                 "-movflags", "+faststart", tmp]
 
     try:
-        accel.run_encode(build, what="ffmpeg (cold open)", crf=23)
+        accel.run_encode(build, what="ffmpeg (cold open)", crf=19)
         os.replace(tmp, clip_path)
     except Exception as e:
         print(f"[hook] could not add the cold open ({e}) — keeping the plain cut",

@@ -702,6 +702,10 @@ addEventListener("load", function () {
       <span id="setKey2Label">Replace API key</span>
       <input type="password" id="setKey2" placeholder="Paste a new key">
     </label>
+    <label class="fld" id="openaiBaseUrlFld" hidden>
+      <span>Base URL <span style="color:var(--text-3);font-size:11px;font-weight:400">(optional — LM Studio, Ollama, Together AI…)</span></span>
+      <input type="url" id="setBaseUrl" placeholder="https://api.openai.com/v1" spellcheck="false">
+    </label>
     <button class="btn ghost" id="setSave2">Save key</button>
     <div id="setMsg2"></div>
     <div id="sparesBox" hidden>
@@ -713,6 +717,25 @@ addEventListener("load", function () {
       <button class="btn ghost" id="sparesSave">Save spare keys</button>
       <div id="sparesMsg"></div>
     </div>
+  </div>
+
+  <div class="d-sec">
+    <h3>AI key pool</h3>
+    <label class="pool-toggle">
+      <input type="checkbox" id="aiPoolEnabled">
+      <span>Enable AI pool usage</span>
+    </label>
+    <p class="hint">Arrange all saved keys in priority order. When a key hits a rate limit or error, the next key runs immediately with zero delay — delays only apply before retrying the same key.</p>
+    <div id="aiPoolBox" hidden>
+      <div class="pool-list" id="aiPoolList"></div>
+      <p class="hint" id="aiPoolEmpty" hidden>Save keys under multiple providers above (or spare Gemini keys) to arrange your pool.</p>
+    </div>
+    <div id="aiPoolMsg"></div>
+    <label class="fld" style="margin-top:14px">
+      <span>Transcription model (Whisper)</span>
+      <select id="whisperModel"></select>
+    </label>
+    <div id="whisperModelMsg"></div>
   </div>
 
   <div class="d-sec">
@@ -778,6 +801,12 @@ addEventListener("load", function () {
     </label>
     <button class="btn ghost" id="fbSave">Save backup key</button>
     <div id="fbMsg"></div>
+    <label class="fld" id="fbBaseUrlRow">
+      <span>OpenAI base URL <span style="color:var(--text-3);font-size:11px;font-weight:400">(optional — LM Studio, Ollama, Together AI…)</span></span>
+      <input type="url" id="fbBaseUrl" placeholder="https://api.openai.com/v1">
+    </label>
+    <button class="btn ghost" id="fbBaseUrlSave">Save base URL</button>
+    <div id="fbBaseUrlMsg"></div>
     <label class="fld">
       <span>Daily request cap for OpenAI &mdash; optional, for the meter</span>
       <input type="number" id="capOpenai" min="1" step="1" placeholder="e.g. 100">
